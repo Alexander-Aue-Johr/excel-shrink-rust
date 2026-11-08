@@ -170,9 +170,13 @@ files. Seventeen focused export tests and the portable frontend test passed.
 The check retains source reports and package integrity. It does not approve the
 Enron workbook contents for public distribution. Working artifacts remain under
 `G:\deltasieve-work\publication-audit-smoke-20261108`; the owned HTTP server was
-stopped after inspection. See `../visual-validation/static-publication.md` for
-the publication procedure. Formula presentation, corpus-study import, a frozen
-corpus release and final privacy decisions remain open.
+stopped after inspection. A subsequent export check verified the shared formula
+presentation with retained zero-path evidence. Three frontend tests cover
+offline paths and missing evidence, exact volatile-call highlighting, text-safe
+formula rendering, pause/resume, and the existing live diagnostic cache. See
+`../visual-validation/static-publication.md` for the publication procedure.
+Corpus-study import, a frozen corpus release and final privacy decisions remain
+open.
 
 ## 10 Measure the performance report's proposals
 

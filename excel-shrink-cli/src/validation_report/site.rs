@@ -12,10 +12,11 @@ use std::{
 const TEMPLATE: &str = include_str!("../../office-capture/control-room/report.html");
 const OBSERVATORY_CSS: &str = include_str!("../../office-capture/control-room/style.css");
 const REPORT_CSS: &str = include_str!("../../office-capture/control-room/report.css");
-const SCRIPTS: [&str; 4] = [
+const SCRIPTS: [&str; 5] = [
     include_str!("../../office-capture/control-room/atelier-model.js"),
     include_str!("../../office-capture/control-room/pixel-summary.js"),
     include_str!("../../office-capture/control-room/atelier-pixels.js"),
+    include_str!("../../office-capture/control-room/formula-inspector.js"),
     include_str!("../../office-capture/control-room/report.js"),
 ];
 
@@ -229,7 +230,7 @@ fn ensure_viewer_assets(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// These four small, local modules have single-line named imports. Removing
+/// These small, local modules have single-line named imports. Removing
 /// their module declarations lets the same sources run as one classic script,
 /// including from file:// where cross-file ES module loading is restricted.
 fn browser_bundle() -> Result<String> {
@@ -347,6 +348,7 @@ mod tests {
             .any(|line| line.starts_with("import ") || line.starts_with("export ")));
         assert!(script.contains("function createPixelInspector("));
         assert!(script.contains("function atelierRegions("));
+        assert!(script.contains("function createRetainedFormulaInspector("));
         assert!(!script.contains("fetch("));
         Ok(())
     }

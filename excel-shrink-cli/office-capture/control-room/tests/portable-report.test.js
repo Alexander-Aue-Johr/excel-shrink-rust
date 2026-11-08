@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { atelierRegions } from '../atelier-model.js';
 import { portableImageUrl, portablePageUrl, reportRowMatches } from '../report.js';
 import { pixelSummary } from '../pixel-summary.js';
+import { retainedFormulaDiagnosis } from '../formula-inspector.js';
 
 const first = `evidence/${'a'.repeat(64)}.png`;
 const second = `evidence/${'b'.repeat(64)}.jpg`;
@@ -39,4 +40,12 @@ assert.equal(reportRowMatches({ name: 'Book.xlsx', different_regions: 0 }, '', '
 assert.equal(reportRowMatches({ name: 'Book.xlsx', different_regions: 1 }, '', 'differences'), true);
 assert.equal(pixelSummary({ changed_pixels: 1, max_channel_delta: 2, total_channel_delta: 3 }),
   '1 changed px · max Δ2/255 · ΣΔ 3');
+const diagnosis = { evidence: 'saved_compared_states', volatile_paths: 1 };
+const formulas = { formula_diagnostics: { regions: [
+  { pair_index: 0, kind: 'findings', finding_index: 1, diagnosis },
+] } };
+assert.equal(retainedFormulaDiagnosis(formulas, '0:findings:1'), diagnosis);
+assert.equal(retainedFormulaDiagnosis(formulas, '0:charts:1').evidence, 'unavailable');
+assert.equal(retainedFormulaDiagnosis({}, '0:findings:1').evidence, 'unavailable');
+assert.match(retainedFormulaDiagnosis({ formula_diagnostics: { omitted_regions: 4 } }, '0:findings:0').reason, /budget/);
 console.log('PASS portable report paths, shared comparison projection, filters and pixel summary');

@@ -89,6 +89,13 @@ need a separate publication decision. A zero metadata count leaves that review
 requirement in place. Exported evidence may contain confidential workbook content.
 Keep a working export private until its publication review is complete.
 
+The portable comparison page renders retained formula-dependency paths using the
+same presentation module as the live Atelier. Each explanation is matched to its
+exact comparison pair and region. It shows recorded values, formulas, arrows and
+the supported volatile-call highlight without requesting an API. Missing or
+budget-omitted explanations remain explicit. Older reports do not acquire new
+dependency evidence merely by being exported.
+
 The cleanup executable exposes `excel-shrink-cli --describe-cli` for typed option fields. Its JSON describes the same Clap options used by the cleanup command.
 
 `Add SheetShrink` uses the running DeltaSieve executable and its `shrink` entry

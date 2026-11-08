@@ -1,5 +1,6 @@
 import { atelierRegions } from './atelier-model.js';
 import { createPixelInspector } from './atelier-pixels.js';
+import { createRetainedFormulaInspector, retainedFormulaDiagnosis } from './formula-inspector.js';
 
 /** Only immutable package images are addressable, on file:// or a static host. */
 export function portableImageUrl(path) {
@@ -199,7 +200,8 @@ function showComparisonReport(content, report) {
   const area = reportElement('section', 'report-capture-area');
   const imageScroll = reportElement('div', 'report-image-scroll');
   const diagnostic = reportElement('div');
-  area.append(imageScroll, diagnostic);
+  const formulas = reportElement('div');
+  area.append(imageScroll, diagnostic, formulas);
   content.append(controls, note, area);
   let regions = [];
   let generation = 0;
@@ -218,6 +220,7 @@ function showComparisonReport(content, report) {
     const current = ++generation;
     imageScroll.replaceChildren();
     diagnostic.replaceChildren();
+    formulas.replaceChildren();
     const index = select.selectedIndex;
     const region = regions[index];
     previous.disabled = index <= 0;
@@ -228,6 +231,7 @@ function showComparisonReport(content, report) {
         : 'No rendered comparison regions are recorded. Consult the state decisions and coverage; omitted images are not evidence of pixel equality.';
       return;
     }
+    formulas.append(createRetainedFormulaInspector(region, retainedFormulaDiagnosis(report, region.key)));
     const observations = [
       region.pixels_differ && 'pixel difference', region.geometry_differs && 'geometry difference',
       region.rendering_differs && 'rendering change', region.presence_differs && 'chart presence change',
