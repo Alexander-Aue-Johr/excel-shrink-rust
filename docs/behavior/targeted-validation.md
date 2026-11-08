@@ -1127,3 +1127,11 @@ link updates disabled, verifies native process and workbook identities, and
 requires the seed alone after close. Any operational identity or COM failure
 faults the session. The caller must discard the process after such a failure.
 COM-reference disposal does not replace native process ownership or termination.
+
+The experimental workbook worker wraps this session in a separate process with
+serial GUID-tagged UTF-8 JSON-lines commands. The worker owns its Excel process
+job and desktop, while its caller owns the worker process job. Any failed command
+retires the worker and terminates its Excel job. A caller timeout requires worker
+discard and must not trigger an unverified replay of an open command. Command
+framing rejects truncated input and frames exceeding 16,384 characters. HTTP
+capture sessions and immutable evidence remain separate from workbook control.

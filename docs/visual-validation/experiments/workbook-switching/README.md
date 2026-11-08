@@ -181,3 +181,38 @@ Repeated captures matched, the changed control differed, all four retained PNGs
 matched their receipts, input hashes were unchanged and owned Excel exit was
 confirmed. This component is exercised by the probe and is not yet connected to
 the production corpus pool.
+
+## Separate long-lived workbook worker
+
+`-WorkerProcess` starts `office-capture/workbook-worker.ps1`, whose bootstrap
+compiles and runs `CaptureWorkbookWorker.cs`. The C# worker owns the private
+desktop, native process job and workbook session. Its serial UTF-8 JSON-lines
+protocol accepts GUID-tagged `open`, `close` and `stop` commands. It publishes
+native PID, process birth time and desktop before readiness. A failed command
+returns its error and terminates the worker, closing the native process job.
+The caller owns the worker process job and must discard it on a timeout.
+Input framing is limited to 16,384 characters. No command retry is implemented.
+
+Trial 07 passed all four resident capture/upload/release sequences through this
+separate worker. Trial 08 failed on a non-ASCII path because .NET Framework's
+default `Process.StandardInput` writer used the parent's OEM code page while
+the worker read UTF-8. The caller now writes explicit UTF-8 bytes to that stream
+and reads UTF-8 output. Trial 09 passed the unicode-path and intentional failed
+command checks. An initial Python inspection of its report omitted UTF-8 when
+reading it and displayed mojibake. Explicit UTF-8 decoding resolved those paths.
+
+Trial 10 also checked each PNG's file hash directly in the harness. It passed
+four resident sequences under a directory containing an umlaut, then submitted
+an unknown command and confirmed both worker and owned Excel termination.
+Its result records `worker_process_used` and `worker_failure_control`.
+Initialization took 4.376 seconds. Open through Office.js ready took 2.529,
+0.978, 1.481 and 1.923 seconds. A/B/A/B captures repeated exactly, all four PNG
+receipts matched retained files, nine old-token attempts were rejected and
+input hashes were unchanged. Five focused framing checks also passed without
+starting Excel, including the size limit and incomplete EOF input.
+
+The production Rust corpus scheduler does not yet create or lease these workers.
+Next integration work must retain one stable host origin per exclusive worker,
+bind its lease to the scheduler owner, discard timed-out workers and preserve
+comparison-scoped HTTP hosts and evidence. Concurrent pool and rebuild tests
+remain required before changing the corpus runner's default lifecycle.

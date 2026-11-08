@@ -7,11 +7,14 @@ param(
     [Parameter(Mandatory=$true)][string]$Output,
     [string]$CaptureRange,
     [switch]$ExpectDifferentPixels,
-    [switch]$ResidentCommands
+    [switch]$ResidentCommands,
+    [switch]$WorkerProcess,
+    [switch]$FailWorkerAtEnd
 )
 $ErrorActionPreference = 'Stop'
 if ($ExpectDifferentPixels -and -not $CaptureRange) { throw 'Different-pixel control requires CaptureRange.' }
 if ($ResidentCommands -and $CaptureRange) { throw 'Choose the production resident page or the minimal pixel page.' }
+if ($FailWorkerAtEnd -and -not $WorkerProcess) { throw 'Worker failure control requires WorkerProcess.' }
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new probe output directory.' }
 [void][IO.Directory]::CreateDirectory($Output)
 Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
@@ -164,6 +167,10 @@ function Test-ResidentCapture($HostInfo, $Ready) {
         })
     }
     $images = Invoke-ProbeCommand $HostInfo @{id='images';kind='images';capture_id='capture';tiles=@($capture.tiles)}
+    foreach ($image in $images.images) {
+        $actual = (Get-ProbeHash $image.image_path).Replace('-', '').ToLowerInvariant()
+        if ($actual -ne $image.sha256) { throw 'Uploaded PNG does not match its receipt.' }
+    }
     $release = Invoke-ProbeCommand $HostInfo @{id='release';kind='release'}
     if ($release.pane_resources.retained_capture_plans -ne 0 -or
         $release.pane_resources.retained_image_bytes -ne 0 -or
@@ -197,6 +204,29 @@ function Assert-RejectedWorkbookOpen([string]$Path, [string]$ExpectedMessage) {
     throw 'An invalid workbook switch was accepted.'
 }
 
+function Read-WorkbookWorkerMessage($Worker) {
+    $read = $Worker.StandardOutput.ReadLineAsync()
+    if (-not $read.Wait(120000)) { throw 'Workbook worker reply exceeded 120 seconds.' }
+    if ($null -eq $read.Result) { throw 'Workbook worker exited without a reply.' }
+    return $read.Result | ConvertFrom-Json
+}
+
+function Invoke-WorkbookWorker($Worker, [string]$Kind, [string]$Path) {
+    $id = [Guid]::NewGuid().ToString()
+    Write-WorkbookWorkerMessage $Worker @{id=$id;kind=$Kind;path=$Path}
+    $response = Read-WorkbookWorkerMessage $Worker
+    if ($response.id -ne $id -or -not $response.ok -or $response.pid -ne $process.Id) {
+        throw ('Workbook worker command failed: ' + ($response | ConvertTo-Json -Compress))
+    }
+}
+
+function Write-WorkbookWorkerMessage($Worker, $Value) {
+    # .NET Framework's Process.StandardInput uses the parent console's OEM code page.
+    $bytes = $utf8.GetBytes(($Value | ConvertTo-Json -Compress) + "`n")
+    $Worker.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $Worker.StandardInput.BaseStream.Flush()
+}
+
 $owned = New-Object CaptureProcesses
 $desktop = New-Object CaptureDesktop
 $registrations = @{}
@@ -204,6 +234,7 @@ $checking = $null
 $excel = $null
 $workbookSession = $null
 $process = $null
+$worker = $null
 $samples = @()
 $previousClientToken = $null
 $script:probeAddinGuid = [Guid]::NewGuid().ToString()
@@ -213,16 +244,38 @@ try {
     $seedCopy = Join-Path $Output 'seed.xlsx'
     Copy-Item -LiteralPath $Seed -Destination $seedCopy
     $startup = [Diagnostics.Stopwatch]::StartNew()
-    $process = $desktop.Start((Find-ExcelExecutable), ('/x ' + (Quote-Argument $seedCopy)), $owned)
-    while ($null -eq $checking -and $startup.Elapsed.TotalSeconds -lt 60) {
-        $checking = [CaptureErrorChecking]::TryDisable($process, $desktop.Name)
-        if ($null -eq $checking) { Start-Sleep -Milliseconds 100 }
+    if ($WorkerProcess) {
+        $start = New-Object Diagnostics.ProcessStartInfo
+        $start.FileName = Join-Path $PSHOME 'powershell.exe'
+        $start.Arguments = '-NoProfile -ExecutionPolicy Bypass -File ' + (Quote-Argument (Join-Path $CaptureRoot 'workbook-worker.ps1')) +
+            ' -ExcelExecutable ' + (Quote-Argument (Find-ExcelExecutable)) + ' -Seed ' + (Quote-Argument $seedCopy)
+        $start.UseShellExecute = $false
+        $start.CreateNoWindow = $true
+        $start.RedirectStandardInput = $true
+        $start.RedirectStandardOutput = $true
+        $start.StandardOutputEncoding = $utf8
+        $worker = [Diagnostics.Process]::Start($start)
+        try { $owned.Add($worker) } catch { $worker.Kill(); throw }
+        $identity = Read-WorkbookWorkerMessage $worker
+        if ($identity.event_type -ne 'process_started') { throw 'Missing worker Excel identity.' }
+        $process = [Diagnostics.Process]::GetProcessById([int]$identity.pid)
+        if ($process.StartTime.ToUniversalTime().Ticks -ne ([DateTimeOffset]::Parse($identity.started_utc)).UtcTicks) {
+            throw 'Worker Excel process identity changed.'
+        }
+        $readyWorker = Read-WorkbookWorkerMessage $worker
+        if ($readyWorker.event_type -ne 'ready' -or $readyWorker.pid -ne $process.Id) { throw 'Workbook worker did not become ready.' }
+    } else {
+        $process = $desktop.Start((Find-ExcelExecutable), ('/x ' + (Quote-Argument $seedCopy)), $owned)
+        while ($null -eq $checking -and $startup.Elapsed.TotalSeconds -lt 60) {
+            $checking = [CaptureErrorChecking]::TryDisable($process, $desktop.Name)
+            if ($null -eq $checking) { Start-Sleep -Milliseconds 100 }
+        }
+        if ($null -eq $checking) { throw 'Owned Excel did not expose its automation window.' }
+        $excel = $checking.GetOwnedApplication()
+        $workbookSession = New-Object CaptureWorkbookSession -ArgumentList @($excel, $process, $seedCopy)
+        $excel = $null # The C# session owns this COM reference.
+        $workbookSession.Initialize()
     }
-    if ($null -eq $checking) { throw 'Owned Excel did not expose its automation window.' }
-    $excel = $checking.GetOwnedApplication()
-    $workbookSession = New-Object CaptureWorkbookSession -ArgumentList @($excel, $process, $seedCopy)
-    $excel = $null # The C# session owns this COM reference.
-    $workbookSession.Initialize()
     $startupSeconds = $startup.Elapsed.TotalSeconds
     $index = 0
     $hostInfo = Start-WorkbookHost (Join-Path $Output 'host') 'case-0.xlsx'
@@ -249,11 +302,12 @@ try {
         }
         $book = Join-Path $directory $name
         Prepare-ProbeWorkbook $source $book $hostInfo
-        Assert-RejectedWorkbookOpen $seedCopy 'The seed cannot be a comparison workbook.'
+        if (-not $WorkerProcess) { Assert-RejectedWorkbookOpen $seedCopy 'The seed cannot be a comparison workbook.' }
         $clock = [Diagnostics.Stopwatch]::StartNew()
-        $workbookSession.OpenReadOnly($book)
+        if ($WorkerProcess) { Invoke-WorkbookWorker $worker 'open' $book }
+        else { $workbookSession.OpenReadOnly($book) }
         $openSeconds = $clock.Elapsed.TotalSeconds
-        Assert-RejectedWorkbookOpen $book 'Close the current workbook before opening another.'
+        if (-not $WorkerProcess) { Assert-RejectedWorkbookOpen $book 'Close the current workbook before opening another.' }
         $ready = Wait-ProbeOfficeReady $hostInfo
         $samples += @{index=$index;pid=$process.Id;com_open_seconds=$openSeconds;ready_seconds=$clock.Elapsed.TotalSeconds;observation=$ready}
         if ($ResidentCommands) {
@@ -264,8 +318,22 @@ try {
             $samples[-1].resident = Test-ResidentCapture $hostInfo $ready
         }
         Write-ProbeJson (Join-Path $Output 'samples.json') @{startup_seconds=$startupSeconds;samples=$samples}
-        $workbookSession.CloseCurrent()
+        if ($WorkerProcess) { Invoke-WorkbookWorker $worker 'close' '' }
+        else { $workbookSession.CloseCurrent() }
         $index++
+    }
+    if ($WorkerProcess) {
+        if ($FailWorkerAtEnd) {
+            $failureId = [Guid]::NewGuid().ToString()
+            Write-WorkbookWorkerMessage $worker @{id=$failureId;kind='invalid'}
+            $failure = Read-WorkbookWorkerMessage $worker
+            if ($failure.id -ne $failureId -or $failure.ok -ne $false -or $failure.error -ne 'Unknown workbook worker command.') {
+                throw 'Worker failure control returned an unexpected response.'
+            }
+        } else { Invoke-WorkbookWorker $worker 'stop' '' }
+        if (-not $worker.WaitForExit(10000) -or -not $process.WaitForExit(10000)) {
+            throw 'Workbook worker did not terminate its owned Excel process.'
+        }
     }
 } finally {
     if ($null -ne $workbookSession) { $workbookSession.Dispose() }
@@ -314,4 +382,8 @@ if ($ResidentCommands) {
         throw 'The positive resident difference control was not detected.'
     }
 }
-Write-ProbeJson (Join-Path $Output 'result.json') @{samples=$samples;startup_seconds=$startupSeconds;owned_excel_exit_confirmed=$true;source_hashes_unchanged=$true}
+Write-ProbeJson (Join-Path $Output 'result.json') @{
+    samples=$samples;startup_seconds=$startupSeconds
+    worker_process_used=[bool]$WorkerProcess;worker_failure_control=[bool]$FailWorkerAtEnd
+    owned_excel_exit_confirmed=$true;source_hashes_unchanged=$true
+}
