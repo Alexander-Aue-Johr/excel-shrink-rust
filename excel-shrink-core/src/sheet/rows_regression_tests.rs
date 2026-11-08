@@ -1897,3 +1897,27 @@ fn performance_counts_style_zero_remains_a_real_counted_candidate() {
         None
     );
 }
+
+/// Enron 005d034f: an exterior protection style also supplied Arial row height.
+#[test]
+fn exterior_protection_style_can_still_supply_a_required_font_sentinel() {
+    let mut protected_font = apply_font_only_style(13);
+    protected_font.has_no_empty_cell_visible_style = false;
+    protected_font.has_apply_protection = true;
+    let params = params_with_styles(&[
+        (0, font_only_style()),
+        (1, apply_font_only_style(0)),
+        (35, protected_font),
+    ]);
+    for protected in [false, true] {
+        let mut metrics = CleanSheetMetrics::default();
+        metrics.sheet_protection_enabled = protected;
+        metrics.visible_data_range_bounds.include_cell(1, 1);
+        metrics.visible_data_range_bounds.include_cell(18, 150);
+        let input = br#"<row r="103" ht="24"><c r="A103" s="1"><v>7</v></c><c r="S103" s="35"/><c r="T103" s="35"/></row>"#;
+        let output = replace_single_row_with_metrics(input, &params, &mut metrics);
+        let expected = br#"<row r="103" ht="24"><c r="A103" s="1"><v>7</v></c><c r="S103" s="35"/></row>"#;
+        assert_eq!(output, expected);
+        assert_eq!(metrics.deleted_cell_count, 1);
+    }
+}

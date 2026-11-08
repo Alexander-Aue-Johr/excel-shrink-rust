@@ -117,6 +117,18 @@ have a common internal identity for decisions, without rewriting their indices.
 Non-font attributes/children remain significant. A font-only XF may be reused
 only when other style components cannot leak into a whole row.
 
+Protection metadata does not disqualify an empty cell from supplying a required
+font representative. Even outside the protection-retention area, that font can
+affect automatic row height and move later visible content. The per-row
+representative rule retains the first needed style rather than retaining every
+protection-formatted cell. Promotion into a row style keeps its separate guards.
+
+The Enron `005d034f18d6dc340a2c` investigation found five automatic-height rows
+that became one pixel shorter after two Arial-formatted protection cells were
+removed. A focused test reproduced the missing sentinel with both active and
+inactive sheet protection. The corrected Core suite passes. Native confirmation
+of the revised workbook remains part of the investigation before deployment.
+
 ### S4.1. Whitespace and blank are not interchangeable
 
 Whitespace lookup examines shared-string entries and their text runs. Recognized

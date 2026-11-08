@@ -1210,6 +1210,7 @@ fn remove_tentative_representatives_from_metrics(
 
 /// Explicit no-fill/no-border attributes still allow a cell to supply the font
 /// that determines an otherwise empty row's automatic height.
+/// Protection metadata does not cancel that font's layout contribution.
 fn empty_cell_can_supply_font_representative(
     cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
@@ -1230,7 +1231,6 @@ fn empty_cell_can_supply_font_representative(
                                 inherited.font_identity() != style.font_identity()
                             })
                     }))
-                    && !style.has_apply_protection
                     && !parsed_empty_cell_has_effective_fill_or_border(cell, params, metrics, false))
         })
 }
