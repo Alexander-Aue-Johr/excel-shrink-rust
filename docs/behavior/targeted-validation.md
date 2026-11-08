@@ -1120,3 +1120,10 @@ directory and client credentials at the same local origin. Excel remains alive
 with a seed workbook. Old-token ready, result and image requests must fail in
 the new session. Capture PNG receipts and release resource counters are checked.
 This remains a single-worker experiment pending pool and rebuild acceptance.
+
+The experimental C# workbook session accepts one application reference from the
+existing owned-window binding. It opens only read-only comparison workbooks with
+link updates disabled, verifies native process and workbook identities, and
+requires the seed alone after close. Any operational identity or COM failure
+faults the session. The caller must discard the process after such a failure.
+COM-reference disposal does not replace native process ownership or termination.

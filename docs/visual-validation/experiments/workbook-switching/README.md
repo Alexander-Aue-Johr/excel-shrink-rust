@@ -155,3 +155,29 @@ HTTP host at a stable origin. Production integration still needs pool admission,
 source and comparison identity binding, interruption recovery, matched rebuild
 and pixel checks, and concurrent worker isolation. The single-worker probe does
 not establish those properties or change the corpus runner's lifecycle.
+
+## C# workbook ownership component
+
+The harness now uses `office-capture/CaptureWorkbookSession.cs` for COM workbook
+opening and closing. The component takes an application reference already bound
+to the owned native Excel window. Before and after opening it checks the window
+PID, process birth identity, exact workbook path, read-only state and workbook
+count. It disables link updates with `Workbooks.Open` argument 0. Closing must
+leave exactly the expected seed workbook. A COM or identity failure faults the
+session, requiring the process owner to discard it. Disposing releases COM
+references, while the existing native job continues to own process termination.
+
+Trial 04 failed on `TYPE_E_INVDATAREAD` because the first C# implementation passed
+the invariant culture to COM method invocation. Trial 05 passed after selecting
+LCID 1033 for methods. Trial 06 passed with that culture also explicit on property
+access, plus rejection checks for opening the seed as a comparison or opening
+another comparison before closing the current workbook. The explicit automation
+culture follows the [Excel object-model globalization documentation](https://learn.microsoft.com/en-us/visualstudio/vsto/globalization-and-localization-of-excel-solutions).
+
+Trial 06 took 5.142 seconds to initialize. COM opens took 0.921, 0.548, 0.294 and
+0.264 seconds. Open through Office.js ready took 1.937, 1.225, 0.954 and 0.922
+seconds. Eight invalid open requests and nine old-token requests were rejected.
+Repeated captures matched, the changed control differed, all four retained PNGs
+matched their receipts, input hashes were unchanged and owned Excel exit was
+confirmed. This component is exercised by the probe and is not yet connected to
+the production corpus pool.

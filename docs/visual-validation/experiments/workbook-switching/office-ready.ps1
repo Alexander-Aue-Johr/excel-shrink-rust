@@ -15,7 +15,7 @@ if ($ResidentCommands -and $CaptureRange) { throw 'Choose the production residen
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new probe output directory.' }
 [void][IO.Directory]::CreateDirectory($Output)
 Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
-Add-Type -Path (Join-Path $CaptureRoot 'ExcelProcessId.cs')
+Add-Type -Path (Join-Path $CaptureRoot 'CaptureWorkbookSession.cs')
 Add-Type -Path (Join-Path $CaptureRoot 'CaptureWorkbook.cs') -ReferencedAssemblies @('System.IO.Compression', 'System.IO.Compression.FileSystem', 'System.Xml')
 Import-Module (Join-Path $CaptureRoot 'CaptureSetup.psm1') -DisableNameChecking
 $utf8 = [Text.UTF8Encoding]::new($false)
@@ -187,12 +187,22 @@ function Test-RetiredToken($HostInfo, [string]$Token) {
     return $observations
 }
 
+function Assert-RejectedWorkbookOpen([string]$Path, [string]$ExpectedMessage) {
+    try {
+        $workbookSession.OpenReadOnly($Path)
+    } catch {
+        if ($_.Exception.InnerException.Message -notlike ($ExpectedMessage + '*')) { throw }
+        return
+    }
+    throw 'An invalid workbook switch was accepted.'
+}
+
 $owned = New-Object CaptureProcesses
 $desktop = New-Object CaptureDesktop
 $registrations = @{}
 $checking = $null
 $excel = $null
-$workbook = $null
+$workbookSession = $null
 $process = $null
 $samples = @()
 $previousClientToken = $null
@@ -210,12 +220,9 @@ try {
     }
     if ($null -eq $checking) { throw 'Owned Excel did not expose its automation window.' }
     $excel = $checking.GetOwnedApplication()
-    $excel.Visible = $true
-    $excel.DisplayAlerts = $false
-    $excel.AutomationSecurity = 3
-    $excel.EnableEvents = $false
-    $excel.AutoRecover.Enabled = $false
-    $excel.Calculation = -4135
+    $workbookSession = New-Object CaptureWorkbookSession -ArgumentList @($excel, $process, $seedCopy)
+    $excel = $null # The C# session owns this COM reference.
+    $workbookSession.Initialize()
     $startupSeconds = $startup.Elapsed.TotalSeconds
     $index = 0
     $hostInfo = Start-WorkbookHost (Join-Path $Output 'host') 'case-0.xlsx'
@@ -242,12 +249,11 @@ try {
         }
         $book = Join-Path $directory $name
         Prepare-ProbeWorkbook $source $book $hostInfo
+        Assert-RejectedWorkbookOpen $seedCopy 'The seed cannot be a comparison workbook.'
         $clock = [Diagnostics.Stopwatch]::StartNew()
-        $workbook = $excel.Workbooks.Open($book, 0, $true, [Type]::Missing, '', '', $true)
+        $workbookSession.OpenReadOnly($book)
         $openSeconds = $clock.Elapsed.TotalSeconds
-        [uint32]$ownerId = 0
-        [void][ExcelProcessId]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd, [ref]$ownerId)
-        if ($ownerId -ne $process.Id) { throw 'Workbook switched to another Excel process.' }
+        Assert-RejectedWorkbookOpen $book 'Close the current workbook before opening another.'
         $ready = Wait-ProbeOfficeReady $hostInfo
         $samples += @{index=$index;pid=$process.Id;com_open_seconds=$openSeconds;ready_seconds=$clock.Elapsed.TotalSeconds;observation=$ready}
         if ($ResidentCommands) {
@@ -258,14 +264,11 @@ try {
             $samples[-1].resident = Test-ResidentCapture $hostInfo $ready
         }
         Write-ProbeJson (Join-Path $Output 'samples.json') @{startup_seconds=$startupSeconds;samples=$samples}
-        $workbook.Close($false)
-        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($workbook)
-        $workbook = $null
-        if ($excel.Workbooks.Count -ne 1) { throw 'Unexpected workbook remained after switch.' }
+        $workbookSession.CloseCurrent()
         $index++
     }
 } finally {
-    if ($null -ne $workbook) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) }
+    if ($null -ne $workbookSession) { $workbookSession.Dispose() }
     if ($null -ne $checking) { $checking.Dispose() }
     if ($null -ne $excel) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($excel) }
     $owned.Dispose()
