@@ -44,6 +44,7 @@ struct Room {
     reports: Mutex<BTreeMap<String, PathBuf>>,
     picker: Mutex<()>,
     study: Mutex<Option<(String, PathBuf)>>,
+    study_defaults: crate::validation_study::Configuration,
     preparation_job: Mutex<Option<preparation_job::Job>>,
 }
 
@@ -66,14 +67,26 @@ impl IntoResponse for ApiError {
 }
 
 pub(crate) fn serve(config: RunConfig, port: u16, open: bool, application: Application) -> Result<()> {
+    serve_with_study(config, port, open, application, None)
+}
+
+/// Opening a prepopulated corpus form never starts its configured workload.
+pub(crate) fn serve_with_study(
+    config: RunConfig,
+    port: u16,
+    open: bool,
+    application: Application,
+    study: Option<crate::validation_study::Configuration>,
+) -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()?
-        .block_on(serve_async(config, port, open, application))
+        .block_on(serve_async(config, port, open, application, study.unwrap_or_default()))
 }
 
-async fn serve_async(config: RunConfig, port: u16, open: bool, application: Application) -> Result<()> {
+async fn serve_async(config: RunConfig, port: u16, open: bool, application: Application,
+    study_defaults: crate::validation_study::Configuration) -> Result<()> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
     let port = listener.local_addr()?.port();
     let room = Arc::new(Room {
@@ -87,6 +100,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool, application: Appl
         reports: Mutex::new(BTreeMap::new()),
         picker: Mutex::new(()),
         study: Mutex::new(None),
+        study_defaults,
         preparation_job: Mutex::new(None),
     });
     let web_root = validation::capture::capture_directory()?.join("control-room");
@@ -210,7 +224,7 @@ async fn session(State(room): State<Arc<Room>>) -> ApiResult {
         "browse_directory":browse_directory,"native_picker":cfg!(windows),
         "logical_processors":std::thread::available_parallelism().map_or(1, usize::from),
         "processor_schema":crate::cli_metadata::describe(),"shrink_preset":shrink_preset,
-        "study_defaults":crate::validation_study::Configuration::default()}),
+        "study_defaults":room.study_defaults}),
     ))
 }
 
@@ -724,6 +738,7 @@ mod tests {
             reports: Mutex::new(BTreeMap::new()),
             picker: Mutex::new(()),
             study: Mutex::new(None),
+            study_defaults: crate::validation_study::Configuration::default(),
             preparation_job: Mutex::new(None),
         });
         let page = workbooks(

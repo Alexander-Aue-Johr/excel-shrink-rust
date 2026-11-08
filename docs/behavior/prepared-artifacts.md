@@ -307,6 +307,13 @@ The experiment record is in
 
 ## Remaining acceptance gates
 
+`sheetshrink observatory --study-config machine.json` and the equivalent
+DeltaSieve command preload the ordinary corpus configuration form. Relative
+archive/output paths resolve against that JSON file. Opening the form does not
+create a study or start preparation, Excel or comparison workers. The user must
+submit Start. `--no-open` suppresses the browser launch while retaining the same
+configuration HTTP service. Missing CLI configuration retains existing defaults.
+
 An archive study can run from a packaged runtime without a Cargo checkout.
 An explicitly supplied `EXCEL_SHRINK_REPOSITORY_ROOT` accepts either the existing
 checkout layout or a runtime root containing `release-manifest.json`, the Office

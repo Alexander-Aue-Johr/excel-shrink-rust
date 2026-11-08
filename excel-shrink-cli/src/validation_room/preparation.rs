@@ -100,8 +100,26 @@ mod tests {
             reports: Mutex::new(BTreeMap::new()),
             picker: Mutex::new(()),
             study: Mutex::new(None),
+            study_defaults: crate::validation_study::Configuration::default(),
             preparation_job: Mutex::new(None),
         })
+    }
+
+    #[tokio::test]
+    async fn session_preserves_corpus_prefill_without_starting_work() {
+        let mut room = room();
+        let configuration = &mut Arc::get_mut(&mut room).unwrap().study_defaults;
+        configuration.name = "Destatis".into();
+        configuration.partitions = 6;
+        configuration.partition = 2;
+        configuration.comparison_groups = 3;
+        let response = session(State(room.clone())).await.unwrap().0;
+        assert_eq!(response["study_defaults"]["name"], "Destatis");
+        assert_eq!(response["study_defaults"]["partition"], 2);
+        assert_eq!(response["study_defaults"]["partitions"], 6);
+        assert_eq!(response["study_defaults"]["comparison_groups"], 3);
+        assert!(!room.active.load(Ordering::Acquire));
+        assert!(room.study.lock().unwrap().is_none());
     }
 
     #[tokio::test]

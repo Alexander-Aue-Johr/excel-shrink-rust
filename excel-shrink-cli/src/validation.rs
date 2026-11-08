@@ -72,6 +72,9 @@ enum Command {
     Observatory {
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Prepopulate the corpus form without starting a study.
+        #[arg(long)]
+        study_config: Option<PathBuf>,
         #[arg(long, default_value_t = 0)]
         port: u16,
         #[arg(long)]
@@ -491,6 +494,7 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         ),
         Some(Command::Observatory {
             config,
+            study_config,
             port,
             no_open,
             setup,
@@ -500,11 +504,14 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
                 .map(RunConfig::from_file)
                 .transpose()?
                 .unwrap_or_default();
-            crate::validation_room::serve(
+            crate::validation_room::serve_with_study(
                 application.configure(setup.apply(config))?,
                 port,
                 !no_open,
                 application,
+                study_config.as_deref()
+                    .map(crate::validation_study::Configuration::from_file)
+                    .transpose()?,
             )
         }
         Some(Command::Run { config }) => {
@@ -670,6 +677,18 @@ pub(crate) fn open_browser(target: &OsStr) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observatory_study_configuration_is_a_prefill_argument() {
+        let parsed = Cli::try_parse_from([
+            "sheetshrink", "observatory", "--study-config", "machine.json", "--no-open",
+        ]).unwrap();
+        let Some(Command::Observatory { study_config, no_open, .. }) = parsed.command else {
+            panic!("Expected the configuration page, not a study execution command");
+        };
+        assert_eq!(study_config, Some(PathBuf::from("machine.json")));
+        assert!(no_open);
+    }
 
     #[test]
     fn validation_partitions_are_disjoint_complete_and_stable() {
