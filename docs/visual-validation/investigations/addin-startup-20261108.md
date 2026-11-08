@@ -1,5 +1,52 @@
 # Add-in startup timing investigation
 
+## Minimal taskpane and TimeWeaver countercheck
+
+The probe-only Rust command `capture-host inject-addin-probe settings.json`
+copies existing ZIP payloads without decompressing worksheets. It changes the
+content-type table and one relationship part, then adds the three web-extension
+parts. It refuses existing output files and existing web extensions. Two focused
+Rust tests cover XML insertion, payload preservation and the alternative
+workbook relationship location. The production injector remains unchanged.
+
+`experiments/workbook-switching/hello-world.ps1` uses a separate owned Excel
+process, a fresh profile and a 30-second readiness deadline. Its page fetches
+configuration and synchronizes the workbook name before posting ready.
+Opt-in host setting `probe_access_log` records bounded counts and response status
+for taskpane GET, config GET and ready POST. It excludes query strings. The
+receipt is initialized before the listener starts. A logging error invalidates
+an inference that no request arrived.
+
+The user-supplied TimeWeaver archive was inspected without executing it. Its
+`Launcher.cs` registers the manifest under the Office developer registry key.
+Its `Workbook.cs` connects taskpanes from `xl/_rels/workbook.xml.rels`, while
+our existing injector connects them from the package relationship part.
+TimeWeaver uses a fixed add-in identity and launches Excel without `/x`.
+
+Three separate native probes used the same source workbook, minimal page and
+fresh per-attempt identity. Their local evidence directories start with
+`hello-timeweaver-` in the validation temporary directory.
+
+| Relationship location | Catalog | Taskpane GET | Hello received |
+| --- | --- | ---: | --- |
+| Workbook | Registry | 0 | No, 30-second deadline |
+| Package | Registry | 1, HTTP 200 | Yes, 11.277 seconds after Excel process birth |
+| Package | Local FileSystem directory | 0 | No, 30-second deadline |
+
+The successful control also recorded one config GET and one ready POST, both
+HTTP 200. The time comes from stored UTC process birth and ready timestamps.
+The first receipt's derived `hello_seconds` field was invalid because PowerShell
+converted the timestamp using the current culture. The harness now uses a
+monotonic stopwatch and names this polling-inclusive observation
+`hello_observed_seconds`. Raw timestamps remain available for analysis.
+
+All three probes confirmed owned Excel exit and unchanged input hashes. Registry
+probes restored their registrations. The separately opened user inspection
+window and host were retained. These observations establish working startup for
+the package/Registry control on this machine. They do not explain TimeWeaver's
+working behavior on the user's laptop or establish support for all filesystem
+catalog arrangements.
+
 ## Method
 
 One converted Enron workbook and its SheetShrink output were opened together

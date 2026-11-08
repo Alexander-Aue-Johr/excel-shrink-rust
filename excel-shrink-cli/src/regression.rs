@@ -48,6 +48,7 @@ pub(crate) use artifact_cache::atomic_write as write_atomic_artifact;
 mod xml_views;
 mod worksheet_stream;
 mod streaming_xml;
+pub(crate) mod addin_probe;
 mod office_plan;
 mod row_heights;
 mod office_capture;

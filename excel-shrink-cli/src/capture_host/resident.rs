@@ -124,6 +124,7 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
             .as_str()
             .context("Missing session path")?,
     )?;
+    let probe_access = (settings["probe_access_log"] == true).then(|| session.join("probe-access.json"));
     let web = PathBuf::from(settings["web"].as_str().context("Missing web path")?);
     let port = settings["port"].as_u64().context("Missing host port")?;
     ensure!(
@@ -212,7 +213,11 @@ pub async fn run(settings_path: &Path) -> anyhow::Result<()> {
         )
         .route("/result/{id}/{command}", post(result))
         .with_state(host);
-    serve(with_web(router, &web, MAX_IMAGE_BYTES), port as u16).await
+    let mut router = with_web(router, &web, MAX_IMAGE_BYTES);
+    if let Some(path) = probe_access {
+        router = super::probe_access::instrument(router, path).await?;
+    }
+    serve(router, port as u16).await
 }
 
 /// Commit one authenticated launcher batch before acknowledging its event IDs.

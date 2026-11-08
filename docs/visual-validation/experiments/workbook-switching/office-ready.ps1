@@ -27,7 +27,7 @@ function Get-ProbeHash([string]$Path) {
     finally { $hasher.Dispose(); $stream.Dispose() }
 }
 
-function Start-WorkbookHost([string]$Directory, [string]$Name) {
+function Start-WorkbookHost([string]$Directory, [string]$Name, [switch]$ProbeAccessLog) {
     $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $probe.Start()
     try { $port = $probe.LocalEndpoint.Port } finally { $probe.Stop() }
@@ -42,7 +42,7 @@ function Start-WorkbookHost([string]$Directory, [string]$Name) {
     [IO.File]::WriteAllText($pane, [IO.File]::ReadAllText($pane).Replace('__CAPTURE_RUN_ID__', [Guid]::NewGuid().ToString('N')), $utf8)
     $config = Join-Path $Directory 'host.json'
     $token = [Guid]::NewGuid().ToString('N')
-    Write-ProbeJson $config @{port=$port;web=$web;session=$session;output=(Join-Path $Directory 'images');launcher_token=$token}
+    Write-ProbeJson $config @{port=$port;web=$web;session=$session;output=(Join-Path $Directory 'images');launcher_token=$token;probe_access_log=[bool]$ProbeAccessLog}
     $hostProcess = Start-Process $Binary -ArgumentList ('capture-host resident ' + (Quote-Argument $config)) -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $Directory 'host.stdout.log') -RedirectStandardError (Join-Path $Directory 'host.stderr.log')
     $owned.Add($hostProcess)
