@@ -357,6 +357,8 @@ mod tests {
         assert!(html.contains("\\u003c/script\\u003e"));
         assert!(html.contains("&lt;/script&gt;"));
         assert!(!html.contains("{{DATA}}"));
+        assert!(html.contains("connect-src 'self'"));
+        assert!(html.contains("default-src 'none'"));
         let literal = render_page("{{DATA}}", "", &json!({"name":"{{TITLE}}"}))?;
         assert!(literal.contains("<title>{{DATA}}</title>"));
         assert!(literal.contains(r#""name":"{{TITLE}}""#));
@@ -372,7 +374,10 @@ mod tests {
         assert!(script.contains("function createPixelInspector("));
         assert!(script.contains("function atelierRegions("));
         assert!(script.contains("function createRetainedFormulaInspector("));
-        assert!(!script.contains("fetch("));
+        // Replay is the sole fetch entry point in the otherwise self-contained viewer.
+        assert_eq!(script.matches("fetch(").count(), 1);
+        assert!(script.contains("class ReplayReader"));
+        assert!(script.contains("redirect: 'error'"));
         Ok(())
     }
 }

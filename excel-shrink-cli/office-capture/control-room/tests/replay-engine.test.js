@@ -22,7 +22,7 @@ function fixture() {
   const manifest = { version: 1, channel: 'run-progress', encoding: 'gzip-json-checkpoints',
     clock: 'elapsed-monotonic-milliseconds', complete: true, events: 128, duration_ms: 1275, chunks };
   files.set('/run/replay/manifest.json', Buffer.from(JSON.stringify(manifest)));
-  const fetcher = async url => new Response(files.get(new URL(url).pathname), { status: 200 });
+  const fetcher = async url => new Response(files.get(new URL(url, 'https://example.test/').pathname), { status: 200 });
   return { reader: new ReplayReader('replay/manifest.json', fetcher, 'https://example.test/run/index.html'), files, manifest };
 }
 
@@ -112,6 +112,8 @@ test('default fetch is called without the reader as its receiver', async () => {
   try {
     globalThis.fetch = function (...args) {
       assert.equal(this, undefined);
+      assert.equal(typeof args[0], 'string');
+      assert.match(args[0], /^\/run\/replay\//);
       return fixtureReader.fetcher(...args);
     };
     const reader = new ReplayReader('replay/manifest.json', undefined, 'https://example.test/run/index.html');

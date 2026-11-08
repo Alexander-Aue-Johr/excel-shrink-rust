@@ -76,9 +76,23 @@ unchanged checkpoints do not rewrite the historical status. Page departure
 cancels outstanding work. Missing or unsupported browser history shows an
 explicit unavailable message.
 
+## Browser acceptance
+
+A bounded synthetic static export was exercised in the in-app browser and
+Microsoft Edge on 2026-11-08. Its 128 checkpoints span four compressed chunks
+and contain no scientific workbook comparisons. Loading, seeking to the final
+checkpoint, restarting, 1,000-times playback, pausing, changing speed while
+paused and a ten-second forward jump were observed. The source manifest and
+export retained the same SHA-256. The owned loopback test server was stopped.
+
+The report's content security policy permits same-origin connections for replay
+assets. Fetch receives a root-relative path and rejects redirects. The browser
+test exposed the missing connection policy that JavaScript-only tests could not
+exercise. The private acceptance receipt is retained under
+`G:\deltasieve-work\replay-static-acceptance-20261108\browser-acceptance.json`.
+
 ## Remaining delivery gates
 
-Browser layout and static-host acceptance, long-run cost measurements,
-and shared live process-component playback remain open.
+Long-run cost measurements and shared live process-component playback remain open.
 Process/sheet/capture/heartbeat recording and long-run memory/cost acceptance
 remain open too. This storage channel alone does not complete roadmap Task 15.

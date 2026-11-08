@@ -37,7 +37,7 @@ test('static controls load, play to the terminal checkpoint and restart', async 
     globalThis.performance = { now: () => wall };
     globalThis.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
     globalThis.cancelAnimationFrame = () => {};
-    globalThis.fetch = async url => new Response(new URL(url).pathname.endsWith('manifest.json')
+    globalThis.fetch = async url => new Response(new URL(url, 'https://example.test/').pathname.endsWith('manifest.json')
       ? JSON.stringify(manifest) : bytes);
     installReportReplay(new Element('main'), { available: true, manifest: 'replay/manifest.json' });
     const load = nodes.find(node => node.textContent === 'Load recorded replay');

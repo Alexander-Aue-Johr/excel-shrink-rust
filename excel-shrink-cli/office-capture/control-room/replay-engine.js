@@ -109,7 +109,7 @@ export class ReplayReader {
   }
 
   async fetchBytes(url, limit, signal) {
-    const response = await this.fetcher(url, { signal, redirect: 'error', credentials: 'same-origin' });
+    const response = await this.fetcher(url.pathname, { signal, redirect: 'error', credentials: 'same-origin' });
     if (!response.ok || !response.body) throw new Error(`Replay request failed (${response.status}).`);
     return readReplayBytes(response.body, limit, signal);
   }
