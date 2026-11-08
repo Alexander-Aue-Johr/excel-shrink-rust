@@ -18,8 +18,12 @@ ascending or descending inside a partition does not change its membership.
 
 `--workbook-list` is a JSON array of full identities: validate duplicates,
 unknown identities and partition membership, then restrict/order only the pending
-selection. Completed records must not be resurrected because they appear in this
-list. Save the selection in the manifest. `--limit` is applied to new pending work,
+selection. Completed records must not be resurrected merely because they appear
+in this list. The explicit `--refresh-preparation` mode requires that list,
+includes its completed entries and bypasses preparation reuse. It archives the
+prior records and requires fresh comparisons after preparation. Back up affected
+preparation ZIPs before invoking this mode. Ordinary resume omits the refresh
+flag. Save the selection in the manifest. `--limit` is applied to new pending work,
 not a license to truncate a workbook's capture coverage.
 
 The source fingerprint, profile configuration, shrink producer identity and
