@@ -6,9 +6,13 @@ class Element {
   attributes = new Map();
   hidden = false;
   dataset = {};
+  listeners = new Map();
+  closeCount = 0;
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
-  addEventListener() {}
+  addEventListener(name, listener) { this.listeners.set(name, listener); }
+  close() { this.closeCount++; }
+  getBoundingClientRect() { return { left: 100, top: 100, right: 500, bottom: 500 }; }
   setAttribute(name, value) { this.attributes.set(name, value); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
 }
@@ -46,4 +50,16 @@ assert.equal(jobs.children[0], firstRow);
 assert.equal(jobs.children.length, 2);
 assert.equal(firstRow.dataset.active, 'false');
 assert.equal(jobs.children[1].dataset.active, 'true');
+const dialog = root.children.find(child => child.className === 'targeted-job-dialog');
+assert.equal(dialog.children[0].getAttribute('aria-label'), 'Close job details');
+dialog.children[0].listeners.get('click')();
+assert.equal(dialog.closeCount, 1);
+const click = dialog.listeners.get('click');
+click({ target: dialog, clientX: 200, clientY: 200 });
+click({ target: jobs, clientX: 0, clientY: 0 });
+assert.equal(dialog.closeCount, 1);
+for (const [clientX, clientY] of [[50, 200], [550, 200], [200, 50], [200, 550]]) {
+  click({ target: dialog, clientX, clientY });
+}
+assert.equal(dialog.closeCount, 5);
 console.log('PASS standalone panel initial update and report reset');

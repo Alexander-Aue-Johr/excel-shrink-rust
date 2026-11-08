@@ -238,14 +238,24 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
   const jobs = node('div', 'targeted-job-list');
   jobs.setAttribute('aria-label', 'Capture jobs in start order');
   const dialog = node('dialog', 'targeted-job-dialog');
-  const close = node('button', '', 'Close job details');
+  const close = node('button', 'targeted-job-close', '×');
   close.type = 'button';
+  close.setAttribute('aria-label', 'Close job details');
+  close.title = 'Close job details';
   const details = node('div', 'targeted-job-details');
   dialog.append(close, details);
   root.replaceChildren(heading, notice, jobs, dialog);
   let selectedId = null;
   const rows = new Map();
   close.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right
+      || event.clientY < bounds.top || event.clientY > bounds.bottom) {
+      dialog.close();
+    }
+  });
   dialog.addEventListener('close', () => {
     selectedId = null;
     for (const view of views.values()) view.destroy();
