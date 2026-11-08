@@ -58,7 +58,11 @@ try {
 } finally {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $previousDesktop
     foreach ($name in $previousEnvironment.Keys) {
-        [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+        if ($null -eq $previousEnvironment[$name]) {
+            Remove-Item -LiteralPath ('Env:\' + $name) -ErrorAction SilentlyContinue
+        } else {
+            [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+        }
     }
     try { $owned.Dispose() }
     catch {
