@@ -333,6 +333,18 @@ Approval was received on 2026-11-08. Task 01 is in progress. The live runner PID
   differences in the selected rebuilt captures. A read-only Default recomputation
   of the prepared Enron corpus is identifying changed outputs before deployment.
   Existing production comparisons remain bound to their original producer.
+- The read-only full Enron preflight verified all 20,503 prepared workbooks,
+  finding 1,234 changed Default packages and no failures. The selected old
+  records and ZIPs were hash-verified into an additional G: backup. The explicit
+  refresh entry point in `317200b` rebuilt that subset. Every refreshed Default
+  matched the independent preflight's complete decompressed member identities,
+  and all 19,269 other preparation ZIP hashes remained unchanged. Of the changed
+  subset, 68 had previously completed comparisons and now require fresh evidence.
+  The four-group production invocation was restarted with release SHA-256
+  `cb881f88de082046a315476d98b743d4acecd7bb2f438b3911af6b08a0bd10e6`.
+  Private launch, backup and verification receipts are retained under
+  `G:\deltasieve-work\enron-font-fix-refresh-20261108`. Final resumed progress
+  and difference review remain open.
 - `77959b2` preserves finite uniform-background bounds around supported drawings.
   The interrupted Enron group `cade66d204a8e1b3760d` contains unsupported rotated
   shapes and lines, so that improvement does not resolve its full-sheet plan.
