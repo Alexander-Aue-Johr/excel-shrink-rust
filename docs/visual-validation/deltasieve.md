@@ -62,5 +62,12 @@ A native CLI smoke test processed one known Original/Default workbook pair throu
 Three focused study-resume tests verify relative paths, missing/duplicate/mismatched
 output arguments, a held output lock and a changed executable checksum. An HTTP
 test using the active Enron launch receipt returned 400 for its held output lock;
-the resume UI returned 200. A successful stopped-study resume, browser hostname
-resolution and full browser interaction remain pending.
+the resume UI returned 200.
+
+An isolated one-workbook corpus study completed native validation, exited, and
+was then resumed through `/api/study/resume`. The resumed runner exited with no
+reported error. Its corpus summary retained one completed comparison, zero
+remaining workbooks and zero skips. All capture-attempt directories were unchanged,
+confirming that the existing comparison was reused. Receipts are retained under
+`validation-temp/study-resume-smoke-20261108`. Enron continued throughout the test.
+Browser hostname resolution and full browser interaction remain pending.
