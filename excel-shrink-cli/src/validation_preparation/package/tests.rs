@@ -501,3 +501,42 @@ fn generation_choice_files_validate_version_hashes_and_selected_sources() -> Res
     assert!(!root.join("outside-selection").exists());
     Ok(())
 }
+
+#[test]
+fn imported_identity_binding_preserves_names_metrics_and_rejects_changed_inputs() -> Result<()> {
+    let (root, source) = fixture()?;
+    let package = root.join("package");
+    export(&source, &package)?;
+    let manifest = selection(&root, &["source:'0"])?;
+    let target = root.join("imported");
+    materialize(&package, &manifest, &target, &ImportOptions::default())?;
+    let config = crate::validation::RunConfig::from_file(&target.join("compare.json"))?;
+    let evidence = crate::validation_preparation::imported::ImportedEvidence::read(
+        config.preparation_index.as_ref().unwrap(),
+    )?;
+    let name = format!("{}.xlsx", artifact_cache::sha256(b"source:'0"));
+    let record = evidence.record(&name)?;
+    assert_eq!(record["source_id"], "source:'0");
+    assert_eq!(record["display_name"], "source:'0");
+    assert_eq!(record["producer_measurements"]["worker_jobs_completed"], 1);
+    assert_eq!(evidence.len(), 1);
+    let a = target.join("baseline").join(&name);
+    let b = target.join("check-performance").join(&name);
+    evidence.verify_pair(&name, &a, &b)?;
+    fs::write(&b, b"OPTIMIZED")?;
+    assert!(evidence.verify_pair(&name, &a, &b).is_err());
+    let failure = crate::validation::execute(config, None).unwrap_err();
+    assert!(format!("{failure:#}").contains("Imported after-optimization bytes changed"));
+    let run: Value = serde_json::from_slice(&fs::read(target.join("report/run.json"))?)?;
+    assert_eq!(run["pairs"][0]["preparation"]["source_id"], "source:'0");
+    assert_eq!(run["pairs"][0]["display_name"], "source:'0");
+    assert!(run["preparation"]["provenance"].is_object());
+    assert!(!target.join("report/logs/validation").exists());
+    assert!(evidence.record("unknown.xlsx").is_err());
+    let path = target.join("import.json");
+    let mut index: Value = serde_json::from_slice(&fs::read(&path)?)?;
+    index["entries"][0]["generation_id"] = json!("f".repeat(64));
+    fs::write(&path, serde_json::to_vec(&index)?)?;
+    assert!(crate::validation_preparation::imported::ImportedEvidence::read(&path).is_err());
+    Ok(())
+}

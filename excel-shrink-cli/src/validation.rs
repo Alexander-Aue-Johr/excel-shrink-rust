@@ -240,6 +240,8 @@ impl Default for CaptureOptions {
 pub(crate) struct RunConfig {
     pub source_a: String,
     pub source_b: Option<String>,
+    /// Identity and producer evidence for an explicitly imported prepared corpus.
+    pub preparation_index: Option<PathBuf>,
     pub steps: Vec<Stage>,
     /// One-based step number whose output becomes A (e.g. an explicitly accepted XLS conversion).
     pub baseline_after_step: Option<usize>,
@@ -299,6 +301,7 @@ impl Default for RunConfig {
         Self {
             source_a: String::new(),
             source_b: None,
+            preparation_index: None,
             steps: Vec::new(),
             baseline_after_step: None,
             report_dir: PathBuf::new(),
@@ -333,6 +336,11 @@ impl RunConfig {
             .source_b
             .as_ref()
             .map(|source| resolve_source(source, base));
+        if let Some(path) = &mut self.preparation_index {
+            if path.is_relative() {
+                *path = base.join(&*path);
+            }
+        }
         for path in [&mut self.report_dir, &mut self.cache_dir] {
             if !path.as_os_str().is_empty() && path.is_relative() {
                 *path = base.join(&*path);
@@ -371,6 +379,10 @@ impl RunConfig {
     }
 
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.preparation_index.is_none() || (self.source_b.is_some() && self.steps.is_empty()),
+            "Prepared identity indices require two existing source corpora"
+        );
         if let Some(partition) = &self.partition {
             partition.validate()?;
         }

@@ -49,6 +49,7 @@ pub(crate) fn write_site(report_root: &Path, run: &Value) -> Result<PathBuf> {
         "finished_at": run["finished_at"],
         "summary": run["summary"],
         "selection": run["selection"],
+        "preparation": run["preparation"],
         "error": run["error"],
         "interrupted_index": run["interrupted_index"],
         "publication_review": if root.join("publication-review.json").is_file() {
@@ -200,7 +201,8 @@ fn overview_rows(root: &Path, run: &Value) -> Result<Vec<Value>> {
             None
         };
         rows.push(json!({
-            "id": id, "name": pair["name"].as_str().unwrap_or(id),
+            "id": id, "name": pair["display_name"].as_str().or_else(|| pair["name"].as_str()).unwrap_or(id),
+            "preparation":pair["preparation"],
             "status": pair["status"], "report": report, "page": page,
             "different_regions": pair["different_regions"], "reuse": pair["reuse"],
             "error": pair["error"], "errors": pair["errors"], "identity": pair["identity"],
@@ -325,6 +327,20 @@ fn write_derived(root: &Path, path: &Path, bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imported_display_names_do_not_replace_technical_pair_identity() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("imported-site-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root)?;
+        let run = json!({"pairs":[{"id":"pair-1","name":"technical.xlsx","display_name":"Original workbook.xls",
+            "status":"pending","preparation":{"source_id":"corpus:7:book.xls","producer_measurements":{"open_ms":42}}}]});
+        let rows = overview_rows(&root, &run)?;
+        assert_eq!(rows[0]["id"], "pair-1");
+        assert_eq!(rows[0]["name"], "Original workbook.xls");
+        assert_eq!(rows[0]["preparation"]["source_id"], "corpus:7:book.xls");
+        assert_eq!(rows[0]["preparation"]["producer_measurements"]["open_ms"], 42);
+        Ok(())
+    }
 
     #[test]
     fn workbook_text_cannot_close_the_data_script_or_change_markup() -> Result<()> {

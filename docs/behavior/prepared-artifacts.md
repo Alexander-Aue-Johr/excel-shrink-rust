@@ -166,6 +166,21 @@ The comparison configuration uses the ordinary two-corpus path with no local
 optimization stage. Import leaves visual validation pending. Existing output
 directories are immutable, and failed construction retains an incomplete marker.
 
+Generated configurations bind `preparation_index` to `import.json`, resolved
+relative to the configuration file. This option requires two supplied source
+corpora and no processing stages. The run checks the complete source-name set
+against the index before partition selection, then verifies both selected
+workbook files against their imported state hashes and lengths before rendering
+or observation reuse. An altered pair fails explicitly.
+
+The run header retains the import-index digest, package/selection identities,
+import options and deduplicated producer provenance. Pair records retain the
+original display name, stable source ID, selected generation, state identities
+and producer measurements separately from local validation evidence. Technical
+pair names and observation reuse keys remain stable. Static report rows use the
+original display name and carry the preparation metadata. Static export retains
+these fields through the run records, without requiring the source workbooks.
+
 SheetShrink evaluation can explicitly adopt the same packaged baseline where
 needed. Native generation, artifact import and visual verdicts retain separate
 lifecycles and reuse checks.

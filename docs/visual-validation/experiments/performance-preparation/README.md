@@ -128,8 +128,9 @@ and the harness restored Enron's four-group target in its finally block.
 
 The generated import index retains the original source identity and producer
 measurements. The standard comparison currently uses the safe paired filename
-as its display name. Direct identity-index presentation remains an integration
-requirement.
+as its display name in that first acceptance run. Subsequent identity-index
+binding adds original display names to static report rows while preserving
+technical pairing and reuse keys.
 
 Explicit generation selection and packaged-baseline adoption subsequently passed
 fifteen package tests. Different baseline bytes require matching raw-source
@@ -143,6 +144,14 @@ the mismatch without creating output. Import with an explicit generation and
 packaged-baseline adoption succeeded, retaining the requested and adopted hashes
 in `consumer-adopted-06/import.json`. This simulates differing consumer baseline
 bytes on this machine; it is not a second-machine conversion experiment.
+
+Sixteen package tests and three static-site tests passed after report binding.
+The ordinary comparison entry point was exercised with a same-length modified
+optimized input. It published the original source ID, display name and producer
+provenance with the explicit hash-mismatch failure before creating validation
+launcher logs. The static-site test verifies original-name selection and retained
+producer metrics. This update did not repeat native rendering. Preparation web
+controls and richer metric presentation remain separate integration work.
 
 ## Repeatable native tests
 

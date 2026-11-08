@@ -188,7 +188,7 @@ fn write_pairs(
         );
     }
     // The standard comparison entry point loads these relative folders without CP generation.
-    let config = json!({"source_a":"baseline","source_b":"check-performance","report_dir":"report","steps":[]});
+    let config = json!({"source_a":"baseline","source_b":"check-performance","preparation_index":"import.json","report_dir":"report","steps":[]});
     artifact_cache::atomic_write(
         &target.join("compare.json"),
         &serde_json::to_vec_pretty(&config)?,

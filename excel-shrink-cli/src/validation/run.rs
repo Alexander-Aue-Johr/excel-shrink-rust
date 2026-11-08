@@ -90,6 +90,7 @@ struct Run {
     previous: Option<PreviousRun>,
     processing_failures: usize,
     cleanup_unconfirmed: bool,
+    preparation: Option<crate::validation_preparation::imported::ImportedEvidence>,
 }
 
 struct PreviousRun {
@@ -108,6 +109,11 @@ pub(crate) fn execute(mut config: RunConfig, live: Option<Progress>) -> Result<V
 
 impl Run {
     fn prepare(config: RunConfig, progress: Progress) -> Result<Self> {
+        let preparation = config
+            .preparation_index
+            .as_deref()
+            .map(crate::validation_preparation::imported::ImportedEvidence::read)
+            .transpose()?;
         let root = storage::destination(&config.report_dir)?;
         let signature = capture::signature(&config.capture, &config.environment_key)?;
         let previous = PreviousRun::load(config.reuse_from.as_deref(), &signature)?;
@@ -125,6 +131,7 @@ impl Run {
             "scope":"Selected worksheet regions and complete charts under the recorded targeted policy; not whole-workbook visual equivalence",
             "baseline_after_step":config.baseline_after_step,
             "pairs":[], "unmatched_candidates":[], "steps":[],
+            "preparation":preparation.as_ref().map(|evidence| &evidence.summary),
         });
         let mut run = Self {
             config,
@@ -136,6 +143,7 @@ impl Run {
             previous,
             processing_failures: 0,
             cleanup_unconfirmed: false,
+            preparation,
         };
         run.update_progress(|progress| {
             *progress = LiveProgress {
@@ -409,6 +417,19 @@ impl Run {
     ) -> Result<Vec<WorkbookPair>> {
         self.transition(RunState::Pairing)?;
         let mut paired = pairing::pair_files(&baseline.files, &candidate.files);
+        if let Some(evidence) = &self.preparation {
+            ensure!(
+                paired.pairs.len() == evidence.len() && paired.unmatched_candidates.is_empty(),
+                "Prepared identity index does not match the supplied source sets"
+            );
+            for pair in &paired.pairs {
+                ensure!(
+                    pair.candidate_name.as_deref() == Some(pair.name.as_str()),
+                    "Imported source names must match exactly"
+                );
+                evidence.record(&pair.name)?;
+            }
+        }
         ensure!(
             !paired.pairs.is_empty(),
             "Source A contains no supported workbook files"
@@ -450,6 +471,11 @@ impl Run {
             let id = pair_id.as_str();
             let mut record = json!({"id":id,"name":pair.name,"candidate_name":pair.candidate_name,
                 "status":"running","report":null,"identity":null,"reuse":null,"errors":[]});
+            if let Some(evidence) = &self.preparation {
+                let prepared = evidence.record(&pair.name)?;
+                record["display_name"] = prepared["display_name"].clone();
+                record["preparation"] = prepared;
+            }
             storage::write_json(
                 &self.root.join("records").join(format!("{id}.json")),
                 &record,
@@ -498,6 +524,9 @@ impl Run {
             .candidate
             .as_ref()
             .context("Missing comparison partner")?;
+        if let Some(evidence) = &self.preparation {
+            evidence.verify_pair(&pair.name, &pair.original, candidate)?;
+        }
         ensure!(is_xlsx(&pair.original) && is_xlsx(candidate),
             "Targeted comparison requires XLSX on both sides. To evaluate a post-conversion chain, explicitly set baseline_after_step; conversion itself is then outside visual coverage");
         let identity = PairFingerprint::read(&pair.original, candidate, &self.config.reuse_parts)?;
@@ -589,7 +618,8 @@ impl Run {
         let report = format!("pairs/{id}/report.json");
         record["report"] = json!(&report);
         record["different_regions"] = json!(differences);
-        validation_report::write_pair_page(&self.root, &report, name)?;
+        let display_name = record["display_name"].as_str().unwrap_or(name);
+        validation_report::write_pair_page(&self.root, &report, display_name)?;
         Ok(())
     }
 
