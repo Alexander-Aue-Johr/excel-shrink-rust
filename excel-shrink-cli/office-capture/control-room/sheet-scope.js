@@ -399,6 +399,16 @@ function renderProgress(state) {
   byId('counts').textContent = processing
     ? `${processing.completed} / ${processing.total} processing invocations finished · visual comparison has not started`
     : `${progress.completed} / ${progress.total} visual comparisons · ${progress.reused} reused · ${progress.failed} failed or missing`;
+  if (state.preparation_job?.status === 'running') {
+    const job = state.preparation_job;
+    const counters = job.progress || {};
+    const finished = (counters.prepared || 0) + (counters.failed || 0);
+    byId('status').textContent = 'Check Performance preparation';
+    byId('current').textContent = job.output;
+    byId('completion').max = Math.max(job.total, 1);
+    byId('completion').value = finished;
+    byId('counts').textContent = `${finished} / ${job.total} preparation outcomes · visual comparison has not started`;
+  }
   renderProcessing(progress.processing);
   byId('run-fields').disabled = state.active;
   byId('start').disabled = state.active;

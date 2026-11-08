@@ -177,6 +177,26 @@ The existing ignored native test additionally asserts the completed progress
 receipt; it was not rerun for this telemetry-only change. The background web-job
 start/status integration remains open.
 
+Commit `73e3a8b` adds independent background preparation start through the web
+configurator. Six backend tests and four JavaScript tests passed, including
+frozen selection paths, terminal failure receipts, invalid concurrency/output
+rejection, explicit controls and compact status rendering.
+
+The bounded native HTTP acceptance test submitted the one-member source manifest
+with two requested workers, with actual admission limited to its one input. The
+start response returned in approximately 0.013 seconds and native preparation
+completed in approximately 22.11 seconds. A second start during the job was
+rejected. Status polling observed in-flight progress, then a completed job with
+confirmed optimization, no failed inputs and a stopped pool. The owned Excel PID
+was absent afterward and the source workbook hash remained unchanged. These are
+functional observations under concurrent Enron load, not a throughput benchmark.
+
+`native-web-job-acceptance.json`, `native-web-job-integrity.json`, the frozen
+selection/job receipts and the exact producer binary are retained beside the
+private experiment data. Enron admission was restored to four in a finally block
+and the isolated test host was closed. Browser layout acceptance, owner-restart
+recovery and live target adjustment remain open.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working
