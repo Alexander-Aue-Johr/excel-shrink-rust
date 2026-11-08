@@ -22,6 +22,18 @@ Reports and the download cache default beneath `DELTASIEVE_DATA_DIR/DeltaSieve`.
 
 ## Command entry points
 
+The VS Code task `DeltaSieve: Configure validation` invokes
+`tools/start-deltasieve.ps1`. Its default working root is
+`V:\deltasieve-data`. Pass `-DataRoot` or set `DELTASIEVE_DATA_DIR` to use
+another drive. The starter places builds, temporary files, and logs beneath
+that root. `-BinaryPath` uses an existing build, and `-Config` loads a saved
+standalone configuration. An isolated HTTP smoke test verified the starter's
+session and working paths on V:.
+
+The existing corpus launcher remains available while existing-study resume
+is being integrated into the web configurator. Standalone configurations and
+the active Enron study currently have separate launch contracts.
+
 `deltasieve template` prints a configuration template. `deltasieve run --config PATH` executes a saved configuration. `compare --a SOURCE --b SOURCE --report DIRECTORY` compares existing sources. `open DIRECTORY` opens a retained standalone report. `export --help` describes the portable export command.
 
 The cleanup executable exposes `excel-shrink-cli --describe-cli` for typed option fields. Its JSON describes the same Clap options used by the cleanup command.
