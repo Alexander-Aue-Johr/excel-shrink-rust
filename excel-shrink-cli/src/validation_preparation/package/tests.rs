@@ -540,3 +540,35 @@ fn imported_identity_binding_preserves_names_metrics_and_rejects_changed_inputs(
     assert!(crate::validation_preparation::imported::ImportedEvidence::read(&path).is_err());
     Ok(())
 }
+
+#[test]
+fn package_preserves_each_inputs_producer_instead_of_relabeling_the_batch() -> Result<()> {
+    let (root, source) = fixture()?;
+    let path = source.join("input-000000/prepared.json");
+    let mut receipt: Value = serde_json::from_slice(&fs::read(&path)?)?;
+    receipt["producer_sha256"] = json!("b".repeat(64));
+    fs::write(&path, serde_json::to_vec(&receipt)?)?;
+    let target = root.join("package");
+    export(&source, &target)?;
+    verify(&target)?;
+    let connection = open(&target)?;
+    let producers: Vec<String> = connection
+        .prepare("SELECT payload FROM provenance ORDER BY id")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    assert_eq!(producers.len(), 2);
+    let producers: Vec<Value> = producers
+        .iter()
+        .map(|text| serde_json::from_str(text).unwrap())
+        .collect();
+    assert!(producers
+        .iter()
+        .any(|value| value["producer_sha256"] == "b".repeat(64)));
+    assert!(producers
+        .iter()
+        .any(|value| value["producer_sha256"] == "a".repeat(64)));
+    receipt["producer_sha256"] = json!("invalid");
+    fs::write(path, serde_json::to_vec(&receipt)?)?;
+    assert!(export(&source, &root.join("invalid-producer")).is_err());
+    Ok(())
+}

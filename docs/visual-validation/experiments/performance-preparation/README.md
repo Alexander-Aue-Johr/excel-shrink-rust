@@ -197,6 +197,14 @@ private experiment data. Enron admission was restored to four in a finally block
 and the isolated test host was closed. Browser layout acceptance, owner-restart
 recovery and live target adjustment remain open.
 
+Per-input receipts now retain the producer executable SHA-256 independently of
+the terminal batch ledger. Seventeen package tests and four non-native
+preparation tests passed after this change. The new regression test verifies
+distinct per-input producers, legacy batch fallback and explicit rejection of a
+malformed producer identity. The ignored native test now asserts producer
+agreement with the batch receipt, but was not rerun for this metadata-only
+change. Interrupted-batch continuation remains open.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working

@@ -307,8 +307,10 @@ fn prepared_entry(
         "states":states, "native_result":receipt["native_result"], "measurements":receipt["measurements"],
         "visual_validation":"pending"
     });
+    let producer = receipt.get("producer_sha256").unwrap_or(&batch["producer_sha256"]);
+    let producer = super::normalized_sha(producer.as_str().context("Producer identity missing")?)?;
     let provenance = json!({"environment":receipt["environment"],"generation_recipe":receipt["generation_recipe"],
-        "producer_sha256":batch["producer_sha256"]});
+        "producer_sha256":producer});
     Ok((entry, provenance))
 }
 

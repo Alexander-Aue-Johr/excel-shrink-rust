@@ -111,7 +111,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
                         break;
                     };
                     let directory = output.join(format!("input-{index:06}"));
-                    let result = prepare(&pool_root, input, &directory);
+                    let result = prepare(&pool_root, input, &directory, &producer);
                     let succeeded = result.is_ok();
                     let outcome = json!({
                         "index": index,
@@ -216,7 +216,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn prepare(root: &Path, source: &Input, directory: &Path) -> Result<()> {
+fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str) -> Result<()> {
     let input = &source.baseline;
     fs::create_dir(directory)?;
     let runtime = directory.join("runtime");
@@ -293,6 +293,7 @@ fn prepare(root: &Path, source: &Input, directory: &Path) -> Result<()> {
             "version": 1,
             "operation": "check-performance",
             "source": input,
+            "producer_sha256": producer_sha256,
             "source_id": source.source_id,
             "name": source.name,
             "raw_source": source.raw_source,
@@ -403,7 +404,7 @@ mod tests {
             expected_sha256: Some("a".repeat(64)),
             raw_source: None,
         };
-        let error = prepare(&pool, &input, &root.join("result")).unwrap_err();
+        let error = prepare(&pool, &input, &root.join("result"), &"a".repeat(64)).unwrap_err();
         assert!(error.to_string().contains("expected source identity"));
         assert!(!root.join("result/prepared.json").exists());
         Ok(())
@@ -430,6 +431,9 @@ mod tests {
             .context("First receipt missing")?;
         let second = read_json(&output.join("input-000001/prepared.json"))
             .context("Second receipt missing")?;
+        let batch = read_json(&output.join("preparation.json")).context("Batch receipt missing")?;
+        assert_eq!(first["producer_sha256"], batch["producer_sha256"]);
+        assert_eq!(second["producer_sha256"], batch["producer_sha256"]);
         assert_eq!(
             first["measurements"]["excel_pid"],
             second["measurements"]["excel_pid"]

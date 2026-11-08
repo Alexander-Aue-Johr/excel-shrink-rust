@@ -25,6 +25,13 @@ is verified locally; conversion provenance retains its upstream evidence.
 Each job retains a byte-verified `baseline.xlsx` and opens that private copy
 read-only in Excel. Its receipt records the relative baseline filename, length
 and hash, allowing later export after the external input path has moved.
+Each successful per-input receipt also retains its producer executable SHA-256,
+so an interrupted batch does not remove that provenance. Package export prefers
+the per-input producer and uses the batch producer only for older receipts that
+lack the field. A present malformed producer identity fails export. Mixed
+generations retain distinct producer records instead of being relabelled as the
+current batch's producer. This metadata support does not itself implement
+automatic interrupted-batch recovery.
 
 Use `--source-manifest sources.json` instead of `--input` for corpus preparation.
 Version one contains `version` and an `inputs` array. Each input requires
