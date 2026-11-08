@@ -1,6 +1,6 @@
 # Paper design research
 
-This working bibliography records inspected primary publications and design hypotheses for the two new manuscripts. Extend the study with accepted ICDE papers before selecting the final structures.
+This working bibliography records inspected primary publications and design hypotheses for the two new manuscripts. Extend the study as the arguments and evaluation mature.
 
 ## SheetReader
 
@@ -60,4 +60,40 @@ detailed difference report and PDF output. This is a candidate for a separately
 scoped functional comparison. These are documented capabilities, with no local
 runtime or detection evaluation yet performed.
 [Vendor documentation](https://spreadsheetsoftware.com/excelcompare/)
+
+## Specialized semi-structured parsing
+
+Li and colleagues' *Mison* appeared in PVLDB 10(10), 2017. The inspected
+introduction opens with a measured parsing-cost figure, then explains structural
+indexing and speculative field access. Its Related Work groups application
+systems and prior parsing mechanisms while positioning the contribution within
+each group. A useful design inference for SheetShrink is to connect its byte
+processing to a precise transformation obligation and measure complete user
+cost. [Author-hosted publisher paper](https://www.microsoft.com/en-us/research/wp-content/uploads/2017/05/mison-vldb17.pdf)
+
+Langdale and Lemire's *Parsing Gigabytes of JSON per Second*, VLDB Journal 28(6),
+2019, separates structural processing, validation and conversion costs. Its
+evaluation specifies compiler, hardware, single-threading and in-memory inputs.
+This motivates explicitly separating parsing throughput from ZIP I/O and native
+Excel opening in our measurements. JSON parsing supplies methodological context
+for specialized execution, with a different format and output contract.
+[Author manuscript](https://arxiv.org/pdf/1902.08318)
+
+## Selective testing and visual layout models
+
+Gligoric, Eloussi and Marinov's *Practical Regression Test Selection with Dynamic
+File Dependencies*, ISSTA 2015, introduces dependency granularity through an
+example and separates analysis, execution and dependency collection. Its
+end-to-end evaluation accounts for selection overhead. For DeltaSieve, use an
+explicit dependency model and assess selection cost alongside avoided rendering.
+The related four-page *Ekstazi* demonstration is an ICSE 2015 publication, a
+separate item from this research paper. [Author manuscript](https://users.ece.utexas.edu/~gligoric/papers/GligoricETAL15Ekstazi.pdf)
+
+Walsh, Kapfhammer and McMinn's *ReDeCheck*, ISSTA 2017, compares responsive web
+layout models and reports layout failures with diagnostic screenshots. Its
+model extraction samples viewport widths and refines detected transitions.
+It distinguishes observable failures from structural issues. This is relevant
+to separating DeltaSieve's candidate model, native observations and human
+classification, while the underlying document and rendering models differ.
+[Author manuscript](https://philmcminn.com/publications/walsh2017a.pdf)
 
