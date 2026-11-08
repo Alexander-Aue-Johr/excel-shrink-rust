@@ -38,24 +38,47 @@ implementation, including replay and component restructuring, before handing out
 the first distributed evaluation build. The current Enron fallback continues
 throughout. Its completion is independent of this software release gate.
 
-1. Establish the baseline, contracts and evaluation protocol. Prepare the fresh
-   paper projects and outlines in parallel with evidence gathering.
-2. Complete unified web/CLI startup, local addresses, corpus selection,
-   partitions, conversion safeguards, process metrics and inspection access.
-3. Add portable Check Performance preparation and artifact exchange, coverage
-   checks, portable result export and conflict-preserving result collection.
-4. Complete bounded event recording and static replay, and finish the agreed
-   component restructuring in behavior-preserving steps. New distributed runs
-   must record their replay history from startup. Historical missing events
-   remain explicitly unavailable.
-5. Build one versioned evaluation candidate and test ordinary new-run/resume,
-   a machine-without-Check-Performance workflow, cross-machine artifact import,
-   result collection and static replay. Verify checksums and compatible reuse
-   before distributing the same tested build and profiles to the machines.
-6. Gather distributed corpus results, investigate findings, fix confirmed
-   regressions and selectively repeat work whose relevant inputs or outputs
-   changed. Preserve compatible conversion and Check Performance artifacts.
-   Publish a later frozen build with explicit invalidation rules where needed.
+After finishing the bounded Check Performance worker test, the user explicitly
+prioritized the following seven-step block. Reuse completed work and retain the
+numbered tasks below as the authoritative scope and acceptance criteria.
+
+1. Keep the existing Enron fallback advancing throughout this block. This is
+   continuous supervision, not a prerequisite that delays steps two through six.
+2. Finish independent conversion and Check Performance preparation, separate
+   concurrency controls, source/partition selection, transferable manifests,
+   coverage preview and validated reuse on machines without local optimization.
+   Tasks 06 and 07 own these contracts and remaining acceptance checks.
+3. Run a bounded five-pair comparator pilot before planning a larger external
+   benchmark. Examine Microsoft Spreadsheet Compare, Synkronizer, xlCompare and
+   DiffEngineX where available. Record exact versions/editions, availability,
+   whole-workbook reports without scrolling, automation, supported properties,
+   expected detections, time and process-tree resource costs. Test identical
+   inputs, offscreen/hidden changes, direct layout/style changes, dependent CF/
+   chart changes and a sparse workbook with substantial empty formatting.
+   Preserve unsupported cases. Distinguish documentation from measured behavior
+   and measured cost from unverified assumptions about closed-source algorithms.
+   Tasks 13 and 14 retain the broader evaluation and Related Work requirements.
+4. Provide independent SheetShrink and DeltaSieve application entry points,
+   navigation and defaults while sharing execution and presentation components.
+   DeltaSieve accepts two existing corpora without requiring a producer. Use
+   SheetShrink as the visible producer label while preserving result identities.
+   Complete the relevant parts of Tasks 04 through 08.
+5. Complete the scientific detection/cost evidence. Use verified mutations,
+   independent full-reference samples, same-input rendering controls and
+   ablations. Compare targeted selection with full capture using the same
+   renderer and image comparison. Choose fair external benchmark tasks from the
+   pilot findings. Tasks 02, 12 and 13 define coverage and limits.
+6. Finish the distributed evaluation candidate, including component structure,
+   replay from startup, export/merge and consistent configuration. Test ordinary
+   start/resume, artifact transfer, a machine without local Check Performance,
+   collected results and static replay before distribution. Tasks 09 and 15–18
+   remain release requirements. Missing historical events stay unavailable.
+7. Evaluate corpus runs separately and complete the evidence-backed papers.
+   Prioritize Original-rebuild versus SheetShrink-rebuild. Evaluate prepared
+   Check Performance variants independently and join findings by source identity.
+   Investigate regressions and selectively revalidate changed outputs while
+   preserving compatible preparations. Tasks 12, 14 and 19 remain open until
+   their complete acceptance criteria are met.
 
 The user will deploy the candidate on the available machines and return their
 results. This external distribution does not block completing the software gate
@@ -213,6 +236,17 @@ utilization, successful artifacts per hour, memory and restart behavior with
 several successive workbooks. Raising the target admits additional workers;
 lowering it retires excess workers after their current jobs. Keep aggregate
 native admission explicit when conversion and CP preparation run together.
+
+`d775c70` adds the independent preparation CLI and shared persistent-worker
+transport. Native tests confirmed two successive optimizations in one Excel,
+two-worker processing, an expected corrupt-input failure, failed-instance
+replacement, continued peer work and shutdown. The prior conversion reuse,
+password rejection, value-preservation and cleanup test also passed. Details and
+failed development attempts remain in
+`../visual-validation/experiments/performance-preparation/README.md`.
+This completes the bounded worker test, not Task 06's portable-package and UI
+integration requirements. The existing Enron runner remains pinned and continued
+with four configured groups after each test window.
 
 ## 07 Verify conversion and environment-dependent formulas
 
