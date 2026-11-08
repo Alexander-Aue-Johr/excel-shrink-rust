@@ -28,8 +28,6 @@ Fresh paper projects were created under `papers/sheetshrink` and `papers/deltasi
 
 An isolated Enron opening failure in group `ee6c5aa544fd08d1d31d` was retried through the regular restart API. The initial attempt timed out after 180 seconds while the Default add-in had no readiness confirmation. Retry attempt `6e380811-7883-4ae9-9e93-fd900ade0a86` completed with status `unchanged`. The initial failure's cause remains unresolved.
 
-## Capacity and continuity
-
 ## Performance handoff verification
 
 The review archive on R: contains four isolated proposals against `a7445eb`.
@@ -46,7 +44,7 @@ complete Core library suite passed 277 tests with one ignored benchmark. Runtime
 benefit and real-corpus output identity remain to be measured before deployment
 into the pinned Enron runner. Proposals A, B and C remain unimplemented.
 
-## Capacity observations
+## Capacity and continuity
 
 Initial free capacity was approximately 85 GiB on C:, 317 GiB on V:, and 1,374 GiB on G:. Prefer V: for working data and evaluate G: for overflow if needed. Preserve the system-drive reserve and record each owned working directory.
 
