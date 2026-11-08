@@ -34,6 +34,8 @@ struct Worker {
 }
 
 mod pool;
+mod owner;
+pub(crate) use owner::PoolOwner;
 pub(crate) use pool::run as run_pool;
 
 impl Worker {

@@ -298,7 +298,7 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     super::artifact_cache::atomic_write(path, &serde_json::to_vec(value)?)
 }
 
-fn write_seed(path: &Path) -> Result<()> {
+pub(crate) fn write_seed(path: &Path) -> Result<()> {
     let mut archive = zip::ZipWriter::new(File::create(path)?);
     let parts = [
         (

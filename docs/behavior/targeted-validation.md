@@ -1212,3 +1212,27 @@ or restoration failure retires the worker. Two complete controlled comparisons
 and forced repeated native embedded exports passed with shared worker identities.
 Module imports in the JSON host must remain warning-free, enforced by the worker
 protocol test. Corpus scheduler ownership remains a separate gate.
+
+### Scheduler-owned pool acceptance on 2026-11-09
+
+EXCEL_SHRINK_WARM_WORKERS=1 enables the pool for manual targeted SheetShrink-only
+corpus comparisons. The scheduler starts two native workers per configured group,
+passes its private connection explicitly to comparison jobs and limits admission
+to that fixed group capacity. Increasing the UI target beyond this capacity needs
+a runner restart to enlarge the pool. Decreasing or pausing admission remains live.
+Optional Check Performance cannot select this pool path yet.
+
+The pool process waits for a startup gate. Its coordinator assigns a kill-on-close
+job before granting the gate, verifies native PID/birth identity and bounds startup.
+Loss of the pool stops admission and cancels active comparisons. Closing the owner
+job terminates the pool tree. The shared empty-seed writer preserves conversion
+behavior. Capture-script paths are normalized for PowerShell 5.1 at the Rust boundary.
+
+A three-workbook run through the real corpus scheduler completed with all records
+unchanged and complete, six released resident leases and exactly two reused Excel
+identities. After runner exit, both Excel processes and the pool process were
+confirmed absent. Warm readiness observations ranged from 0.700 to 0.923 seconds
+for these tiny fixtures. Initial attempts failed before comparing because extended
+Windows prefixes reached Join-Path in the Excel resolver and capture script. Those
+boundary conversions were fixed before the successful run. Eight focused manual
+scheduler tests passed, including fixed-capacity admission and prefetch handling.

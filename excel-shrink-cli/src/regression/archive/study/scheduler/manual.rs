@@ -112,11 +112,11 @@ fn slots_to_start(target: usize, open: usize, pending: usize, draining: bool) ->
     }
 }
 
-fn admission_target(target_groups: usize, aggressive_first: bool) -> usize {
+fn admission_target(target_groups: usize, aggressive_first: bool, pool_capacity: usize) -> usize {
     if target_groups == 0 {
         0
     } else {
-        target_groups + usize::from(aggressive_first)
+        (target_groups + usize::from(aggressive_first)).min(pool_capacity)
     }
 }
 
@@ -147,6 +147,23 @@ pub(super) fn compare(
     mut initial_admission: Option<String>,
 ) -> Result<()> {
     let room = output.join("control-room");
+    let mut pool_run = run.clone();
+    #[cfg(windows)]
+    let mut warm_pool = if std::env::var("EXCEL_SHRINK_WARM_WORKERS").as_deref() == Ok("1") && !jobs.is_empty() {
+        ensure!(run["options"]["targeted_comparison"] == true
+            && run["options"]["targeted_skip_check_performance"] == true,
+            "Warm workers currently require targeted SheetShrink-only comparisons");
+        let groups = Controls::read(&room)?.target_groups.max(1);
+        let owner = crate::regression::workbook_worker::PoolOwner::start(output, groups,
+            limits.workbook_timeout_seconds.max(60).min(600))?;
+        pool_run["workbook_pool_connection"] = json!(owner.connection);
+        Some(owner)
+    } else { None };
+    #[cfg(windows)]
+    let pool_group_limit = warm_pool.as_ref().map_or(usize::MAX, |pool| pool.groups);
+    #[cfg(not(windows))]
+    let pool_group_limit = usize::MAX;
+    let run = &pool_run;
     let producer = run["executable_sha256"]
         .as_str()
         .context("missing runner build identity")?;
@@ -164,6 +181,9 @@ pub(super) fn compare(
     let resuming_deferred = jobs.is_empty() && queue["phase"] == "awaiting_deferred_manual";
     queue["phase"] = json!("comparing");
     queue["running"] = json!(true);
+    if pool_group_limit != usize::MAX {
+        queue["warm_worker_pool"] = json!({"groups":pool_group_limit,"workers":pool_group_limit*2});
+    }
     let groups = queue["groups"]
         .as_array_mut()
         .context("missing control room groups")?;
@@ -333,6 +353,13 @@ pub(super) fn compare(
             let mut last_snapshot = Instant::now() - Duration::from_secs(2);
             let mut last_pause_sample = Instant::now();
             loop {
+                #[cfg(windows)]
+                if let Some(error) = warm_pool.as_mut().and_then(|pool| pool.check_alive().err()) {
+                        errors.push(format!("warm worker pool failed: {error:#}"));
+                        drop(warm_pool.take());
+                        cleanup.close_admission();
+                        cancel_active(&active);
+                }
                 // A transient sharing violation must not reset a user-selected target.
                 if let Ok(updated) = Controls::read(&room) {
                     controls = updated;
@@ -384,7 +411,7 @@ pub(super) fn compare(
                     {
                         1
                     } else {
-                        admission_target(controls.target_groups, aggressive_first)
+                        admission_target(controls.target_groups, aggressive_first, pool_group_limit)
                     },
                     active.iter().filter(|group| !group.finished).count(),
                     pending.len(),
@@ -876,10 +903,10 @@ mod tests {
 
     #[test]
     fn aggressive_screening_admits_one_preparing_group_ahead() {
-        assert_eq!(admission_target(2, true), 3);
-        assert_eq!(slots_to_start(admission_target(2, true), 2, 100, false), 1);
-        assert_eq!(admission_target(2, false), 2);
-        assert_eq!(admission_target(0, true), 0);
+        assert_eq!(admission_target(2, true, usize::MAX), 3);
+        assert_eq!(slots_to_start(admission_target(2, true, usize::MAX), 2, 100, false), 1);
+        assert_eq!(admission_target(2, false, usize::MAX), 2);
+        assert_eq!(admission_target(0, true, usize::MAX), 0);
     }
 
     #[test]
@@ -916,5 +943,14 @@ mod tests {
         assert!(another_group_is_opening(&[0], 1));
         assert!(!another_group_is_opening(&[], 0));
         assert!(another_group_is_opening(&[1, 2], 0));
+    }
+
+    #[test]
+    fn warm_capacity_reserves_two_workers_per_admitted_group() {
+        assert_eq!(admission_target(0, true, 4), 0);
+        assert_eq!(admission_target(6, false, 4), 4);
+        assert_eq!(admission_target(4, true, 4), 4);
+        assert_eq!(admission_target(2, true, 4), 3);
+        assert_eq!(admission_target(6, false, usize::MAX), 6);
     }
 }

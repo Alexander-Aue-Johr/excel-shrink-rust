@@ -150,6 +150,7 @@ pub(super) fn run_record(
             "machine_manifest":run["machine_manifest"],
             "preparation_hash_profile":run["options"]["preparation_hash_profile"],
             "targeted_comparison":run["options"]["targeted_comparison"],
+            "workbook_pool_connection":run["workbook_pool_connection"],
             "targeted_skip_check_performance":run["options"]["targeted_skip_check_performance"],
             "chart_capture_mode":run["options"]["chart_capture_mode"],
             "retain_equal_images":run["options"]["retain_equal_images"],

@@ -707,3 +707,22 @@ identity inside the retained C# session, then saves a further snapshot. Its
 independent verifier requires cache 6 in both outputs and the unaffected peer's
 stale cache 1111. Native execution of this extension is still pending. No-Excel
 session guards, C# framing checks and four Rust worker tests passed.
+
+### Scheduler acceptance on 2026-11-09
+
+The real archive scheduler now owns a gated warm pool when explicitly enabled with
+EXCEL_SHRINK_WARM_WORKERS=1. The bounded three-file fixture run under
+validation-temp/warm-scheduler-20261109-01/output-3 completed all three comparisons.
+Six resident sessions reused PIDs 22028 and 32776 and confirmed lease release.
+Pool PID 31568 and both Excel processes were confirmed exited afterward. Eight
+manual-scheduler tests passed. Earlier resolver/capture-launch attempts retained
+concrete PowerShell extended-path failures and were corrected at their Rust
+boundaries. This establishes the one-group end-to-end gate, not yet the four-group
+production acceptance. Fixed pool capacity limits live admission to avoid partial
+pair allocation deadlocks. Increasing capacity requires restarting the runner.
+
+The user explicitly chose v10 and the new pool for Enron. The earlier proposed
+fresh v9 restart was rejected and must not be launched. Preserve v9 metadata and
+raw evidence while v10 produces its own selected-region results. SheetShrink core
+has no diff from production commit 317200b, allowing prepared-artifact reuse after
+source identity verification. Visual v9 results keep their recorded policy.

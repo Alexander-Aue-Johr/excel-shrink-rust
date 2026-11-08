@@ -90,7 +90,12 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
     let assets = crate::validation::capture::capture_directory()?;
     let script = assets.join("run-targeted-comparison.ps1");
     let mut command = Command::new("powershell.exe");
-    command.env("EXCEL_SHRINK_CAPTURE_DIR", &assets);
+    command.env("EXCEL_SHRINK_CAPTURE_DIR", crate::regression::power_shell_path(&assets)?);
+    if let Some(connection) = job.run_manifest.as_ref()
+        .and_then(|run| run["workbook_pool_connection"].as_str())
+    {
+        command.env("EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION", crate::regression::power_shell_path(Path::new(connection))?);
+    }
     command
         .args([
             "-NoLogo",
@@ -99,17 +104,17 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
             "Bypass",
             "-File",
         ])
-        .arg(script)
+        .arg(crate::regression::power_shell_path(&script)?)
         .arg("-Binary")
-        .arg(std::env::current_exe()?)
+        .arg(crate::regression::power_shell_path(&std::env::current_exe()?)?)
         .arg("-Original")
-        .arg(job.work.join("original.xlsx"))
+        .arg(crate::regression::power_shell_path(&job.work.join("original.xlsx"))?)
         .arg("-Default")
-        .arg(job.work.join("default.xlsx"))
+        .arg(crate::regression::power_shell_path(&job.work.join("default.xlsx"))?)
         .arg("-Output")
-        .arg(&directory)
+        .arg(crate::regression::power_shell_path(&directory)?)
         .arg("-ObservatoryGroup")
-        .arg(&group)
+        .arg(crate::regression::power_shell_path(&group)?)
         .arg("-ChartCaptureMode")
         .arg(job.run_manifest.as_ref().and_then(|run| run["chart_capture_mode"].as_str()).unwrap_or("deterministic"))
         .arg("-OperationTimeoutSeconds")

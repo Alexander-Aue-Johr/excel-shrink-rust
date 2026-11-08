@@ -19,6 +19,8 @@ struct PoolSettings {
     token: String,
     ready_path: PathBuf,
     port: u16,
+    #[serde(default)]
+    owned_startup: bool,
 }
 
 #[derive(Clone, Deserialize, PartialEq, Eq)]
@@ -439,6 +441,11 @@ async fn health(State(pool): State<Arc<Pool>>, headers: HeaderMap) -> Reply {
 /// Start a run-owned loopback service. The corpus coordinator owns this process.
 pub(crate) async fn run(path: &Path) -> Result<()> {
     let settings: PoolSettings = serde_json::from_slice(&fs::read(path)?)?;
+    if settings.owned_startup {
+        let mut gate = String::new();
+        io::stdin().lock().take(16).read_line(&mut gate)?;
+        ensure!(gate == "start\n", "Pool startup ownership gate was not granted");
+    }
     ensure!(
         (1..=64).contains(&settings.workers),
         "Workbook pool size must be 1 through 64"
