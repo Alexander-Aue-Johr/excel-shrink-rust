@@ -56,8 +56,25 @@ value. Fixture generation produced byte-identical ZIPs on repetition. Default
 retained one empty representative per row in that check, which the workload
 description deliberately permits.
 
-Peak process memory and CPU time are not measured by this harness. The measured
-wall interval includes executable startup and output writing. Trace generation
-also has a cost and is enabled for every configuration. Controlled throughput
-claims require an isolated workload, larger repeated trials and additional
-resource measurements. No production scheduling change follows from this pilot.
+The earlier runs recorded wall time alone. The current harness also records
+direct-child user/kernel CPU totals, observed Windows peak working-set and
+pagefile-usage counters, and sampled private allocation. These are distinct
+measurements. Pagefile-usage counters do not measure disk swapping. Memory
+sampling occurs at up to 100 Hz and writes one receipt per trial. Unsampled
+private-allocation peaks may be missed. The native peak counters are retained
+when available, including a final query through the held process handle.
+
+The instrumentation calibration held 64 MiB and exercised CPU work. Separate
+tests verified failed-child receipts and timeout termination. A twelve-trial
+scheduling smoke test then completed with identical decompressed outputs and
+available resource counters in every trial. Receipts are under
+`G:\deltasieve-work\scheduling-resource-pilot-20261108`.
+
+The wall interval includes executable startup, output writing and observation
+overhead. Trace generation also has a cost and is enabled for every configuration.
+Controlled throughput claims require an isolated workload and larger repeated
+trials. No production scheduling change follows from the pilot.
+
+Counter meanings follow the Windows process APIs.
+[Memory counters](https://learn.microsoft.com/en-us/windows/win32/psapi/process-memory-usage-information),
+[process times](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes)

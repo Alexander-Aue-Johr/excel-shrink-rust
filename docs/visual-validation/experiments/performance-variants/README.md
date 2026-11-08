@@ -25,6 +25,15 @@ alternates execution order, and compares every decompressed ZIP member after
 each pair. Duplicate members, missing outputs and changed output content fail
 the experiment. Inputs and outputs remain available for inspection.
 
+The current script uses the shared `process_metrics.py` experiment observer.
+Each observation also records Windows direct-child user/kernel CPU totals,
+observed OS peak working-set and pagefile-usage counters, sampled private memory,
+and the sampling policy. It writes one resource receipt after the process exits.
+An unavailable counter stays unavailable. Timeout and unsuccessful exits preserve
+their receipts before the experiment fails. Pagefile-usage counters describe
+process allocation and are separate from actual disk swapping. See the scheduling
+experiment for the counter calibration and measurement limits.
+
 Use the script's `--help` for arguments. Set `TEMP` and `TMP` to the working
 drive before execution. The caller must supply immutable binary copies and
 preserve their producing revision. Timing observations made alongside Enron

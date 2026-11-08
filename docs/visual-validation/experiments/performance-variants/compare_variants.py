@@ -12,9 +12,11 @@ import json
 import os
 from pathlib import Path
 import statistics
-import subprocess
-import time
+import sys
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from process_metrics import run_measured
 
 
 def sha256(path):
@@ -39,15 +41,11 @@ def shrink(binary, source, destination):
     command = [str(binary), str(source), str(destination),
                "--rayon-threads", "1", "--max-active-workbooks", "1",
                "--writer-workers", "1"]
-    with (destination / "stdout.log").open("wb") as stdout:
-        with (destination / "stderr.log").open("wb") as stderr:
-            started = time.perf_counter()
-            subprocess.run(command, check=True, timeout=300, stdout=stdout, stderr=stderr)
-            seconds = time.perf_counter() - started
+    measurement = run_measured(command, destination, timeout=300)
     outputs = list(destination.rglob("*.xlsx"))
     if len(outputs) != 1:
         raise ValueError(f"Expected one output in {destination}, got {len(outputs)}")
-    return seconds, member_identities(outputs[0])
+    return measurement, member_identities(outputs[0])
 
 
 def main():
@@ -96,8 +94,10 @@ def main():
                 if results["baseline"][1] != results["candidate"][1]:
                     raise ValueError(f"Decompressed output mismatch for {name}")
                 row["observations"].append({
-                    "order": order, "baseline_seconds": results["baseline"][0],
-                    "candidate_seconds": results["candidate"][0],
+                    "order": order, "baseline_seconds": results["baseline"][0]["seconds"],
+                    "candidate_seconds": results["candidate"][0]["seconds"],
+                    "baseline_resources": results["baseline"][0]["resources"],
+                    "candidate_resources": results["candidate"][0]["resources"],
                     "identical_members": len(results["baseline"][1]),
                 })
                 report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")

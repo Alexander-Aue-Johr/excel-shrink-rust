@@ -9,9 +9,11 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import subprocess
-import time
+import sys
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from process_metrics import run_measured
 
 
 def package_members(path):
@@ -80,14 +82,11 @@ def execute_trial(binary, source, work, threads, active):
     command = [str(binary), str(source), str(destination),
                "--rayon-threads", str(threads), "--max-active-workbooks", str(active),
                "--writer-workers", "1", "--trace-file", str(work / "trace.json")]
-    with (work / "stdout.log").open("wb") as stdout, (work / "stderr.log").open("wb") as stderr:
-        start = time.perf_counter()
-        subprocess.run(command, check=True, timeout=120, stdout=stdout, stderr=stderr)
-        seconds = time.perf_counter() - start
+    measurement = run_measured(command, work, timeout=120)
     outputs = {path.name: package_members(path) for path in destination.rglob("*.xlsx")}
     if set(outputs) != {path.name for path in source.glob("*.xlsx")}:
         raise ValueError(f"Missing or extra output workbooks in {work}")
-    return seconds, outputs
+    return measurement, outputs
 
 
 def main():
@@ -114,7 +113,7 @@ def main():
         binary_hash = hashlib.file_digest(stream, "sha256").hexdigest()
     report = {"status": "running", "binary_sha256": binary_hash,
               "workload_note": args.workload_note, "rows": [],
-              "memory_measurement": "not measured", "inputs": {}}
+              "resource_measurement": "Windows direct-child CPU totals and observed memory counters", "inputs": {}}
     report_path = args.output / "results.json"
     for label, books in shapes.items():
         source = args.output / label / "input"
@@ -127,14 +126,15 @@ def main():
             order = configurations if repetition % 2 == 0 else list(reversed(configurations))
             for threads, active in order:
                 work = args.output / label / f"trial-{repetition}-{threads}-{active}"
-                seconds, outputs = execute_trial(args.binary, source, work, threads, active)
+                measurement, outputs = execute_trial(args.binary, source, work, threads, active)
                 if reference is None:
                     reference = outputs
                 if outputs != reference:
                     raise ValueError(f"Scheduling changed output members in {work}")
                 report["rows"].append({"workload": label, "repetition": repetition,
                                        "threads": threads, "active_workbooks": active,
-                                       "seconds": seconds, "outputs_equal": True})
+                                       "seconds": measurement["seconds"],
+                                       "resources": measurement["resources"], "outputs_equal": True})
                 report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     report["status"] = "completed"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
