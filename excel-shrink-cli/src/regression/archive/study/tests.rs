@@ -1,6 +1,16 @@
 use super::*;
 
 #[test]
+fn record_index_matches_first_identity_lookup_and_ignores_unidentified_records() {
+    let records = vec![json!({"identity":"a"}), json!({}), json!({"identity":"a"}), json!({"identity":"b"})];
+    let positions = index_records(&records);
+    assert_eq!(positions.get("a"), Some(&0));
+    assert_eq!(positions.get("b"), Some(&3));
+    assert_eq!(positions.get("missing"), None);
+    assert_eq!(positions.len(), 2);
+}
+
+#[test]
 fn preparation_refresh_requires_a_bounded_explicit_selection() -> Result<()> {
     assert!(StudyArgs::try_parse_from(["study", "--refresh-preparation"]).is_err());
     let args = StudyArgs::try_parse_from([

@@ -89,7 +89,11 @@ export function startupSummary(startup, now = Date.now()) {
   const labels = { loading_records: 'Loading existing results', opening_archive: 'Opening ZIP catalog',
     scanning_archive: 'Reading ZIP entries', checking_catalog: 'Checking catalog',
     importing_results: 'Importing results', selecting_partition: 'Determining file sizes and partition',
-    initializing_run: 'Initializing run' };
+    initializing_run: 'Initializing run', checking_saved_results: 'Checking saved validation results',
+    checking_prepared_records: 'Checking prepared workbook records',
+    classifying_preparation: 'Classifying prepared workbooks', planning_comparisons: 'Planning comparison groups',
+    starting_excel_pool: 'Starting warm Excel workers', checking_prepared_artifacts: 'Verifying reusable workbook artifacts',
+    queuing_preparation: 'Queuing required workbook preparation' };
   const total = startup.total, done = startup.completed;
   const measured = Number.isInteger(total) && total > 0 && Number.isInteger(done) && done >= 0 && done <= total;
   return { label: labels[startup.stage] || startup.stage, corpus: startup.corpus || '',

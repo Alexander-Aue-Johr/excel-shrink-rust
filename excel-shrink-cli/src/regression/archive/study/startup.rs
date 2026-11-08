@@ -51,6 +51,10 @@ mod tests {
         let queue = control_room::read_json(&root.join("queue.json")).unwrap();
         assert_eq!(queue["startup"]["completed"], 0);
         assert_eq!(queue["startup"]["total"], 50);
+        startup.update("checking_prepared_records", "Enron", 256, Some(1000))?;
+        let queue = control_room::read_json(&root.join("queue.json")).unwrap();
+        assert_eq!(queue["phase"], "checking preparation");
+        assert_eq!(queue["startup"]["completed"], 256);
         startup.finish()?;
         let queue = control_room::read_json(&root.join("queue.json")).unwrap();
         assert!(queue.get("startup").is_none());
@@ -83,7 +87,13 @@ impl Startup {
         let mut queue = control_room::read_json(&path).context("missing startup queue")?;
         queue["startup"] = json!({"stage":stage,"corpus":corpus,"completed":completed,
             "total":total,"started_unix_ms":self.started,"updated_unix_ms":now});
-        queue["phase"] = json!("loading archives");
+        queue["phase"] = json!(match stage {
+            "checking_saved_results" => "checking saved results",
+            "checking_prepared_records" | "classifying_preparation" | "checking_prepared_artifacts" | "queuing_preparation" => "checking preparation",
+            "planning_comparisons" => "planning comparisons",
+            "starting_excel_pool" => "starting Excel workers",
+            _ => "loading archives",
+        });
         queue["updated_unix_ms"] = json!(now);
         control_room::write(&path, &queue)
     }

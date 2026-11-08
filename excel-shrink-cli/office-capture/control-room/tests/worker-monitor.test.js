@@ -13,6 +13,8 @@ export function runTests() {
   assert(phaseLabel('releasing_images') === 'Releasing capture images', 'Discarding PNG buffers is not reported as closing the workbook');
   const start = Date.parse('2026-10-24T09:00:00Z');
   assert(startupSummary(null) === null, 'Legacy queues must not invent startup progress');
+  assert(startupSummary({ stage: 'planning_comparisons', completed: 256, total: 1000 }).label === 'Planning comparison groups',
+    'Comparison planning has its own startup stage');
   const startup = startupSummary({ stage: 'scanning_archive', corpus: 'Enron', completed: 250, total: 1000, started_unix_ms: start }, start + 60000);
   assert(startup.percent === 25 && startup.count === '250 / 1,000' && startup.elapsed === '1 min 0 s', 'Startup must report measured stage progress');
   assert(startupSummary({ stage: 'opening_archive', completed: 0, total: null }).percent === null, 'Unknown totals must stay indeterminate');

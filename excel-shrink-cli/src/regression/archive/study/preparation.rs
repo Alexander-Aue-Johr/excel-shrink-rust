@@ -39,13 +39,19 @@ fn run_phase(
         json!(if hash_sweep { "hash_sweep" } else { "shrink" });
     let run = &phase_run;
     let room = output.join("control-room");
+    let mut record_positions = index_records(records);
+    let mut startup = startup::Startup::new(output, args.control_room);
 
     // Record positions and compatibility decisions must be stable before any
     // worker starts. A later resume then sees every accepted build claim.
     for (source, selected) in sources.iter().zip(selected_by_source) {
-        for (index, name) in selected {
+        startup.update("checking_prepared_artifacts", &source.name, 0, Some(selected.len()))?;
+        for (completed, (index, name)) in selected.iter().enumerate() {
+            if completed % 256 == 0 {
+                startup.update("checking_prepared_artifacts", &source.name, completed, Some(selected.len()))?;
+            }
             let id = identity(source, *index, name);
-            let position = ensure_record(records, source, *index, name);
+            let position = ensure_record(records, &mut record_positions, source, *index, name);
             if args.refresh_preparation
                 || (!args.control_room
                     && records[position]["complete"] == true
@@ -70,15 +76,20 @@ fn run_phase(
                 write_record(&record_path(output, &id), &records[position])?;
             }
         }
+        startup.update("checking_prepared_artifacts", &source.name, selected.len(), Some(selected.len()))?;
     }
 
     let mut pending = VecDeque::new();
     let mut sweep_total: usize = 0;
     for (source, selected) in sources.iter().zip(selected_by_source) {
         let mut reused = 0;
-        for (index, name) in selected {
+        startup.update("queuing_preparation", &source.name, 0, Some(selected.len()))?;
+        for (completed, (index, name)) in selected.iter().enumerate() {
+            if completed % 256 == 0 {
+                startup.update("queuing_preparation", &source.name, completed, Some(selected.len()))?;
+            }
             let id = identity(source, *index, name);
-            let position = ensure_record(records, source, *index, name);
+            let position = ensure_record(records, &mut record_positions, source, *index, name);
             if !hash_sweep
                 && !args.refresh_preparation
                 && reusable_preparation(
@@ -137,7 +148,9 @@ fn run_phase(
                 source.name
             );
         }
+        startup.update("queuing_preparation", &source.name, selected.len(), Some(selected.len()))?;
     }
+    startup.finish()?;
     let mut sweep_completed = sweep_total.saturating_sub(pending.len());
     if !hash_sweep {
         progress::queue_preparations(output, &pending.iter().map(|job| job.id.clone()).collect::<Vec<_>>());

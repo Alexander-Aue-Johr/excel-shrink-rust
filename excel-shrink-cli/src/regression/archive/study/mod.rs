@@ -600,18 +600,20 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
     let producer = artifact_cache::hash_file(&std::env::current_exe()?)?;
     // Freeze each source's pending selection before preparation changes records.
     // The comparison pass must use the same workbooks even if preparation skips one.
+    let mut record_positions = index_records(&records);
     let selected_by_source: Vec<Vec<(usize, String)>> = sources
         .iter()
-        .map(|source| {
+        .map(|source| -> Result<Vec<(usize, String)>> {
             if args.diagnose_whitespace_only {
-                return Vec::new();
+                return Ok(Vec::new());
             }
+            startup.update("checking_saved_results", &source.name, 0, Some(source.members.len()))?;
             let mut pending = if args.refresh_preparation {
                 selection::ordered_members(source, args.order)
             } else if args.targeted_comparison {
                 selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
                     let id = identity(source, *index, name);
-                    records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
+                    record_positions.get(&id).map(|&position| &records[position]).is_none_or(|record| {
                         prepared::targeted::needs_attempt(
                             record,
                             args.targeted_skip_check_performance,
@@ -623,7 +625,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             } else if let Some(profile) = args.preparation_hash_profile.as_deref() {
                 selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
                     let id = identity(source, *index, name);
-                    records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
+                    record_positions.get(&id).map(|&position| &records[position]).is_none_or(|record| {
                         if record["status"] == "skipped" {
                             return args.should_retry_skipped();
                         }
@@ -639,7 +641,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                 // the ordinary workflow without full coverage. Include them.
                 selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
                     let id = identity(source, *index, name);
-                    records.iter().find(|record| record["identity"] == id).is_none_or(|record| {
+                    record_positions.get(&id).map(|&position| &records[position]).is_none_or(|record| {
                         !strategy::full_complete(record)
                             && (record["status"] != "skipped" || args.should_retry_skipped())
                     })
@@ -649,7 +651,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     .into_iter()
                     .filter(|(index, name)| {
                         let id = identity(source, *index, name);
-                        records.iter().find(|record| record["identity"] == id)
+                        record_positions.get(&id).map(|&position| &records[position])
                             .is_some_and(has_deferred_full_scan)
                     })
                     .collect()
@@ -672,7 +674,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                             return false;
                         }
                         let id = identity(source, *index, name);
-                        records.iter().find(|record| record["identity"] == id)
+                        record_positions.get(&id).map(|&position| &records[position])
                             .is_some_and(|record| {
                                 record["last_hash_screen_profile"].is_string()
                                     && !strategy::full_complete(record)
@@ -691,7 +693,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                             return false;
                         }
                         let id = identity(source, *index, name);
-                        records.iter().find(|record| record["identity"] == id)
+                        record_positions.get(&id).map(|&position| &records[position])
                             .is_some_and(|record| {
                                 matches!(record["status"].as_str(),
                                     Some("unchanged" | "differences" | "paused-for-later"
@@ -712,9 +714,11 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                 .unwrap_or(pending.len())
                 .min(pending.len());
             limited |= count < pending.len();
-            pending.into_iter().take(count).collect()
+            startup.update("checking_saved_results", &source.name, source.members.len(), Some(source.members.len()))?;
+            Ok(pending.into_iter().take(count).collect())
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
+    startup.finish()?;
     let current_work: HashSet<String> = sources.iter().zip(&selected_by_source)
         .flat_map(|(source, selected)| selected.iter()
             .map(|(index, name)| identity(source, *index, name)))
@@ -749,6 +753,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             limited,
         )?;
     }
+    record_positions = index_records(&records);
     let mut visual_scope_frozen = false;
     // Screening spans the complete selection before any full secondary pass.
     let comparison_passes: &[&str] = if args.preparation_hash_profile.is_some() {
@@ -775,12 +780,21 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             // a terminal preparation result, including reused preparations.
             let mut incomplete = Vec::new();
             for (prepared_source, prepared_members) in sources.iter().zip(&selected_by_source) {
-                for (index, name) in prepared_members {
-                    ensure_record(&mut records, prepared_source, *index, name);
+                startup.update("checking_prepared_records", &prepared_source.name, 0, Some(prepared_members.len()))?;
+                for (completed, (index, name)) in prepared_members.iter().enumerate() {
+                    ensure_record(&mut records, &mut record_positions, prepared_source, *index, name);
+                    if completed % 256 == 0 || completed + 1 == prepared_members.len() {
+                        startup.update("checking_prepared_records", &prepared_source.name, completed + 1, Some(prepared_members.len()))?;
+                    }
                 }
             }
             let mut observed = HashSet::new();
-            for record in &mut records {
+            let record_count = records.len();
+            startup.update("classifying_preparation", &source.name, 0, Some(record_count))?;
+            for (completed, record) in records.iter_mut().enumerate() {
+                if completed % 256 == 0 {
+                    startup.update("classifying_preparation", &source.name, completed, Some(record_count))?;
+                }
                 let Some(id) = record["identity"].as_str().map(str::to_owned) else {
                     continue;
                 };
@@ -814,6 +828,8 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             }
             progress::freeze_visual_scope(&output);
             publish_progress(&output, &records, &corpus_info, "prepared");
+            startup.update("classifying_preparation", &source.name, record_count, Some(record_count))?;
+            startup.finish()?;
             visual_scope_frozen = true;
         }
         // Freeze membership over the entire corpus before removing completed files.
@@ -883,9 +899,13 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         }
         if !args.prepare_only {
             let mut comparisons = Vec::new();
-            for (index, name) in selected {
+            startup.update("planning_comparisons", &source.name, 0, Some(selected.len()))?;
+            for (completed, (index, name)) in selected.iter().enumerate() {
+                if completed % 256 == 0 {
+                    startup.update("planning_comparisons", &source.name, completed, Some(selected.len()))?;
+                }
                 let id = identity(source, *index, name);
-                let pos = ensure_record(&mut records, source, *index, name);
+                let pos = ensure_record(&mut records, &mut record_positions, source, *index, name);
                 if let Some(profile) = &args.preparation_hash_profile {
                     records[pos]["comparison_hash_profile"] = json!(profile);
                 }
@@ -934,6 +954,8 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                     position: pos,
                 });
             }
+            startup.update("planning_comparisons", &source.name, selected.len(), Some(selected.len()))?;
+            startup.finish()?;
             if args.largest_reduction_first {
                 reduction_order::sort(&mut comparisons, &records);
             }
@@ -1046,11 +1068,23 @@ fn record_path(output: &Path, id: &str) -> PathBuf {
     ))
 }
 
-fn ensure_record(records: &mut Vec<Value>, source: &Source, index: usize, name: &str) -> usize {
-    let id = identity(source, index, name);
-    if let Some(i) = records.iter().position(|r| r["identity"] == id) {
-        return i;
+/// Preserve first-match behavior for duplicate imported identities.
+fn index_records(records: &[Value]) -> std::collections::HashMap<String, usize> {
+    let mut positions = std::collections::HashMap::new();
+    for (position, record) in records.iter().enumerate() {
+        if let Some(id) = record["identity"].as_str() {
+            positions.entry(id.to_owned()).or_insert(position);
+        }
     }
+    positions
+}
+
+fn ensure_record(records: &mut Vec<Value>, positions: &mut std::collections::HashMap<String, usize>, source: &Source, index: usize, name: &str) -> usize {
+    let id = identity(source, index, name);
+    if let Some(&position) = positions.get(&id) {
+        return position;
+    }
+    positions.insert(id.clone(), records.len());
     records.push(json!({"identity":id,"name":name,"member_name":name,"corpus_id":source.id,"corpus_name":source.name,
         "complete":false,"status":"pending","results":[]}));
     records.len() - 1

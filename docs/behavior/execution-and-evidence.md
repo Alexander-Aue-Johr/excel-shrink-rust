@@ -510,3 +510,16 @@ See `../visual-validation/experiments/performance-preparation/README.md` for
 the bounded native tests, retained evidence and current integration scope.
 `prepared-artifacts.md` specifies the pending stable source-manifest and portable
 package contracts, including baseline mismatches and producer/local measurements.
+## Corpus resume planning
+
+Saved record lookup uses an identity-to-position index during initial selection,
+preparation reuse and comparison construction. Duplicate imported identities
+retain the first-record lookup behavior. The index is rebuilt after preparation
+and extended when a record is appended. Reuse eligibility, source identity and
+comparison-policy checks continue to decide whether an attempt is required.
+
+Startup telemetry distinguishes saved-result checks, prepared-artifact checks,
+preparation classification and comparison planning. Bounded preparation and
+planning loops publish counts at intervals of 256 records. These counters measure
+planning work and do not count as successful visual comparisons.
+
