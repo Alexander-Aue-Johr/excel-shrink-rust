@@ -187,7 +187,7 @@ open.
 
 ## 10 Measure the performance report's proposals
 
-- [ ] Test the four proposals from `R:\excel-shrink-performance-review-a7445eb-20261107.zip` individually before adopting them.
+- [x] Test the four proposals from `R:\excel-shrink-performance-review-a7445eb-20261107.zip` individually before adopting them.
 
 The proposals concern an additional attribute pass, first represented-style bookkeeping, small style-frequency tables, and early rejection of an impossible font target. Treat the supplied review as hypotheses. Measure the current implementation and each relevant proposal with identical inputs and output checks.
 
@@ -195,9 +195,17 @@ Use the large Destatis cases identified by the report and representative dense, 
 
 Acceptance requires a reproducible experiment and a separate decision for each proposal. Integrate measured improvements with focused correctness checks and separate commits.
 
+Completed on 2026-11-08 through the performance-variants experiment. All four
+archived interventions have seven verified real inputs, alternating repetitions,
+decompressed-member comparisons and a three-repetition CPU/RAM follow-up. A and C
+were removed, B's allocation change remains in `72bd4bd`, and D's early guard in
+`1dac3c0`. The README records case-specific results, historical baseline identity,
+the excluded checksum-mismatched input and concurrent-load limitations. The
+measurements support these bounded decisions, without a general speedup claim.
+
 ## 11 Benchmark workbook and sheet scheduling
 
-- [ ] Measure whether current scheduling leaves capacity unused for small workbooks and mixed corpora.
+- [x] Measure whether current scheduling leaves capacity unused for small workbooks and mixed corpora.
 
 Create bounded synthetic corpora covering many small one-sheet workbooks, many sheets, a few massive sheets, and mixed sizes. Inspect current large-sheet chunking, task priority, work stealing, and memory admission using timings and Perfetto where useful.
 
@@ -206,6 +214,16 @@ Apply the shared native-test budgets when an experiment needs Excel or validatio
 Change scheduling only where measurements identify a bottleneck. Preserve bounded memory and consistent outputs. Record useful throughput across process and thread configurations, including oversubscription where appropriate for conversion.
 
 Acceptance requires a reproducible workload matrix, throughput and memory results, and evidence for any adopted scheduling change.
+
+Completed on 2026-11-08 with the workbook-scheduling matrix, including 36
+million-row trials and native CPU/RAM counters. Output members matched across
+configurations. Traces exposed blocked Rayon admission, followed by twelve
+alternating intervention runs with identical output members. `de60940` bounds
+dispatcher loops while retaining writer-owned permits and continuous refill.
+All 38 pipeline regression tests pass. Concurrent Enron work remains a timing
+confound, and dense-value or different-style workloads remain future extensions.
+The active Enron runner retains its earlier pinned build and single-threaded
+preparation model.
 
 ## 12 Evaluate SheetShrink across the selected corpora
 

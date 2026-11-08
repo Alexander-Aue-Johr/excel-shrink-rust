@@ -117,3 +117,41 @@ The one-workbook completed-study smoke test was refreshed successfully through
 this entry point. It retained archived records, produced a new preparation and
 left `complete=false`, requiring a fresh comparison. CLI tests reject an
 unbounded refresh and incompatible report/compare-only modes.
+
+## CPU and memory follow-up
+
+All four archived interventions were rerun on the seven hash-verified Destatis
+inputs, with three alternating-order repetitions and one shrink thread.
+All 168 child invocations completed with identical decompressed members within
+each baseline/candidate pair. Every invocation retained direct-child CPU and
+Windows memory counters. The previously rejected input whose checksum differed
+remained excluded. Windows-local paths were used throughout.
+
+Median direct-child user plus kernel CPU seconds for the two largest cases were
+
+| Intervention | Kernhaushalt baseline | Candidate | Verkehrsunfälle baseline | Candidate |
+| --- | ---: | ---: | ---: | ---: |
+| A, additional attribute traversal removal | 19.000 | 19.016 | 9.312 | 8.281 |
+| B, first represented-style bookkeeping | 20.906 | 19.266 | 9.516 | 10.203 |
+| C, small style-frequency tables | 17.281 | 17.812 | 9.234 | 9.156 |
+| D, impossible font-target guard | 18.453 | 18.453 | 9.406 | 9.828 |
+
+Median observed peak working sets stayed approximately 458 MiB for Kernhaushalt
+and 347–348 MiB for Verkehrsunfälle across all interventions. Peak private
+allocation and wall observations remain in the receipts. Whole-process peak
+memory does not expose the per-row allocation reduction measured separately
+for B.
+
+Enron continued throughout. A bounded release build and scheduling intervention
+also overlapped part of this follow-up. Wall observations and CPU scheduling
+conditions are therefore confounded. The archived interventions retain their
+different historical baselines, and their absolute timings must not be ranked
+against each other as successive production versions.
+
+The decisions remain A removed, B retained for its verified allocation behavior,
+C removed, and D retained for its equivalent early impossible-target rejection.
+These results do not establish a uniform runtime benefit for B or D. Output
+equivalence is bounded to the tested inputs and is supplemented by the existing
+focused correctness tests. No further performance patch follows from these
+observations. Complete receipts and immutable executable identities remain at
+`G:\deltasieve-work\performance-{A,B,C,D}-resources-20261108`.
