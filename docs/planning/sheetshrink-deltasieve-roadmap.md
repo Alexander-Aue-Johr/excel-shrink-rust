@@ -111,6 +111,13 @@ Preserve loopback binding, Host and Origin checks, session protection, and requi
 
 Acceptance requires working links from startup through the Observatory and add-in, including a port-conflict test and an understandable fallback address.
 
+The isolated current-build HTTP smoke test on 2026-11-08 returned 200 for
+`configure.deltasieve.localhost:18884/` and its session endpoint, and 403 for
+an unlisted localhost hostname. A second listener on the occupied port failed
+explicitly with Windows error 10048. The first listener remained available and
+was stopped after the test. This verifies the configuration service aliases.
+The pinned production study and Office add-in migration remain open.
+
 ## 06 Unify profiles, resume, and partitions
 
 - [ ] Replace special-purpose launch configuration with one versioned configuration model.
@@ -313,9 +320,19 @@ Approval was received on 2026-11-08. Task 01 is in progress. The live runner PID
   were visually inspected. Abstracts, scientific figures, complete related-work
   coverage and frozen evaluation tables still require work. Task 14 remains open.
 - The common performance-review fixtures passed on the current reference and
-  isolated A/B variants. A preserved all decompressed members on seven matched
-  inputs over alternating-order repetitions, without a useful observed gain in
-  the two large cases. A was removed. B and C adoption remain under investigation.
+  isolated A/B/C/D variants. All seven hash-matched inputs retained identical
+  decompressed members over alternating-order repetitions. A and C were removed
+  after neutral or mixed exploratory timing observations. B was retained in
+  `72bd4bd` after its allocation contract measured zero allocations across 10,000
+  warmed single-style rows, against 10,000 in the negative control. D's early
+  impossible-target guard remains. CPU and peak-memory measurements and a
+  controlled timing environment still require follow-up for Task 10 acceptance.
+- `21fe0d4` fixes a confirmed font-sentinel regression where protection metadata
+  incorrectly excluded an otherwise necessary row-height representative. A real
+  workbook native test restored rows 103–107 from 23.25 to 24 points and found no
+  differences in the selected rebuilt captures. A read-only Default recomputation
+  of the prepared Enron corpus is identifying changed outputs before deployment.
+  Existing production comparisons remain bound to their original producer.
 - `77959b2` preserves finite uniform-background bounds around supported drawings.
   The interrupted Enron group `cade66d204a8e1b3760d` contains unsupported rotated
   shapes and lines, so that improvement does not resolve its full-sheet plan.
