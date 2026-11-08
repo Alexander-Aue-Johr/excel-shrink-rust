@@ -2,8 +2,8 @@
 
 This contract defines the next integration step after the persistent-worker
 acceptance experiment. The explicit-input and source-manifest preparation CLI
-interfaces and package export are implemented. Import preview and consumption
-remain integration requirements.
+interfaces, package export and read-only package verification are implemented.
+Selection coverage preview and consumption remain integration requirements.
 
 ## Source identity and selection
 
@@ -87,6 +87,14 @@ package. Archive wrapping is transport; extracted package contents undergo the
 same validation.
 
 ## Import preview and use
+
+`deltasieve preparation-verify PACKAGE_ROOT` verifies a transferred package
+without Excel. It requires a complete publication marker, supported policy and
+database schema, a matching database hash, SQLite integrity, matching blob
+hashes and lengths, complete state references, generation and provenance
+bindings, native completion evidence and reconciled outcome counts. It opens
+SQLite read-only and does not rely on the producer's original local paths.
+These integrity checks do not authenticate the producing party.
 
 Preview the exact selected source set with paged details and aggregate counts.
 Classify each item as complete, missing, unsuccessful, invalid, baseline mismatch

@@ -95,6 +95,13 @@ also cover duplicate bytes, failed outcomes, corrupt controls, immutable output
 destinations and older receipts with an available verified external baseline.
 Import preview and paired-folder materialization remain separate work.
 
+The ordinary `preparation-verify` command subsequently accepted this native
+package without Excel. Seven package tests passed, including relocation after
+moving the source directory away, incomplete publication, changed header counts,
+same-length blob corruption, database corruption and an invalid generation
+binding even after updating the database hash in the header. Verification opens
+the database read-only and checks all state and provenance references.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working

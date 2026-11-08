@@ -19,6 +19,9 @@ const CONTROLS: [&str; 3] = [
     "after-optimization.xlsx",
 ];
 
+mod reader;
+pub(crate) use reader::verify;
+
 #[cfg(test)]
 mod tests;
 

@@ -84,6 +84,8 @@ enum Command {
     Export { report: PathBuf, output: PathBuf },
     /// Export completed preparation outcomes with SQLite metadata and verified XLSX blobs.
     PreparationExport { preparation: PathBuf, output: PathBuf },
+    /// Verify a transferred preparation package without Excel.
+    PreparationVerify { package: PathBuf },
     /// Print an editable configuration; arguments are an array, never a shell string.
     Template,
     #[command(hide = true)]
@@ -486,6 +488,11 @@ pub(crate) fn run_cli() -> Result<()> {
         Some(Command::PreparationExport { preparation, output }) => {
             let header = crate::validation_preparation::package::export(&preparation, &output)?;
             println!("Exported {} preparation outcomes to {}", header.entries, output.display());
+            Ok(())
+        }
+        Some(Command::PreparationVerify { package }) => {
+            let header = crate::validation_preparation::package::verify(&package)?;
+            println!("Verified {} preparation outcomes", header.entries);
             Ok(())
         }
         Some(Command::Export { report, output }) => {
