@@ -268,6 +268,21 @@ Apply the current IEEE template and ICDE submission requirements, including figu
 
 Preserve useful historical unpublished manuscripts as clearly dated artifacts. Summarize prior feedback as requirements and research motivation. Check applicable confidentiality conditions before distributing full review text.
 
+The paper repository's `papers/README.md` now records build instructions,
+author-review checks and actual AI-assistance provenance. The official ICDE 2027
+CFP was rechecked on 2026-11-08 and includes a one-year waiting period following
+an ICDE rejection, including revised versions. Before submitting a related
+SheetShrink manuscript, the author must establish the previous decision date
+and resolve applicability with the chairs where necessary. This open eligibility
+question does not block implementation, evaluation or working drafts. The current
+CFP also describes accept/reject outcomes without revisions, so earlier-cycle
+revision instructions cannot be assumed for this cycle.
+[Official research CFP](https://icde2027.github.io/cf-research-papers.html)
+
+`optional-deep-research-prompts.md` contains a later literature cross-check prompt
+for each paper. Those optional reports remain outside the autonomous task's
+dependency chain.
+
 The historical Excel Shrink papers and reviews are available in the local archive `V:\excel_shrink_papers_and_reviews.7z`. The user reports favorable reviews and attributes the unsuccessful submission outcome in substantial part to an overlooked instruction concerning a review letter. If this history becomes relevant, inspect the archived documents to establish the exact sequence, requirements, and decision. Include any required review or response letter in the submission checklist for the new papers.
 
 Acceptance requires two complete, compilable first-draft PDFs and their fresh LaTeX projects, verified citations, claim-to-evidence checks, reproducible figures and tables, the first-page figure decision, a list of unresolved evidence gaps, and an author-review checklist. Recheck current venue requirements and disclosure when preparing a later submission version.

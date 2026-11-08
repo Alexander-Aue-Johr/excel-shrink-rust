@@ -44,7 +44,15 @@ accepted. [Author preprint](https://web.iitd.ac.in/~kbeedkar/publication/xdb-icd
 
 ## Further design evidence
 
-Inspect complete evaluation and Related Work sections, verify additional ICDE examples, and examine representative first-page layouts at publication size. Record the difference between an observed writing practice and a recommendation inferred for these manuscripts. The first-page Observatory figure remains an open design decision.
+Continue examining complete evaluation and Related Work sections and additional
+ICDE examples. Record the difference between observed writing practices and
+recommendations inferred for these manuscripts. The current drafts use editable
+first-page method figures. SheetShrink illustrates compact font preservation,
+and DeltaSieve illustrates selection, rendering and evidence. Both remain
+legible in the rendered two-column drafts. An Observatory screenshot is reserved
+for explaining evidence exploration if it contributes information beyond the
+method figure. This is a design decision for the working drafts, subject to the
+author's revision.
 
 ## Comparison-tool evidence checked on 2026-11-08
 
