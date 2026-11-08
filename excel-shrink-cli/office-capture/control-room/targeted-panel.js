@@ -3,7 +3,7 @@ import { createSignalMonitor } from './signal-monitor.js';
 import { createClipboardButton } from './inspection-clipboard.js';
 import { createProcessMetrics } from './process-metrics.js';
 import { createRegionList } from './region-inspection.js';
-import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, phaseComplete, processCards } from './targeted-model.js';
+import { acceptComparison, captureProgress, comparisonFinished, comparisonPresentation, heartbeatRow, phaseComplete, processCards } from './targeted-model.js';
 
 const node = (tag, className, text) => {
   const element = document.createElement(tag);
@@ -156,6 +156,9 @@ function createComparisonCard() {
   return {
     element: root,
     update(comparison, connected) {
+      const candidateLabel = comparison.candidate_label || 'Default';
+      controls.textContent = `Rebuild Original and ${candidateLabel} in their existing Excel processes, then compare selected regions and all charts. `
+        + 'Optional Check Performance is rebuilt and compared against rebuilt Original. Pre-rebuild XML controls remain available for follow-up.';
       const parts = String(comparison.report_directory || '').split(/[\\/]+/);
       const evidence = parts.lastIndexOf('evidence');
       groupId = evidence >= 0 && /^[a-f0-9]{20}$/.test(parts[evidence + 1]) ? parts[evidence + 1] : null;
@@ -182,7 +185,7 @@ function createComparisonCard() {
       error.textContent = comparison.error || '';
       error.hidden = !comparison.error;
       root.title = (comparison.report?.limitations || []).join('\n');
-      const processLanes = processCards(comparison.lanes);
+      const processLanes = processCards(comparison.lanes, candidateLabel);
       const ids = new Set(processLanes.map(lane => lane.id));
       for (const [id, view] of laneViews) if (!ids.has(id)) { view.destroy(); laneViews.delete(id); }
       for (const lane of processLanes) {
@@ -195,11 +198,11 @@ function createComparisonCard() {
       if (finished && comparison.report?.before_differences != null) {
         const report = comparison.report;
         outcome.textContent += report.input_identity?.status === 'identical'
-          ? ' · Default unchanged (identical input bytes)'
-          : report.before_differences == null ? ' · Pre-rebuild images omitted' : ` · Default: ${report.before_differences} differences`;
+          ? ` · ${candidateLabel} unchanged (identical input bytes)`
+          : report.before_differences == null ? ' · Pre-rebuild images omitted' : ` · ${candidateLabel}: ${report.before_differences} differences`;
         outcome.textContent += report.after_differences == null
-          ? ' · Default rebuild not performed'
-          : ` · Rebuilt Default: ${report.after_differences} differences`;
+          ? ` · ${candidateLabel} rebuild not performed`
+          : ` · Rebuilt ${candidateLabel}: ${report.after_differences} differences`;
         outcome.textContent += report.original_recalc_drift == null
           ? ' · Original rebuild not performed'
           : ` · Original rebuild drift: ${report.original_recalc_drift}`;
@@ -221,7 +224,7 @@ function createComparisonCard() {
 }
 
 /** Retain active and recent completed comparisons across workbook selection. */
-export function createTargetedPanel(root) {
+export function createTargetedPanel(root, { candidateLabel = () => null } = {}) {
   root.className = 'targeted-comparison';
   const heading = node('header', 'targeted-panel-heading');
   const title = node('h2', '', 'Targeted comparisons');
@@ -264,7 +267,7 @@ export function createTargetedPanel(root) {
     }
     for (const item of [...running, ...visible]) {
       if (!views.has(item.run_id)) views.set(item.run_id, createComparisonCard());
-      views.get(item.run_id).update(item, connected);
+      views.get(item.run_id).update(comparisonPresentation(item, candidateLabel()), connected);
     }
     for (const [parent, items] of [[active, running], [completed, visible]]) {
       items.filter(item => views.has(item.run_id)).forEach((item, index) => {

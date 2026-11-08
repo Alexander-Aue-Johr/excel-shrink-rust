@@ -113,6 +113,12 @@ report format, preparation utilities and evidence rules. Direct SheetShrink
 cleanup arguments retain the existing command-line behavior. The web cleanup
 workflow currently also validates its output.
 
+The standalone process panel labels its partner `SheetShrink` when the observed
+processing stage has that name, and `Comparison` for an existing or other
+processed partner. Configurator edits do not relabel an observed run. These
+labels cover resident cards, workflow rows and opening/RAM comparisons. Stored
+lane IDs (`SD`/`SDR`), raw findings and historical report labels remain intact.
+
 From a checkout, use `tools/start-deltasieve.ps1 -Application sheetshrink` to
 build and launch SheetShrink, or omit `-Application` for DeltaSieve. The launcher's
 `-DataRoot` and `-Config` options remain available for either application.

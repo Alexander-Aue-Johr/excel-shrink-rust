@@ -38,7 +38,8 @@ function createMetric(label, property, format) {
       root.dataset.tone = cost?.tone || 'unknown';
       bars.forEach(({ row, bar }, index) => {
         row.dataset.primary = String(index === own);
-        row.firstChild.textContent = index === 0 ? 'Original' : ownFamily === 'CP' ? 'Check Performance' : 'Default';
+        row.firstChild.textContent = index === 0 ? 'Original'
+          : ownFamily === 'CP' ? 'Check Performance' : comparison.candidate_label || 'Default';
         bar.style.width = maximum > 0 && Number.isFinite(values[index]) ? `${100 * values[index] / maximum}%` : '0%';
         row.title = Number.isFinite(values[index]) ? format(values[index]) : 'Not recorded';
       });

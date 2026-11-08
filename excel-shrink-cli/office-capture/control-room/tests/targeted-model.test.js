@@ -1,4 +1,4 @@
-import { acceptComparison, captureProgress, comparisonFinished, heartbeatRow, iconActivity, phaseComplete, processCards } from '../targeted-model.js';
+import { acceptComparison, captureProgress, comparisonFinished, comparisonPresentation, heartbeatRow, iconActivity, phaseComplete, processCards } from '../targeted-model.js';
 
 export function runTests() {
   let passed = 0;
@@ -56,6 +56,19 @@ export function runTests() {
     { id: 'CPR', lifecycle: 'skipped' },
   ];
   const cards = processCards(states);
+  const evidence = { run_id: 'retained', lanes: states, report: { after_differences: 2 } };
+  const raw = JSON.stringify(evidence);
+  const presented = comparisonPresentation(evidence, 'SheetShrink');
+  assert(presented.lanes.find(lane => lane.id === 'SD').label === 'SheetShrink',
+    'Application names label the comparison partner.');
+  assert(presented.lanes.find(lane => lane.id === 'SDR').label === 'SheetShrink (rebuilt copy)',
+    'The rebuilt partner keeps its state distinction.');
+  assert(JSON.stringify(evidence) === raw && presented.report === evidence.report,
+    'Presentation does not rewrite retained lane evidence or report findings.');
+  assert(comparisonPresentation(evidence, null) === evidence,
+    'Existing consumers retain their historical labels.');
+  assert(processCards(presented.lanes, presented.candidate_label)[1].label === 'SheetShrink · After rebuild',
+    'Resident cards retain the producer name through in-place rebuild.');
   assert(cards.length === 2, 'Two resident processes produce two cards.');
   assert(cards[1].id === 'SD' && cards[1].pid === 20 && cards[1].label.includes('After rebuild'),
     'Default retains its card identity when the same process advances to rebuild.');

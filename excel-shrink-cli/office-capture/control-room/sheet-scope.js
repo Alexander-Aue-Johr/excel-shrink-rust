@@ -33,12 +33,15 @@ let nativePicker = false;
 let processorSchema = null;
 let shrinkPreset = null;
 let logicalProcessors = 1;
+let runCandidateLabel = 'Comparison';
 let workbookOffset = 0;
 let workbookRevision = '';
 let workbookRequest = 0;
 let workbookSearchTimer;
 let preparationJobView;
-const targetedPanel = createTargetedPanel(byId('targeted-comparisons'));
+const targetedPanel = createTargetedPanel(byId('targeted-comparisons'), {
+  candidateLabel: () => runCandidateLabel,
+});
 
 function message(text, error = false) {
   byId('message').textContent = text || '';
@@ -382,6 +385,7 @@ function choosePath(path, directory) {
 function renderProgress(state) {
   preparationJobView?.render(state.preparation_job, state.active);
   const progress = state.progress;
+  runCandidateLabel = progress.processing?.stage === 'SheetShrink' ? 'SheetShrink' : 'Comparison';
   isActive = state.active;
   if (state.report_base && reportBase !== state.report_base) {
     reportBase = state.report_base;

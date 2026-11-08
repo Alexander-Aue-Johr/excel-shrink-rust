@@ -74,9 +74,9 @@ export function phaseComplete(lanes, phase) {
 }
 
 /** Keep each resident process card stable as it advances to its rebuilt state. */
-export function processCards(lanes) {
+export function processCards(lanes, candidateLabel = 'Default') {
   const rebuiltIds = { O: 'OR', SD: 'SDR', CP: 'CPR' };
-  const labels = { O: 'Original', SD: 'Default', CP: 'Check Performance' };
+  const labels = { O: 'Original', SD: candidateLabel, CP: 'Check Performance' };
   return lanes.filter(lane => {
     if (['unavailable', 'skipped'].includes(lane.lifecycle)) return false;
     if (Object.values(rebuiltIds).includes(lane.id)) {
@@ -90,4 +90,18 @@ export function processCards(lanes) {
     }
     return rebuiltIds[lane.id] ? { ...lane, label: `${labels[lane.id]} · Before rebuild` } : lane;
   });
+}
+
+/** Application labels are a view of retained evidence; lane IDs and raw records stay intact. */
+export function comparisonPresentation(comparison, candidateLabel) {
+  if (!candidateLabel) return comparison;
+  return {
+    ...comparison,
+    candidate_label: candidateLabel,
+    lanes: comparison.lanes.map(lane => {
+      if (lane.id === 'SD') return { ...lane, label: candidateLabel };
+      if (lane.id === 'SDR') return { ...lane, label: `${candidateLabel} (rebuilt copy)` };
+      return lane;
+    }),
+  };
 }
