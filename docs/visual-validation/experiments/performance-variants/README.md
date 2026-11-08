@@ -54,3 +54,43 @@ Kernhaushalt and 9.92 versus 9.54 seconds for Verkehrsunfälle. Enron remained
 active. These observations do not support a controlled corpus speedup claim.
 B was retained for its independently measured removal of the per-row allocation
 while preserving membership behavior. The live pinned runner remains unchanged.
+
+## C observation
+
+C was tested on the immutable B binary, isolating its fixed-prefix style counter.
+Its behavior test included every insertion before and after spilling beyond four
+distinct styles, with minimum-ID tie resolution. All 293 Core tests passed,
+alongside the five allocation contracts. All decompressed outputs matched on the
+seven verified inputs over both repetitions.
+
+The exploratory medians changed from 19.98 to 18.55 seconds for Kernhaushalt and
+from 9.06 to 9.73 seconds for Verkehrsunfälle. This mixed observation did not
+establish a consistent benefit sufficient to retain the extra counter machinery.
+C and its implementation-specific test were removed. The tested patch, binaries
+and complete observations remain in the working receipts for a later controlled
+experiment. Production code retains B and the previously verified D guard.
+
+## D follow-up and selective refresh preparation
+
+D was additionally checked against the immutable `abc9e79` executable on all
+seven verified inputs with two alternating-order repetitions. Every decompressed
+member matched. The large-case median ratios were approximately 0.99 for
+Kernhaushalt and 0.92 for Verkehrsunfälle. Concurrent Enron work remains a timing
+confound. D retains the same dominant-style choice and rejects an impossible
+font target earlier. This evidence establishes bounded output identity rather
+than a controlled general speedup.
+
+`recheck_prepared.py` recomputes Default from hash-verified converted originals in
+existing preparation bundles. It copies named entries to fixed destinations and
+never changes a live study, bundle or verdict. Its SQLite journal binds results
+to the binary, source root, complete bundle hash and full decompressed-member
+comparison. It keeps at most the configured number of jobs active and preserves
+32 GiB of free working-disk capacity. All working copies remain available.
+
+The confirmed font/protection regression `005d034f18d6dc340a2c` was detected as a
+changed output in its native smoke test. Repeating the same invocation reused its
+verified journal entry and left the number of attempt directories at one.
+Unit tests cover unchanged and changed members, wrong group identities and fixed
+extraction destinations for traversal-shaped archive member names. A future
+production refresh must explicitly reconcile these results and preserve prior
+comparison provenance. The preflight itself supplies no new visual verdict.
