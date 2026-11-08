@@ -20,6 +20,22 @@ fn a_session_lease_is_exclusive_and_released_on_drop() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn idle_pool_polls_coalesce_heartbeat_writes() -> Result<()> {
+    let root = std::env::temp_dir().join(format!("pool-heartbeat-{}", uuid::Uuid::new_v4()));
+    let mut pool = Pool::new(root.clone())?;
+    let heartbeat = root.join("heartbeat");
+    // Keep the publication deadline fixed while polling an unchanged pool.
+    pool.last_publish = Instant::now() + Duration::from_secs(60);
+    fs::write(&heartbeat, b"unchanged-probe")?;
+    pool.reconcile(0, 512)?;
+    assert_eq!(fs::read(&heartbeat)?, b"unchanged-probe");
+    pool.last_publish = Instant::now() - Duration::from_secs(2);
+    pool.reconcile(0, 512)?;
+    assert_eq!(fs::read(&heartbeat)?, b"running");
+    Ok(())
+}
+
 /// Exercise reuse, independent sessions, error recycling, scale-down and cleanup.
 #[test]
 #[ignore = "requires desktop Excel and LEGACY_CONVERSION_FIXTURES; run serially"]

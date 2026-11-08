@@ -391,6 +391,9 @@ directory. It runs a separate continuously refilled queue in long-lived owned
 Excel instances. Its worker target is independent of shrinker threads and may
 exceed logical processors. The shared pool enforces a 512 MiB memory-reserve
 floor, closes each workbook before reuse and replaces failed instances.
+Unchanged pool polls coalesce heartbeat and status writes into the existing
+one-second publication interval. Worker creation, retirement and removal retain
+immediate publication. Native job deadlines remain attached to job progress.
 UI automation runs on each worker's private desktop, with the previous native
 performance pane closed before requesting a fresh optimization result.
 

@@ -199,8 +199,8 @@ impl Pool {
                 changed = true;
             }
         }
-        fs::write(self.root.join("heartbeat"), b"running")?;
         if changed || self.last_publish.elapsed() >= Duration::from_secs(1) {
+            fs::write(self.root.join("heartbeat"), b"running")?;
             let members: Vec<_> = self
                 .workers
                 .iter()
