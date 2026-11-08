@@ -45,6 +45,27 @@ sampling needs a declared coverage envelope, including graphical objects and
 overflow. Drawings inside a supplied rectangle are rendered with the sheet;
 standalone chart sheets need their separate reference method.
 
+## Freeze an outcome-blind sample
+
+`sample.py` freezes direct XLS/XLSX archive occurrences using source ZIP metadata.
+Its default chooses three members per size-ranked quartile with the versioned
+seed in the evaluation protocol. It retains the complete compressed frame,
+source archive SHA-256, source indices, workbook identities and selection ranks.
+Identical payloads at distinct source occurrences remain distinct. Native
+failures and prior development exposure are assessed after selection and do not
+replace selected members.
+
+```powershell
+python sample.py --archive 'G:\corpora\source.zip' `
+    --corpus-id 'REGISTERED_64_CHARACTER_LOWERCASE_CORPUS_SHA256' `
+    --output 'G:\reference-samples\corpus-v1'
+```
+
+The output must be new. The sampler reads the ZIP directory and hashes the archive
+without extracting workbook payloads. It detects ordinary source changes during
+freezing. The registered corpus ID is supplied by the caller; the archive's
+separate full checksum binds the actual source used for the sample.
+
 ## Initial check on 2026-11-08
 
 Two trials used a synthetic worksheet whose reference area was fixed at

@@ -67,6 +67,27 @@ visible differences are selector failures even if the selected captures match.
 Keep full-reference timeouts visible. Do not silently replace a timed-out sample
 with an easier workbook. Report coverage by completed workbook and visible area.
 
+### Initial reference-sample specification
+
+Freeze twelve archive occurrences per corpus using seed
+`deltasieve-icde2027-reference-v1`. Rank direct XLS/XLSX members by uncompressed
+size, member name and original archive index. Divide ranks into four equal-count
+quartiles, then choose the three lowest SHA-256 priorities per quartile from the
+seed and full workbook identity. A smaller stratum contributes all its members.
+Retain duplicate-content occurrences and their source identities. Selection uses
+archive metadata and the fixed seed without consulting comparison outcomes or
+cleanup ratios. `experiments/independent-reference/sample.py` retains the complete
+compressed frame, archive checksum, selection priorities and denominators.
+
+This initial sample is separate from known regression development cases. Assess
+prior manual exposure after freezing it and report that exposure without
+replacing members. Existing corpus development cannot be relabeled as an unseen
+population. Missing conversions, unsupported reference extents, failed rendering
+and timeouts stay in the sample denominator. Use at most one additional native
+comparison group and the shared bounded-test policy. Each initial reference
+attempt has a 240-second total budget and 90-second operation budget. Larger
+follow-up budgets require a dated protocol amendment and retain the first outcome.
+
 ## Rendering and attribution
 
 Retain exact pixel observations, geometry, source state and review classification.
