@@ -1,7 +1,7 @@
 //! Resume a corpus study using its immutable executable and saved launch contract.
 
 use anyhow::{ensure, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -10,7 +10,10 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
-#[derive(Deserialize)]
+mod configuration;
+pub(crate) use configuration::{create, Configuration};
+
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 struct Receipt {
     executable: PathBuf,
@@ -23,9 +26,41 @@ struct Receipt {
     control_room: String,
 }
 
+/// Use the same creation and resume contracts as the web configurator. The
+/// scientific runner remains independent and writes its own durable evidence.
+pub(crate) fn run(config: Option<PathBuf>, receipt: Option<PathBuf>, open: bool) -> Result<()> {
+    let receipt = match (config, receipt) {
+        (Some(path), None) => create(Configuration::from_file(&path)?)?,
+        (None, Some(path)) => path,
+        _ => anyhow::bail!("Choose either a new study configuration or a launch receipt"),
+    };
+    let (mut child, url, output) = resume(receipt.clone())?;
+    eprintln!("Study launch receipt: {}", receipt.display());
+    eprintln!("Study Observatory: {url}");
+    if open {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        while !ready(&url, &output) && std::time::Instant::now() < deadline {
+            if child.try_wait()?.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        if ready(&url, &output) {
+            crate::validation::open_browser(std::ffi::OsStr::new(&url))?;
+        }
+    }
+    let status = child.wait()?;
+    ensure!(
+        status.success(),
+        "Study runner exited with {status}; inspect {}/web-launches",
+        output.display()
+    );
+    Ok(())
+}
+
 /// Validate the recorded identities before spawning. The study runner acquires
 /// the authoritative output lock again, closing the preview-to-spawn race.
-pub(crate) fn resume(path: PathBuf) -> Result<(Child, String)> {
+pub(crate) fn resume(path: PathBuf) -> Result<(Child, String, PathBuf)> {
     let receipt: Receipt =
         serde_json::from_slice(&fs::read(&path)?).context("Read study launch receipt")?;
     receipt.validate()?;
@@ -60,7 +95,44 @@ pub(crate) fn resume(path: PathBuf) -> Result<(Child, String)> {
     // Release our probe lock. The child must independently acquire this lock.
     drop(lock);
     let child = command.spawn().context("Start the recorded study runner")?;
-    Ok((child, receipt.control_room))
+    Ok((child, receipt.control_room, receipt.output_root))
+}
+
+/// Probe only the already validated local study address, requiring its exact
+/// output identity before a browser can leave the configuration page.
+pub(crate) fn ready(url: &str, output: &std::path::Path) -> bool {
+    use std::io::{Read, Write};
+    use std::net::{Ipv4Addr, SocketAddr, TcpStream};
+    use std::time::Duration;
+    let probe = || -> Result<bool> {
+        let uri: axum::http::Uri = url.parse()?;
+        let port = uri.port_u16().context("Missing study port")?;
+        let mut stream = TcpStream::connect_timeout(
+            &SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+            Duration::from_millis(300),
+        )?;
+        stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+        stream.set_write_timeout(Some(Duration::from_millis(500)))?;
+        write!(
+            stream,
+            "GET /health HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+        )?;
+        let mut bytes = Vec::new();
+        stream.take(16 * 1024).read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.starts_with(b"HTTP/1.0 200 ") || bytes.starts_with(b"HTTP/1.1 200 "),
+            "Study health endpoint is not ready"
+        );
+        let body = bytes
+            .windows(4)
+            .position(|part| part == b"\r\n\r\n")
+            .context("Incomplete study health response")?
+            + 4;
+        let health: serde_json::Value = serde_json::from_slice(&bytes[body..])?;
+        Ok(health["kind"] == "excel-shrink-control-room"
+            && health["root"].as_str().map(PathBuf::from) == Some(output.join("control-room")))
+    };
+    probe().unwrap_or(false)
 }
 
 impl Receipt {
@@ -87,7 +159,12 @@ impl Receipt {
             uri.scheme_str() == Some("http")
                 && matches!(
                     uri.host(),
-                    Some("127.0.0.1" | "localhost" | "deltasieve.localhost" | "observatory.deltasieve.localhost")
+                    Some(
+                        "127.0.0.1"
+                            | "localhost"
+                            | "deltasieve.localhost"
+                            | "observatory.deltasieve.localhost"
+                    )
                 )
                 && uri.port_u16().is_some(),
             "Study Observatory must use a local HTTP address"
@@ -165,6 +242,44 @@ mod tests {
     }
 
     #[test]
+    fn readiness_requires_success_and_the_exact_study_identity() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let output = std::env::temp_dir().join("expected-study");
+        for (status, matching_root, expected) in
+            [(200, true, true), (200, false, false), (503, true, false)]
+        {
+            let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let health = serde_json::json!({
+                "kind":"excel-shrink-control-room",
+                "root":if matching_root { output.join("control-room") } else { output.join("foreign") },
+            });
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0; 1024];
+                stream.read(&mut request).unwrap();
+                let body = serde_json::to_vec(&health).unwrap();
+                write!(
+                    stream,
+                    "HTTP/1.0 {status} Test\r\nContent-Length: {}\r\n\r\n",
+                    body.len()
+                )
+                .unwrap();
+                stream.write_all(&body).unwrap();
+            });
+            assert_eq!(
+                ready(
+                    &format!("http://observatory.deltasieve.localhost:{port}/"),
+                    &output
+                ),
+                expected
+            );
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
     fn named_study_address_remains_local_and_explicitly_ported() {
         let root = std::env::temp_dir().join(format!("study-address-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&root).unwrap();
@@ -198,7 +313,10 @@ mod tests {
             "https://observatory.deltasieve.localhost:18777/",
         ] {
             value.control_room = address.into();
-            assert!(value.validate().is_err(), "Unexpected allowed address {address}");
+            assert!(
+                value.validate().is_err(),
+                "Unexpected allowed address {address}"
+            );
         }
         fs::remove_dir_all(root).unwrap();
     }

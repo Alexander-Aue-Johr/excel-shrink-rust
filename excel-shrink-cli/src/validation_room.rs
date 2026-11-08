@@ -37,6 +37,7 @@ struct Room {
     report: Mutex<Option<(String, PathBuf)>>,
     reports: Mutex<BTreeMap<String, PathBuf>>,
     picker: Mutex<()>,
+    study: Mutex<Option<(String, PathBuf)>>,
 }
 
 type ApiResult = std::result::Result<Json<Value>, ApiError>;
@@ -77,6 +78,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         report: Mutex::new(None),
         reports: Mutex::new(BTreeMap::new()),
         picker: Mutex::new(()),
+        study: Mutex::new(None),
     });
     let web_root = validation::capture::capture_directory()?.join("control-room");
     let routes = Router::new()
@@ -101,6 +103,8 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         .route("/api/workbooks", get(workbooks))
         .route("/api/run", post(start))
         .route("/api/study/resume", post(resume_study))
+        .route("/api/study/start", post(start_study))
+        .route("/api/study/ready", get(study_ready))
         .route("/api/open", post(open_report))
         .route("/api/export", post(export_report))
         .route("/reports/{id}/{*path}", get(report_asset))
@@ -192,7 +196,8 @@ async fn session(State(room): State<Arc<Room>>) -> ApiResult {
         json!({"token":room.token,"config":config,"working_directory":working_directory,
         "browse_directory":browse_directory,"native_picker":cfg!(windows),
         "logical_processors":std::thread::available_parallelism().map_or(1, usize::from),
-        "processor_schema":crate::cli_metadata::describe(),"shrink_preset":shrink_preset}),
+        "processor_schema":crate::cli_metadata::describe(),"shrink_preset":shrink_preset,
+        "study_defaults":crate::validation_study::Configuration::default()}),
     ))
 }
 
@@ -422,9 +427,38 @@ struct ResumeStudy {
 /// Keep the selected study on its recorded runner while preserving its results.
 async fn resume_study(State(room): State<Arc<Room>>, Json(request): Json<ResumeStudy>) -> ApiResult {
     let reservation = reserve(&room)?;
-    let (mut child, url) = tokio::task::spawn_blocking(move || {
-        crate::validation_study::resume(request.receipt)
-    }).await.map_err(anyhow::Error::from)??;
+    // Keep launch ownership inside the background operation if HTTP disconnects.
+    tokio::task::spawn_blocking(move || -> ApiResult {
+        let (child, url, output) = crate::validation_study::resume(request.receipt)?;
+        observe_study(&room, reservation, child, url, output)
+    }).await.map_err(anyhow::Error::from)?
+}
+
+/// New study creation never reinterprets an existing output as a new run.
+async fn start_study(
+    State(room): State<Arc<Room>>,
+    Json(configuration): Json<crate::validation_study::Configuration>,
+) -> ApiResult {
+    let reservation = reserve(&room)?;
+    tokio::task::spawn_blocking(move || -> ApiResult {
+        let receipt = crate::validation_study::create(configuration)?;
+        let (child, url, output) = crate::validation_study::resume(receipt.clone())?;
+        let mut result = observe_study(&room, reservation, child, url, output)?;
+        result.0["receipt"] = json!(receipt);
+        Ok(result)
+    }).await.map_err(anyhow::Error::from)?
+}
+
+fn observe_study(
+    room: &Arc<Room>,
+    reservation: Reservation,
+    mut child: std::process::Child,
+    url: String,
+    output: PathBuf,
+) -> ApiResult {
+    let publication = room.study.lock()
+        .map_err(|_| anyhow::anyhow!("Study address lock poisoned"))
+        .map(|mut address| *address = Some((url.clone(), output)));
     let pid = child.id();
     let progress = room.progress.clone();
     tokio::task::spawn_blocking(move || {
@@ -441,7 +475,18 @@ async fn resume_study(State(room): State<Arc<Room>>, Json(request): Json<ResumeS
             }
         }
     });
+    publication?;
     Ok(Json(json!({"pid":pid,"url":url})))
+}
+
+async fn study_ready(State(room): State<Arc<Room>>) -> ApiResult {
+    let study = room.study.lock()
+        .map_err(|_| anyhow::anyhow!("Study address lock poisoned"))?.clone();
+    let (url, output) = study.context("No study was started by this configuration session")?;
+    let address = url.clone();
+    let ready = tokio::task::spawn_blocking(move || crate::validation_study::ready(&address, &output))
+        .await.map_err(anyhow::Error::from)?;
+    Ok(Json(json!({"ready":ready,"url":url})))
 }
 
 /// Keep start, open and export mutually exclusive, including failures and panics.
@@ -663,6 +708,7 @@ mod tests {
             report: Mutex::new(None),
             reports: Mutex::new(BTreeMap::new()),
             picker: Mutex::new(()),
+            study: Mutex::new(None),
         });
         let page = workbooks(
             State(room.clone()),

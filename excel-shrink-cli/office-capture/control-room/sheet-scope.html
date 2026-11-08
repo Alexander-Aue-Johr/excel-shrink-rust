@@ -25,6 +25,7 @@
         <label><input type="radio" name="mode" value="process"> Process A, then compare</label>
         <label><input type="radio" name="mode" value="report"> Open a saved report</label>
         <label><input type="radio" name="mode" value="study"> Resume a corpus study</label>
+        <label><input type="radio" name="mode" value="new-study"> Start a corpus study</label>
       </div>
     </section>
 
@@ -108,6 +109,38 @@
       <div class="actions"><button id="start" class="primary" type="submit">Start validation</button><button id="save-config" type="button">Download configuration</button><button id="edit-json" type="button">Edit complete JSON</button></div>
     </form>
 
+    <form id="new-study" class="panel grid" hidden>
+      <h2>Start a corpus study</h2>
+      <input type="hidden" name="version" value="1">
+      <label>Corpus name<input name="name" required></label>
+      <label>Observatory port<input name="port" type="number" min="1024" max="65535" required></label>
+      <label class="wide">Source ZIP archive
+        <span class="path"><input id="study-archive" name="archive" required><button type="button" data-browse="study-archive" data-kind="file">File…</button></span>
+      </label>
+      <label class="wide">New study directory
+        <span class="path"><input id="study-output-root" name="output_root" required><button type="button" data-browse="study-output-root">Choose parent…</button></span>
+      </label>
+      <p class="help wide">Direct XLS and XLSX members are processed. XLS files are converted with Excel first. Default is the cleanup profile. Existing results use Resume. Choose a working drive with sufficient space.</p>
+      <label>Parallel XLS → XLSX conversions<input name="conversion_processes" type="number" min="1" max="2147483647" required></label>
+      <label>Parallel shrink processes<input name="prepare_processes" type="number" min="1" required></label>
+      <label>Threads per shrink process<input name="shrink_threads" type="number" min="1" required></label>
+      <label>Parallel visual comparison groups<input name="comparison_groups" type="number" min="0" max="2147483647" required></label>
+      <label>Size partitions<input id="study-partition-count" name="partitions" type="number" min="1" max="1000" required></label>
+      <div class="wide">
+        <p>Selected size partition · the first contains the smallest files</p>
+        <input name="partition" type="hidden" value="0">
+        <div id="study-partitions" class="study-partitions" role="group" aria-label="Selected size partition"></div>
+      </div>
+      <label class="check wide"><input name="check_performance" type="checkbox"> Also compare native Check Performance</label>
+      <details class="wide"><summary>Capture and evidence settings</summary><div class="grid">
+        <label>Geometry ranges per sync<input name="geometry_batch_ranges" type="number" min="1" max="4096" required></label>
+        <label>Capture ranges per sync<input name="capture_batch_ranges" type="number" min="1" max="64" required></label>
+        <label>Capture batch megapixel budget<input name="capture_batch_megapixels" type="number" min="1" required></label>
+        <label class="check wide"><input name="retain_equal_images" type="checkbox"> Retain verified-equal images</label>
+      </div></details>
+      <p class="help wide">SQLite metadata and a 512 MiB free-RAM reserve are enabled. The run saves its source hash, configuration and immutable executable. Worker and batch settings remain adjustable in its Observatory.</p>
+      <div class="actions wide"><button id="start-study" type="submit" class="primary">Start corpus study</button><a id="new-study-link" hidden>Open study Observatory</a></div>
+    </form>
     <section id="saved-study" class="panel" hidden>
       <h2>Resume a corpus study</h2>
       <p>Choose the study's launch.json. Its recorded executable, options and existing results are reused. An active study keeps its output lock.</p>

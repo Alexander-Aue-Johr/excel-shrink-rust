@@ -39,6 +39,15 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Start a configured archive study, or resume its exact saved launch receipt.
+    Study {
+        #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        resume: Option<PathBuf>,
+        #[arg(long)]
+        no_open: bool,
+    },
     /// Compare existing folders, ZIP files or archive URLs without running a producer.
     Compare {
         #[arg(long)]
@@ -439,6 +448,8 @@ pub(crate) fn run_cli() -> Result<()> {
             execute(RunConfig::from_file(&config)?, None)?;
             Ok(())
         }
+        Some(Command::Study { config, resume, no_open }) =>
+            crate::validation_study::run(config, resume, !no_open),
         Some(Command::Compare {
             a,
             b,

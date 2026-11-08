@@ -29,6 +29,43 @@ Reports and the download cache default beneath `DELTASIEVE_DATA_DIR/DeltaSieve`.
 
 ## Command entry points
 
+### New archive studies
+
+Choose **Start a corpus study** for a local ZIP containing direct XLS/XLSX
+members. The form separates conversion workers, shrink processes, threads per
+shrink process and visual groups. Size partitions have an explicit All files
+choice and one-based partition buttons. Geometry and capture batch settings are
+independent. Verified-equal image retention and local Check Performance are
+explicit choices. Portable CP package modes remain a separate pending task.
+
+Version-one archive configuration is stored as `configuration.json` in the new
+study root. The source archive is hashed, the exact executable is copied and
+verified, and `request.json`, `control-room/control.json` and `launch.json`
+retain the resolved contract. Runtime temporary files and logs stay beneath
+the study root. SQLite metadata and a 512 MiB free-RAM reserve are enabled.
+Existing roots are rejected by new-run creation and remain available through
+the separate resume operation.
+
+The CLI and web entry point use the same creation and resume implementation.
+
+```powershell
+deltasieve study --config 'V:\profiles\new-study.json'
+deltasieve study --resume 'V:\studies\existing\launch.json' --no-open
+```
+
+Relative archive/output paths in a configuration file resolve against that
+file's directory. Receipt paths and executable hashes are checked again before
+resume. An occupied study port is reported without stopping its owner. Web
+handoff waits for a successful health response identifying that exact study
+root before automatically navigating to its named Observatory.
+
+Creation and child observation share a background ownership scope, so a browser
+disconnect does not release admission while its launched runner goes unobserved.
+The current tests cover typed settings, explicit partitions, existing-root
+preservation, copied executable identity, failed configuration release and
+readiness responses from the correct, foreign and unavailable services. Native
+new-study acceptance remains in progress.
+
 ### Validation partitions
 
 The web configurator saves an optional `partition` object with `count` and

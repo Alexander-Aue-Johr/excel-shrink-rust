@@ -67,6 +67,17 @@ dialog::backdrop { background: #0009; }
 #browse-entries { max-height: 45vh; overflow: auto; display: grid; gap: .3rem; }
 #browse-entries button { text-align: left; overflow-wrap: anywhere; white-space: normal; }
 [hidden] { display: none !important; }
+.study-partitions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  max-height: 12rem;
+  overflow: auto;
+}
+.study-partitions button[aria-pressed="true"] {
+  background: #126249;
+  border-color: #6de6b6;
+}
 @media (max-width: 720px) {
   .masthead { display: block; }
   .grid { grid-template-columns: 1fr; }

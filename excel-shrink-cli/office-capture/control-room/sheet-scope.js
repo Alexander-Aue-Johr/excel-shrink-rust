@@ -3,6 +3,7 @@
 
 import { createTargetedPanel } from '/observatory-assets/targeted-panel.js';
 import { optionValue, setOption } from '/observatory-assets/processor-options.js';
+import { installStudyConfiguration } from '/observatory-assets/study-configuration.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -59,7 +60,8 @@ function mode() {
 
 function showSections() {
   const selected = mode();
-  byId('configuration').hidden = selected === 'report' || selected === 'study';
+  byId('configuration').hidden = ['report', 'study', 'new-study'].includes(selected);
+  byId('new-study').hidden = selected !== 'new-study';
   byId('saved-report').hidden = selected !== 'report';
   byId('saved-study').hidden = selected !== 'study';
   byId('source-b-row').hidden = selected !== 'compare';
@@ -359,7 +361,7 @@ async function browseDirectory(path, offset = 0) {
 function choosePath(path, directory) {
   if (!browserTarget) return;
   const { input, purpose } = browserTarget;
-  if (directory && ['report-dir', 'export-path'].includes(purpose)) path = appendPath(path, `sheet-scope-${dateLabel()}`);
+  if (directory && ['report-dir', 'export-path', 'study-output-root'].includes(purpose)) path = appendPath(path, `deltasieve-${dateLabel()}`);
   if (directory && purpose === 'output-path') {
     path = appendPath(path, byId('output-kind').value === 'archive' ? `processed-${dateLabel()}.zip` : `processed-${dateLabel()}`);
   }
@@ -569,22 +571,6 @@ byId('configuration').addEventListener('submit', async event => {
     await poll();
   } catch (error) { byId('start').disabled = false; message(error.message, true); }
 });
-byId('resume-study').addEventListener('click', async () => {
-  const button = byId('resume-study');
-  button.disabled = true;
-  try {
-    const result = await api('/api/study/resume', {
-      receipt: byId('study-receipt').value.trim(),
-    });
-    byId('study-link').href = result.url;
-    byId('study-link').hidden = false;
-    message(`Study runner started with PID ${result.pid}. Open its Observatory after startup.`);
-  } catch (error) {
-    message(error.message, true);
-  } finally {
-    button.disabled = false;
-  }
-});
 byId('open-report').addEventListener('click', async () => {
   try {
     const opened = await api('/api/open', { path: byId('open-path').value.trim() });
@@ -641,6 +627,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     processorSchema = session.processor_schema;
     shrinkPreset = session.shrink_preset;
     logicalProcessors = session.logical_processors;
+    installStudyConfiguration({ api, message, defaults: session.study_defaults, logicalProcessors });
     workingDirectory = session.working_directory;
     browseDirectoryDefault = session.browse_directory || workingDirectory;
     populate(session.config);

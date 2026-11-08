@@ -77,6 +77,14 @@ comparison. User-facing DeltaSieve configuration remains a separate command
 grammar. Missing internal service dispatch must fail explicitly rather than
 being interpreted as a workbook or silently selecting another executable.
 
+New archive studies use a versioned web/CLI configuration and a new output root.
+The launcher freezes the source checksum, configuration, request, controls and
+verified executable before starting its runner. Resuming uses the saved launch
+receipt and the existing run lock. A duplicate new-run request cannot overwrite
+that root. A web disconnect does not relinquish ownership of a launch already
+running in the background. Browser handoff requires a successful local health
+response whose study root matches the launched output.
+
 The ordinary shrink CLI bounds workbook orchestration by
 `--max-active-workbooks`. At most that many dispatcher loops claim inputs, and
 each loop claims its next input after completing its current orchestration.
