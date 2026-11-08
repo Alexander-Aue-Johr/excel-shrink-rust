@@ -40,9 +40,20 @@ It does not avoid the preceding cell scan or frequency count.
 
 The implementation passed six focused promotion tests, including a dominant style
 without `apply_font` that still has a valid separate font representative. The
-complete Core library suite passed 277 tests with one ignored benchmark. Runtime
-benefit and real-corpus output identity remain to be measured before deployment
-into the pinned Enron runner. Proposals A, B and C remain unimplemented.
+complete Core library suite passed 277 tests with one ignored benchmark.
+
+A release build containing D was compared against the pinned `abc9e79` binary on
+the report's SHA-256-verified originals for Förderprogramme, Kernhaushalt and
+Verkehrsunfälle. All 1,213 decompressed ZIP members were identical, with no added
+or missing members. Duplicate member names would fail this check. This establishes
+output identity for these three inputs. The probe receipts are retained beneath
+`validation-temp/dominant-font-guard-20261108`, including input paths, binaries,
+individual timings and `member-comparison.json`.
+
+The single observations ran while Enron and, during the baseline, compilation
+were active. They cannot establish speedup. Controlled repeated timing remains
+open before deployment into the pinned Enron runner. Proposals A, B and C remain
+unimplemented.
 
 ## Capacity and continuity
 
