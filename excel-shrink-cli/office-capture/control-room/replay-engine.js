@@ -96,7 +96,7 @@ export function validateReplayManifest(manifest) {
 
 /** Fetch same-origin chunks on demand, retaining at most two decoded arrays. */
 export class ReplayReader {
-  constructor(manifestUrl, fetcher = fetch, base = location.href) {
+  constructor(manifestUrl, fetcher = (url, options) => fetch(url, options), base = location.href) {
     const page = new URL(base);
     this.url = new URL(manifestUrl, page);
     if (!/^https?:$/.test(page.protocol) || this.url.origin !== page.origin

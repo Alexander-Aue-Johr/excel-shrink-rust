@@ -105,3 +105,19 @@ test('cancellation after a response arrives still prevents cache publication', a
   await assert.rejects(reader.stateAt(5, abort.signal), { name: 'AbortError' });
   assert.equal(reader.cache.size, 0);
 });
+
+test('default fetch is called without the reader as its receiver', async () => {
+  const { reader: fixtureReader } = fixture();
+  const previous = globalThis.fetch;
+  try {
+    globalThis.fetch = function (...args) {
+      assert.equal(this, undefined);
+      return fixtureReader.fetcher(...args);
+    };
+    const reader = new ReplayReader('replay/manifest.json', undefined, 'https://example.test/run/index.html');
+    await reader.load();
+    assert.equal((await reader.stateAt(5)).sequence, 0);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
