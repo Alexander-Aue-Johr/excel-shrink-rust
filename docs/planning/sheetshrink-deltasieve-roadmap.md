@@ -1,6 +1,6 @@
 # SheetShrink and DeltaSieve delivery plan
 
-This is the reviewable work queue for the two tools, their Observatory, and their papers. Execute the numbered tasks in order after approval, keeping each task's evidence and remaining work here. Tasks marked as existing work require verification and integration. Their status does not establish that the planned acceptance checks have passed.
+This is the reviewable work queue for the two tools, their Observatory, and their papers. Follow the phased dependencies below after approval, retaining the task numbers as stable references and recording each task's evidence and remaining work here. Tasks marked as existing work require verification and integration. Their status does not establish that the planned acceptance checks have passed.
 
 ## 00 Wait for approval
 
@@ -33,9 +33,34 @@ When an exclusive test window is necessary, checkpoint the run and record why it
 
 ## Priority and dependencies
 
-The approval gate comes first. Establish the baseline and scientific protocols before changing behavior. Deliver unified startup and static result exploration before replay. Prepare paper outlines early and fill them with verified results as they become available. Introduce structural changes in small steps alongside the features they enable.
+The user clarified the release order on 2026-11-08. Complete the planned pipeline
+implementation, including replay and component restructuring, before handing out
+the first distributed evaluation build. The current Enron fallback continues
+throughout. Its completion is independent of this software release gate.
 
-Give correctness, a reproducible evaluation, and a shareable results explorer priority over replay and larger structural work. Preserve a dated evaluation snapshot for submission even if corpus supervision continues afterward. Express its coverage precisely.
+1. Establish the baseline, contracts and evaluation protocol. Prepare the fresh
+   paper projects and outlines in parallel with evidence gathering.
+2. Complete unified web/CLI startup, local addresses, corpus selection,
+   partitions, conversion safeguards, process metrics and inspection access.
+3. Add portable Check Performance preparation and artifact exchange, coverage
+   checks, portable result export and conflict-preserving result collection.
+4. Complete bounded event recording and static replay, and finish the agreed
+   component restructuring in behavior-preserving steps. New distributed runs
+   must record their replay history from startup. Historical missing events
+   remain explicitly unavailable.
+5. Build one versioned evaluation candidate and test ordinary new-run/resume,
+   a machine-without-Check-Performance workflow, cross-machine artifact import,
+   result collection and static replay. Verify checksums and compatible reuse
+   before distributing the same tested build and profiles to the machines.
+6. Gather distributed corpus results, investigate findings, fix confirmed
+   regressions and selectively repeat work whose relevant inputs or outputs
+   changed. Preserve compatible conversion and Check Performance artifacts.
+   Publish a later frozen build with explicit invalidation rules where needed.
+
+The user will deploy the candidate on the available machines and return their
+results. This external distribution does not block completing the software gate
+and local acceptance tests autonomously. Paper drafting continues with verified
+evidence; preserve dated snapshots and exact coverage while runs are unfinished.
 
 Scheduling experiments and new corpus acquisition have bounded initial acceptance criteria. Their depth depends on measured benefit and the paper schedule. Background Enron supervision spans the entire queue. Task 19 remains the final open task until its completion condition is met.
 
@@ -143,6 +168,24 @@ Provide corpus profiles, immutable resolved run settings, configurable partition
 Separate conversion concurrency, shrink processes and threads, visual groups, geometry batch size, capture batch size, and image retention. Preserve independent API adjustment where already supported. Keep memory admission and ownership checks explicit.
 
 Acceptance requires tests for restart, interrupted attempts, duplicate requests, changed methods, changed inputs, changed partitions, and missing evidence. The ordinary Enron configuration must reproduce the intended current settings without a hidden launcher.
+
+Before the distributed release, provide explicit Check Performance modes for
+disabled, local generation/reuse, and imported-artifact use. Include a separate
+preparation job for a selected corpus and partition, without requiring the
+subsequent visual comparisons. Export manifest-backed packages with source and
+converted-baseline identities, ordinary-save controls, pre/post optimization
+states, available rebuild-parent evidence, native completion and generation
+provenance. Import verifies hashes and lineage and previews complete, missing,
+invalid and unsuccessful entries for the exact selected corpus. Missing imported
+artifacts must not silently trigger local optimization on an incapable machine.
+
+Separate transferable artifact identity from producer-machine provenance.
+Historical preparation timing and RAM retain their original machine attribution;
+local opening/rendering measurements remain local. Different Excel environments
+are disclosed and tested as such. Rebuild reuse requires its existing dependency
+and parent-content checks. A source or generation change can invalidate affected
+artifacts; a SheetShrink-only change does not by itself invalidate CP generation.
+Preserve all earlier manifests and outcomes when retrying or upgrading.
 
 ## 07 Verify conversion and environment-dependent formulas
 
@@ -345,6 +388,11 @@ Move code in reviewable steps with clear ownership of domain decisions, orchestr
 
 Acceptance requires a standalone validation entry point, a working integrated shrink-and-validate path, and focused compatibility tests after each extraction.
 
+This task belongs before the first distributed evaluation build. Keep the
+currently running immutable Enron executable and its required assets available
+while moving source components. Preserve compatibility entry points or update
+and test all ordinary launch paths before releasing the new layout.
+
 ## 17 Version the Enron acquisition and extraction profile
 
 - [ ] Reuse the corpus-preparation branch to define a reproducible Enron source profile and extraction workflow.
@@ -368,6 +416,13 @@ Create versioned manifests and checksums for code, profiles, evaluation scripts,
 For a possible shrinker Observatory, determine whether existing traces can support a small useful demonstration of workbook, sheet, and chunk scheduling with slowed playback. Record the decision and remaining work. Give paper evidence and the delivered results explorer priority when scheduling that extension.
 
 Acceptance requires reproducible release instructions, an artifact inventory, verified start and resume examples, a publication-ready export package, and a documented decision on the extension. Final author metadata, author approval, paper submission, and external publication can follow later. Record any required credentials or destination choices in the handoff.
+
+The first distributed evaluation candidate includes the completed replay and
+component layout, as well as the web configuration and portable CP workflow.
+It is a tested evaluation build whose provenance and known limitations are
+frozen. Later regression fixes require a new version and explicit selective
+revalidation decisions. Do not describe the candidate as defect-free or require
+restarting every corpus merely because a new executable was built.
 
 ## 19 Continue sustained pipeline supervision through completion
 
