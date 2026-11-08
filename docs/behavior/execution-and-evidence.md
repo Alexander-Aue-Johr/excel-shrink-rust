@@ -512,6 +512,14 @@ the bounded native tests, retained evidence and current integration scope.
 package contracts, including baseline mismatches and producer/local measurements.
 ## Corpus resume planning
 
+New web-study configurations default to `warm_workers=true`. The configurator
+exposes this choice and freezes `EXCEL_SHRINK_WARM_WORKERS` as `1` or `0` in the
+launch receipt, overriding inherited environment values. Saved configurations
+that predate this field deserialize it as false. Resume uses the existing receipt.
+Warm studies permit at most 32 comparison groups and require the SheetShrink-only
+comparison workflow. Integrated Check Performance requires disabling warm workers.
+Independent Check Performance preparation retains its separate worker pool.
+
 Saved record lookup uses an identity-to-position index during initial selection,
 preparation reuse and comparison construction. Duplicate imported identities
 retain the first-record lookup behavior. The index is rebuilt after preparation

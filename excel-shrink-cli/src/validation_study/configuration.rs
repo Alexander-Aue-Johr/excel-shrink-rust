@@ -25,6 +25,9 @@ pub(crate) struct Configuration {
     pub check_performance: bool,
     pub retain_equal_images: bool,
     pub reuse_webview_profiles: bool,
+    /// Older saved configurations keep their original process lifecycle.
+    #[serde(default)]
+    pub warm_workers: bool,
     pub geometry_batch_ranges: usize,
     pub capture_batch_ranges: usize,
     pub capture_batch_megapixels: usize,
@@ -47,6 +50,7 @@ impl Default for Configuration {
             check_performance: false,
             retain_equal_images: false,
             reuse_webview_profiles: false,
+            warm_workers: true,
             geometry_batch_ranges: 256,
             capture_batch_ranges: 8,
             capture_batch_megapixels: 256,
@@ -109,6 +113,16 @@ impl Configuration {
             self.comparison_groups <= i32::MAX as usize,
             "Invalid comparison group count"
         );
+        if self.warm_workers {
+            ensure!(
+                !self.check_performance,
+                "Warm comparison workers currently require a SheetShrink-only study; prepare Check Performance separately"
+            );
+            ensure!(
+                self.comparison_groups <= 32,
+                "Warm comparison workers support at most 32 groups"
+            );
+        }
         crate::capture_settings::batch_size(
             &json!(self.geometry_batch_ranges),
             256,
@@ -253,6 +267,10 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
         String::new()
     };
     environment.insert("EXCEL_SHRINK_WEBVIEW_PROFILE_POOL".into(), profile_pool);
+    environment.insert(
+        "EXCEL_SHRINK_WARM_WORKERS".into(),
+        if configuration.warm_workers { "1" } else { "0" }.into(),
+    );
     let controls = json!({
         "target_groups":configuration.comparison_groups, "paused":false,
         "prepare_processes":configuration.prepare_processes,
@@ -358,6 +376,7 @@ mod tests {
             receipt.binary_sha256
         );
         assert_eq!(receipt.environment["EXCEL_SHRINK_SQLITE_METADATA"], "1");
+        assert_eq!(receipt.environment["EXCEL_SHRINK_WARM_WORKERS"], "1");
         assert_eq!(receipt.environment["EXCEL_SHRINK_WEBVIEW_PROFILE_POOL"], "");
         assert_eq!(
             receipt.environment["EXCEL_SHRINK_SYSTEM_RESERVE_MIB"],
@@ -367,6 +386,24 @@ mod tests {
         assert!(create(configuration).is_err());
         assert_eq!(fs::read(receipt_path).unwrap(), original_receipt);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn older_configurations_preserve_cold_workers_and_warm_settings_are_bounded() -> Result<()> {
+        let legacy: Configuration = serde_json::from_value(json!({"version":1}))?;
+        assert!(!legacy.warm_workers);
+        let (root, mut configuration) = fixture();
+        assert!(configuration.warm_workers);
+        configuration.check_performance = true;
+        assert!(configuration.validate().is_err());
+        configuration.warm_workers = false;
+        configuration.validate()?;
+        configuration.check_performance = false;
+        configuration.warm_workers = true;
+        configuration.comparison_groups = 33;
+        assert!(configuration.validate().is_err());
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]

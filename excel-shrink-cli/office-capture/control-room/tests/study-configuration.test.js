@@ -6,7 +6,7 @@ test('study fields retain independent typed worker and capture settings', () => 
   const defaults = {
     archive: '', conversion_processes: 1, prepare_processes: 1,
     geometry_batch_ranges: 256, capture_batch_ranges: 8, check_performance: false,
-    reuse_webview_profiles: false,
+    reuse_webview_profiles: false, warm_workers: true,
   };
   const fields = {
     archive: { value: ' G:\\Corpus files\\source.zip ' },
@@ -16,13 +16,14 @@ test('study fields retain independent typed worker and capture settings', () => 
     capture_batch_ranges: { value: '3' },
     check_performance: { checked: true },
     reuse_webview_profiles: { checked: true },
+    warm_workers: { checked: false },
   };
   const form = { elements: { namedItem: name => fields[name] } };
   assert.deepEqual(configurationFromForm(form, defaults), {
     archive: 'G:\\Corpus files\\source.zip', conversion_processes: 32,
     prepare_processes: 4, geometry_batch_ranges: 512,
     capture_batch_ranges: 3, check_performance: true,
-    reuse_webview_profiles: true,
+    reuse_webview_profiles: true, warm_workers: false,
   });
   fields.capture_batch_ranges.value = '';
   assert.throws(() => configurationFromForm(form, defaults), /Missing integer/);

@@ -170,6 +170,8 @@
         <input name="partition" type="hidden" value="0">
         <div id="study-partitions" class="study-partitions" role="group" aria-label="Selected size partition"></div>
       </div>
+      <label class="check wide"><input name="warm_workers" type="checkbox"> Reuse warm Excel workers for SheetShrink comparisons</label>
+      <p class="help wide">Each comparison group owns two reusable Excel workers. Pool capacity is fixed at startup. Disable this option for an integrated Check Performance comparison.</p>
       <label class="check wide"><input name="check_performance" type="checkbox"> Also compare native Check Performance</label>
       <details class="wide"><summary>Capture and evidence settings</summary><div class="grid">
         <label>Geometry ranges per sync<input name="geometry_batch_ranges" type="number" min="1" max="4096" required></label>
