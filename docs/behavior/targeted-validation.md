@@ -1,7 +1,7 @@
 # Targeted visual validation behavior
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v8`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v9`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -16,9 +16,11 @@ is optional; when requested its rebuilt state (CPR) is compared with OR.
    Performance. Retain its pre/post-optimization and ordinary-save XML controls.
 4. Transfer O to OR, SD to SDR and optional CP to CPR. Full-rebuild and save each
    in the same resident process; retain the saved pre-state as an immutable file.
-5. Discover candidate regions from raw/save/rebuild changes and rebuilt-pair
-   dependencies and effective row heights. Retain the union of all input bounds.
-6. Capture selected regions and every chart in the rebuilt states. Compare OR/SDR
+5. Discover candidate regions from the rebuilt comparison partners, their
+   dependencies and effective row heights. Retain raw/save/rebuild changes for
+   attribution and the union of relevant input bounds for clipping coverage.
+6. Capture selected regions and charts selected by the configured chart mode in
+   the rebuilt states. Compare OR/SDR
    and optional OR/CPR. Close every owned instance with confirmed process exit.
 
 The minimum differing-input run uses two resident Excel processes. Check
