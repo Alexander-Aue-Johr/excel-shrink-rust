@@ -317,6 +317,20 @@ fn coverage_preview_retains_ambiguous_generations_without_selecting_one() -> Res
         result["items"][0]["candidates"].as_array().unwrap().len(),
         2
     );
+    let choices = ImportOptions {
+        generations: BTreeMap::from([("source:'0".into(), generation)]),
+        adopt_packaged_baseline: false,
+    };
+    assert_eq!(
+        materialize(&target, &manifest, &root.join("chosen"), &choices)?,
+        1
+    );
+    let invalid = ImportOptions {
+        generations: BTreeMap::from([("source:'0".into(), "f".repeat(64))]),
+        adopt_packaged_baseline: false,
+    };
+    assert!(materialize(&target, &manifest, &root.join("invalid-choice"), &invalid).is_err());
+    assert!(!root.join("invalid-choice").exists());
     Ok(())
 }
 
@@ -327,7 +341,10 @@ fn import_materializes_exact_pairs_with_shared_names_and_producer_evidence() -> 
     export(&source, &package)?;
     let manifest = selection(&root, &["source:'0", "source:'1"])?;
     let target = root.join("imported");
-    assert_eq!(materialize(&package, &manifest, &target)?, 2);
+    assert_eq!(
+        materialize(&package, &manifest, &target, &ImportOptions::default())?,
+        2
+    );
     assert!(!target.join("incomplete.json").exists());
     let index: Value = serde_json::from_slice(&fs::read(target.join("import.json"))?)?;
     assert_eq!(index["visual_validation"], "pending");
@@ -360,7 +377,7 @@ fn import_materializes_exact_pairs_with_shared_names_and_producer_evidence() -> 
         );
     }
     let before = fs::read(target.join("import.json"))?;
-    assert!(materialize(&package, &manifest, &target).is_err());
+    assert!(materialize(&package, &manifest, &target, &ImportOptions::default()).is_err());
     assert_eq!(before, fs::read(target.join("import.json"))?);
     Ok(())
 }
@@ -372,10 +389,115 @@ fn import_rejects_incomplete_selection_before_creating_output() -> Result<()> {
     export(&source, &package)?;
     let manifest = selection(&root, &["source:'0", "failed-source"])?;
     let target = root.join("imported");
-    assert!(materialize(&package, &manifest, &target).is_err());
+    assert!(materialize(&package, &manifest, &target, &ImportOptions::default()).is_err());
     assert!(!target.exists());
     let manifest = selection(&root, &["source:'0"])?;
-    assert!(materialize(&package, &manifest, &package.join("nested")).is_err());
+    assert!(materialize(
+        &package,
+        &manifest,
+        &package.join("nested"),
+        &ImportOptions::default()
+    )
+    .is_err());
     assert!(!package.join("nested").exists());
+    Ok(())
+}
+
+#[test]
+fn explicit_baseline_adoption_requires_raw_identity_for_different_conversions() -> Result<()> {
+    let (root, source) = fixture()?;
+    let raw = json!({"sha256":"a".repeat(64),"format":"xls","member":null});
+    let receipt_path = source.join("input-000000/prepared.json");
+    let mut receipt: Value = serde_json::from_slice(&fs::read(&receipt_path)?)?;
+    receipt["raw_source"] = raw.clone();
+    fs::write(&receipt_path, serde_json::to_vec(&receipt)?)?;
+    let package = root.join("package");
+    export(&source, &package)?;
+    let manifest = selection(&root, &["source:'0"])?;
+    fs::write(root.join("local.xlsx"), b"different conversion")?;
+    let local_hash = artifact_cache::hash_file(&root.join("local.xlsx"))?;
+    let mut selected: Value = serde_json::from_slice(&fs::read(&manifest)?)?;
+    selected["inputs"][0]["baseline_sha256"] = json!(local_hash);
+    selected["inputs"][0]["raw_source"] = raw;
+    fs::write(&manifest, serde_json::to_vec(&selected)?)?;
+    assert!(materialize(
+        &package,
+        &manifest,
+        &root.join("strict"),
+        &ImportOptions::default()
+    )
+    .is_err());
+    let options = ImportOptions {
+        adopt_packaged_baseline: true,
+        ..Default::default()
+    };
+    let target = root.join("adopted");
+    assert_eq!(materialize(&package, &manifest, &target, &options)?, 1);
+    assert_eq!(fs::read(root.join("local.xlsx"))?, b"different conversion");
+    let index: Value = serde_json::from_slice(&fs::read(target.join("import.json"))?)?;
+    assert_eq!(index["entries"][0]["requested_baseline_sha256"], local_hash);
+    assert_ne!(
+        index["entries"][0]["prepared_evidence"]["source_sha256"],
+        local_hash
+    );
+    selected["inputs"][0]["raw_source"]["sha256"] = json!("b".repeat(64));
+    fs::write(&manifest, serde_json::to_vec(&selected)?)?;
+    assert!(materialize(&package, &manifest, &root.join("wrong-raw"), &options).is_err());
+    selected["inputs"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("raw_source");
+    fs::write(&manifest, serde_json::to_vec(&selected)?)?;
+    assert!(materialize(&package, &manifest, &root.join("unproven-raw"), &options).is_err());
+    Ok(())
+}
+
+#[test]
+fn explicit_adoption_can_restore_an_unavailable_matching_baseline() -> Result<()> {
+    let (root, source) = fixture()?;
+    let package = root.join("package");
+    export(&source, &package)?;
+    let manifest = selection(&root, &["source:'0"])?;
+    fs::remove_file(root.join("local.xlsx"))?;
+    let options = ImportOptions {
+        adopt_packaged_baseline: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        materialize(&package, &manifest, &root.join("restored"), &options)?,
+        1
+    );
+    assert!(!root.join("local.xlsx").exists());
+    Ok(())
+}
+
+#[test]
+fn generation_choice_files_validate_version_hashes_and_selected_sources() -> Result<()> {
+    let (root, source) = fixture()?;
+    let path = root.join("choices.json");
+    fs::write(
+        &path,
+        format!(
+            "\u{feff}{}",
+            json!({"version":1,"generations":{"source:'0":"A".repeat(64)}})
+        ),
+    )?;
+    let options = ImportOptions::from_arguments(Some(&path), false)?;
+    assert_eq!(options.generations["source:'0"], "a".repeat(64));
+    fs::write(&path, br#"{"version":2,"generations":{}}"#)?;
+    assert!(ImportOptions::from_arguments(Some(&path), false).is_err());
+    fs::write(&path, br#"{"version":1,"generations":{"id":"../escape"}}"#)?;
+    assert!(ImportOptions::from_arguments(Some(&path), false).is_err());
+    let package = root.join("package");
+    export(&source, &package)?;
+    let manifest = selection(&root, &["source:'1"])?;
+    assert!(materialize(
+        &package,
+        &manifest,
+        &root.join("outside-selection"),
+        &options
+    )
+    .is_err());
+    assert!(!root.join("outside-selection").exists());
     Ok(())
 }

@@ -93,6 +93,11 @@ enum Command {
         source_manifest: PathBuf,
         #[arg(long)]
         output: PathBuf,
+        #[arg(long)]
+        generation_choices: Option<PathBuf>,
+        /// Use verified packaged baselines instead of local converted files.
+        #[arg(long)]
+        adopt_packaged_baseline: bool,
     },
     /// Preview preparation coverage against a selected source manifest.
     PreparationPreview {
@@ -513,8 +518,9 @@ pub(crate) fn run_cli() -> Result<()> {
             println!("Verified {} preparation outcomes", header.entries);
             Ok(())
         }
-        Some(Command::PreparationImport { package, source_manifest, output }) => {
-            let count = crate::validation_preparation::package::materialize(&package, &source_manifest, &output)?;
+        Some(Command::PreparationImport { package, source_manifest, output, generation_choices, adopt_packaged_baseline }) => {
+            let options = crate::validation_preparation::package::ImportOptions::from_arguments(generation_choices.as_deref(), adopt_packaged_baseline)?;
+            let count = crate::validation_preparation::package::materialize(&package, &source_manifest, &output, &options)?;
             println!("Imported {count} prepared pairs to {}", output.display());
             Ok(())
         }

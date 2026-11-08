@@ -1,15 +1,71 @@
 use super::*;
 use crate::validation_preparation;
 
+#[derive(Default, Serialize)]
+pub(crate) struct ImportOptions {
+    pub generations: BTreeMap<String, String>,
+    pub adopt_packaged_baseline: bool,
+}
+
+impl ImportOptions {
+    /// Read explicit choices from a versioned file, never from workbook display names.
+    pub(crate) fn from_arguments(
+        path: Option<&Path>,
+        adopt_packaged_baseline: bool,
+    ) -> Result<Self> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Choices {
+            version: u32,
+            generations: BTreeMap<String, String>,
+        }
+        let mut generations = BTreeMap::new();
+        if let Some(path) = path {
+            let bytes = fs::read(path)?;
+            let choices: Choices =
+                serde_json::from_slice(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes))?;
+            ensure!(
+                choices.version == 1,
+                "Unsupported generation choices version"
+            );
+            for (source, generation) in choices.generations {
+                ensure!(
+                    !source.is_empty() && !source.chars().any(char::is_control),
+                    "Invalid generation choice source ID"
+                );
+                generations.insert(source, validation_preparation::normalized_sha(&generation)?);
+            }
+        }
+        Ok(Self {
+            generations,
+            adopt_packaged_baseline,
+        })
+    }
+}
+
 /// Publish exact paired corpus copies while keeping producer measurements in an identity index.
 /// Every selected occurrence must be compatible before reserving the new destination.
-pub(crate) fn materialize(package: &Path, manifest: &Path, destination: &Path) -> Result<usize> {
+pub(crate) fn materialize(
+    package: &Path,
+    manifest: &Path,
+    destination: &Path,
+    options: &ImportOptions,
+) -> Result<usize> {
     let header = verify(package)?;
     ensure!(
         header.identity_scope == "source-manifest",
         "Corpus reuse requires a source-manifest package"
     );
     let inputs = validation_preparation::read(manifest)?;
+    let selected_ids: std::collections::BTreeSet<_> =
+        inputs.iter().map(|input| &input.source_id).collect();
+    ensure!(
+        options
+            .generations
+            .keys()
+            .all(|id| selected_ids.contains(id)),
+        "Generation choices contain sources outside the selected manifest"
+    );
     let root = fs::canonicalize(package)?;
     let connection = Connection::open_with_flags(
         confined_file(&root, "metadata.sqlite")?,
@@ -19,7 +75,14 @@ pub(crate) fn materialize(package: &Path, manifest: &Path, destination: &Path) -
     let mut statement = connection.prepare("SELECT generation_id, status, provenance_id, payload FROM entries WHERE source_id=?1 ORDER BY generation_id")?;
     let mut selections = Vec::new();
     for input in &inputs {
-        let item = preview::inspect(&mut statement, input)?;
+        let policy = preview::SelectionPolicy {
+            generation: options
+                .generations
+                .get(&input.source_id)
+                .map(String::as_str),
+            adopt_packaged_baseline: options.adopt_packaged_baseline,
+        };
+        let item = preview::inspect(&mut statement, input, &policy)?;
         ensure!(
             item.status == preview::Status::Complete,
             "Source {} is not ready for import: {:?}",
@@ -50,7 +113,15 @@ pub(crate) fn materialize(package: &Path, manifest: &Path, destination: &Path) -
     fs::create_dir(&target).context("Choose a new import destination")?;
     let pending = target.join("incomplete.json");
     artifact_cache::atomic_write(&pending, br#"{"state":"building"}"#)?;
-    let result = write_pairs(&root, &target, &connection, &selections, &inputs, &header);
+    let result = write_pairs(
+        &root,
+        &target,
+        &connection,
+        &selections,
+        &inputs,
+        &header,
+        options,
+    );
     match result {
         Ok(index) => {
             fs::remove_file(&pending)?;
@@ -77,6 +148,7 @@ fn write_pairs(
     selections: &[(&validation_preparation::Input, String)],
     inputs: &[validation_preparation::Input],
     header: &Header,
+    options: &ImportOptions,
 ) -> Result<Value> {
     fs::create_dir(target.join("baseline"))?;
     fs::create_dir(target.join("check-performance"))?;
@@ -111,6 +183,7 @@ fn write_pairs(
         }
         entries.push(
             json!({"source_id":input.source_id,"name":input.name,"pair_file":name,
+            "requested_baseline_sha256":input.expected_sha256,
             "generation_id":generation,"provenance_id":producer,"prepared_evidence":payload}),
         );
     }
@@ -122,7 +195,7 @@ fn write_pairs(
     )?;
     Ok(
         json!({"version":1,"operation":"import-check-performance","package_database_sha256":header.database_sha256,
-        "selection_sha256":validation_preparation::selection_hash(inputs)?,"entries":entries,"provenance":provenance,
+        "selection_sha256":validation_preparation::selection_hash(inputs)?,"entries":entries,"provenance":provenance,"import_options":options,
         "visual_validation":"pending","imported_at":chrono::Utc::now().to_rfc3339()}),
     )
 }

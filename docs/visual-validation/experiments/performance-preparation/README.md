@@ -128,8 +128,21 @@ and the harness restored Enron's four-group target in its finally block.
 
 The generated import index retains the original source identity and producer
 measurements. The standard comparison currently uses the safe paired filename
-as its display name. Direct identity-index presentation, explicit alternative
-baseline adoption and generation selection remain integration requirements.
+as its display name. Direct identity-index presentation remains an integration
+requirement.
+
+Explicit generation selection and packaged-baseline adoption subsequently passed
+fifteen package tests. Different baseline bytes require matching raw-source
+provenance; missing or mismatched provenance remains rejected. Tests also cover
+unavailable local baselines, unknown or out-of-selection generations, UTF-8 BOM
+choice files, unsupported choice versions and unchanged local source bytes.
+
+A file-only CLI acceptance run used the native package with its Saved-Original
+control as an intentionally different consumer baseline. Strict import rejected
+the mismatch without creating output. Import with an explicit generation and
+packaged-baseline adoption succeeded, retaining the requested and adopted hashes
+in `consumer-adopted-06/import.json`. This simulates differing consumer baseline
+bytes on this machine; it is not a second-machine conversion experiment.
 
 ## Repeatable native tests
 

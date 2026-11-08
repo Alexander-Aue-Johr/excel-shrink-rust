@@ -24,7 +24,7 @@ pub(crate) use reader::verify;
 mod preview;
 pub(crate) use preview::preview;
 mod materialize;
-pub(crate) use materialize::materialize;
+pub(crate) use materialize::{materialize, ImportOptions};
 
 #[cfg(test)]
 mod tests;

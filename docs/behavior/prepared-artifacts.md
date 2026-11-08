@@ -4,8 +4,8 @@ This contract defines the next integration step after the persistent-worker
 acceptance experiment. The explicit-input and source-manifest preparation CLI
 interfaces, package export and read-only package verification are implemented.
 Selection coverage preview and strict paired-folder import are also available
-through the CLI. Explicit baseline adoption, generation selection and web
-integration remain implementation requirements.
+through the CLI, including explicit baseline adoption and generation selection.
+Web integration remains an implementation requirement.
 
 ## Source identity and selection
 
@@ -141,8 +141,20 @@ exactly one compatible generation and an unchanged, available local baseline.
 The importer uses the same decision as the coverage preview and rejects the
 entire request before creating output if any selected occurrence is unresolved.
 Select an explicit smaller source manifest when importing a completed subset.
-Ambiguous generations and alternative converted baselines require the future
-explicit selection/adoption workflow.
+For ambiguous generations, supply `--generation-choices choices.json`. The
+version-one file contains `version: 1` and a `generations` object mapping exact
+selected source IDs to generation SHA-256 values from the coverage preview.
+Unknown sources, invalid hashes and generations belonging to another occurrence
+fail before output creation. An unspecified ambiguous occurrence stays unresolved.
+
+`--adopt-packaged-baseline` explicitly selects the package's verified baseline
+without requiring the local converted file to be available or byte-identical.
+If the selected baseline hash differs from the packaged one, raw-source
+provenance must be supplied and match exactly. Source identity checks remain
+active. Multiple eligible generations still require an explicit choice. This
+option never overwrites the local baseline. The import index records the
+requested baseline hash, the chosen generation and import options separately
+from the producer's prepared-state evidence.
 
 The new directory contains `baseline` and `check-performance` folders, a
 `compare.json` configuration and a final `import.json` index. Pair filenames

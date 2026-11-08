@@ -24,6 +24,12 @@ pub(super) struct Item {
     candidates: Vec<Value>,
 }
 
+#[derive(Default)]
+pub(super) struct SelectionPolicy<'a> {
+    pub generation: Option<&'a str>,
+    pub adopt_packaged_baseline: bool,
+}
+
 #[derive(Serialize)]
 pub(crate) struct Preview {
     version: u32,
@@ -64,7 +70,7 @@ pub(crate) fn preview(
     let mut counts = BTreeMap::new();
     let mut items = Vec::new();
     for (index, input) in inputs.iter().enumerate() {
-        let item = inspect(&mut statement, input)?;
+        let item = inspect(&mut statement, input, &SelectionPolicy::default())?;
         let key = serde_json::to_value(&item.status)?
             .as_str()
             .context("Status must be text")?
@@ -85,7 +91,11 @@ pub(crate) fn preview(
     })
 }
 
-pub(super) fn inspect(statement: &mut rusqlite::Statement<'_>, input: &Input) -> Result<Item> {
+pub(super) fn inspect(
+    statement: &mut rusqlite::Statement<'_>,
+    input: &Input,
+    policy: &SelectionPolicy<'_>,
+) -> Result<Item> {
     let mut rows = statement.query([&input.source_id])?;
     let mut candidates = Vec::new();
     while let Some(row) = rows.next()? {
@@ -99,7 +109,7 @@ pub(super) fn inspect(statement: &mut rusqlite::Statement<'_>, input: &Input) ->
             "error":payload["error"]
         }));
     }
-    let (status, detail, selected_generation) = classify(input, &candidates)?;
+    let (status, detail, selected_generation) = classify(input, &candidates, policy)?;
     Ok(Item {
         source_id: input.source_id.clone(),
         name: input.name.clone(),
@@ -113,13 +123,28 @@ pub(super) fn inspect(statement: &mut rusqlite::Statement<'_>, input: &Input) ->
 fn classify(
     input: &Input,
     candidates: &[Value],
+    policy: &SelectionPolicy<'_>,
 ) -> Result<(Status, Option<String>, Option<String>)> {
+    if let Some(generation) = policy.generation {
+        ensure!(
+            candidates
+                .iter()
+                .any(|entry| entry["generation_id"] == generation),
+            "Chosen generation does not belong to source {}",
+            input.source_id
+        );
+    }
     if candidates.is_empty() {
         return Ok((Status::Missing, None, None));
     }
     let prepared: Vec<_> = candidates
         .iter()
-        .filter(|entry| entry["status"] == "prepared")
+        .filter(|entry| {
+            entry["status"] == "prepared"
+                && policy
+                    .generation
+                    .is_none_or(|generation| entry["generation_id"] == generation)
+        })
         .collect();
     if prepared.is_empty() {
         return Ok((Status::Unsuccessful, None, None));
@@ -142,27 +167,32 @@ fn classify(
         .context("Selection baseline hash missing")?;
     let matching = sources
         .iter()
-        .filter(|entry| entry["baseline_sha256"] == expected)
+        .filter(|entry| {
+            entry["baseline_sha256"] == expected
+                || (policy.adopt_packaged_baseline && raw.is_some())
+        })
         .collect::<Vec<_>>();
     if matching.is_empty() {
         return Ok((Status::BaselineMismatch, None, None));
     }
-    match artifact_cache::hash_file(&input.baseline) {
-        Ok(actual) if actual != expected => {
-            return Ok((
-                Status::LocalBaselineChanged,
-                Some("Local baseline differs from the selected manifest".into()),
-                None,
-            ))
+    if !policy.adopt_packaged_baseline {
+        match artifact_cache::hash_file(&input.baseline) {
+            Ok(actual) if actual != expected => {
+                return Ok((
+                    Status::LocalBaselineChanged,
+                    Some("Local baseline differs from the selected manifest".into()),
+                    None,
+                ))
+            }
+            Err(error) => {
+                return Ok((
+                    Status::LocalBaselineUnavailable,
+                    Some(format!("{error:#}")),
+                    None,
+                ))
+            }
+            _ => {}
         }
-        Err(error) => {
-            return Ok((
-                Status::LocalBaselineUnavailable,
-                Some(format!("{error:#}")),
-                None,
-            ))
-        }
-        _ => {}
     }
     if matching.len() > 1 {
         return Ok((Status::AmbiguousGeneration, None, None));
