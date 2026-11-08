@@ -6,7 +6,14 @@ function Get-CaptureHostExecutable([string]$PreferredPath) {
     $candidate = $PreferredPath
     if (-not $candidate) { $candidate = $env:EXCEL_SHRINK_CAPTURE_HOST }
     if (-not $candidate) {
-        $candidate = Join-Path $PSScriptRoot '../../target/release/excel-shrink-cli.exe'
+        foreach ($relative in @('../deltasieve.exe', '../excel-shrink-cli.exe', '../../target/release/excel-shrink-cli.exe')) {
+            $path = Join-Path $PSScriptRoot $relative
+            if ([IO.File]::Exists($path)) {
+                $candidate = $path
+                break
+            }
+        }
+        if (-not $candidate) { throw 'No packaged or development capture host executable was found.' }
     }
     $candidate = [IO.Path]::GetFullPath($candidate)
     if (-not [IO.File]::Exists($candidate) -or [IO.Path]::GetExtension($candidate) -ine '.exe') {

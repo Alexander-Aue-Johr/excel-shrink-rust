@@ -439,7 +439,10 @@ pub(super) fn cleanup_windows(work: &Path) -> Result<()> {
     if !registry.is_file() {
         return Ok(());
     }
-    let script = repo_root().join("excel-shrink-cli/src/regression/archive_processes.ps1");
+    let assets = crate::validation::capture::capture_directory()?;
+    let script = assets.parent().context("Office asset directory has no parent")?
+        .join("src/regression/archive_processes.ps1");
+    anyhow::ensure!(script.is_file(), "Owned-process cleanup helper is missing: {}", script.display());
     let confirmation = artifact_cache::unique_path(work, "cleanup-confirmed")?;
     let mut helper = Command::new("powershell.exe")
         .args([

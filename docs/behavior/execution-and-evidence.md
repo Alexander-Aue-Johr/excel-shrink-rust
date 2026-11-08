@@ -19,6 +19,12 @@ Targeted, resident, paired and classic renderer launchers use this resolver.
 The study Observatory receives its resolved web root explicitly. Targeted
 comparison subprocesses inherit the selected absolute capture directory so
 copying the executable into a run-owned host directory does not change assets.
+The packaged native host can be `deltasieve.exe` or `excel-shrink-cli.exe` beside
+the asset directory. Explicit host parameters and `EXCEL_SHRINK_CAPTURE_HOST`
+retain precedence and reject missing files. The PowerShell renderer and Rust
+owned-process cleanup both require `src/regression/archive_processes.ps1` and
+its `ArchiveProcesses.cs` helper beside the Office asset directory's parent.
+Package these helpers together so cleanup uses the same release tree.
 This resolver change is one release prerequisite. Relocation of the complete
 study runner, regression repository-root assumptions and packaged dependency
 verification still need end-to-end acceptance.
