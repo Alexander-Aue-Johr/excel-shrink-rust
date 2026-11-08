@@ -66,6 +66,9 @@ pub struct RegressionCli {
 
 #[derive(Subcommand, Debug)]
 enum RegressionCommand {
+    /// Prepare Check Performance artifacts in continuously refilled owned Excel workers.
+    #[cfg(windows)]
+    PerformancePrepare(legacy_conversion::performance::Args),
     /// Run the developer-facing smoke regression suite.
     Smoke(RegressionRunArgs),
     /// Run the heavy corpus regression suite.
@@ -450,6 +453,8 @@ static DOWNLOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
     let console_log_level = cli.console_log_level;
     match cli.command {
+        #[cfg(windows)]
+        RegressionCommand::PerformancePrepare(args) => legacy_conversion::performance::run(args),
         RegressionCommand::Archive(args) => archive::run(args, console_log_level),
         RegressionCommand::Study(args) => archive::run_study(args, console_log_level),
         RegressionCommand::TargetedCompare(args) => targeted_comparison::run(args),

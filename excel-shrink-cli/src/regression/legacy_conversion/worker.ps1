@@ -1,12 +1,35 @@
 param(
     [Parameter(Mandatory=$true)][string]$Session,
     [Parameter(Mandatory=$true)][int]$OwnerPid,
-    [Parameter(Mandatory=$true)][long]$OwnerStartedMs
+    [Parameter(Mandatory=$true)][long]$OwnerStartedMs,
+    [string]$DesktopName
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -Path @((Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
+$performanceWorker = [IO.File]::Exists((Join-Path $PSScriptRoot 'performance-pool'))
+if ($performanceWorker) { Add-Type -Path (Join-Path $PSScriptRoot 'ExcelProcessId.cs') }
 Import-Module (Join-Path $PSScriptRoot 'CaptureSetup.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'ExcelConversionErrors.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'WorkerPerformance.psm1') -Force
+
+# PowerShell can create hidden windows before the script starts, preventing
+# SetThreadDesktop. Start one persistent helper on the owned desktop instead.
+if ($performanceWorker -and -not $DesktopName) {
+    $bootstrapOwned = New-Object CaptureProcesses
+    $bootstrapDesktop = [CaptureDesktop]::new()
+    try {
+        $arguments = '-NoProfile -ExecutionPolicy Bypass -File ' + (Quote-Argument $PSCommandPath) +
+            ' -Session ' + (Quote-Argument $Session) + ' -OwnerPid ' + $OwnerPid +
+            ' -OwnerStartedMs ' + $OwnerStartedMs + ' -DesktopName ' + (Quote-Argument $bootstrapDesktop.Name)
+        $helper = $bootstrapDesktop.Start((Join-Path $PSHOME 'powershell.exe'), $arguments, $bootstrapOwned)
+        $helper.WaitForExit()
+        $helperExitCode = $helper.ExitCode
+    } finally {
+        $bootstrapOwned.Dispose()
+        $bootstrapDesktop.Dispose()
+    }
+    exit $helperExitCode
+}
 
 function Write-Receipt([string]$Path, $Value) {
     $pending = $Path + '.pending'
@@ -23,7 +46,11 @@ $excel = $null
 $settings = $null
 $workbook = $null
 $convertedCount = 0
-$desktop = [CaptureDesktop]::new()
+$desktop = $null
+if (-not $DesktopName) {
+    $desktop = [CaptureDesktop]::new()
+    $DesktopName = $desktop.Name
+}
 $checking = $null
 $ownerProcess = [Diagnostics.Process]::GetProcessById($OwnerPid)
 try {
@@ -31,14 +58,14 @@ try {
     # that PID's native window. This avoids global COM activation serialization.
     $seed = Join-Path $Session 'seed.xlsx'
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'seed.xlsx') -Destination $seed
-    $process = $desktop.Start((Find-ExcelExecutable), ('/x /automation ' + (Quote-Argument $seed)), $owned)
+    $process = [CaptureDesktop]::StartOnDesktop($DesktopName, (Find-ExcelExecutable), ('/x /automation ' + (Quote-Argument $seed)), $owned)
     $excelPid = $process.Id
     Write-Receipt (Join-Path $Session 'identity.json') @{
-        pid=$excelPid;desktop=$desktop.Name;started_ms=([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
+        pid=$excelPid;desktop=$DesktopName;started_ms=([DateTimeOffset]$process.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
     }
     $startup = [Diagnostics.Stopwatch]::StartNew()
     while ($null -eq $checking -and $startup.Elapsed.TotalSeconds -lt 110) {
-        $checking = [CaptureErrorChecking]::TryDisable($process, $desktop.Name)
+        $checking = [CaptureErrorChecking]::TryDisable($process, $DesktopName)
         if ($null -eq $checking) { Start-Sleep -Milliseconds 100 }
     }
     if ($null -eq $checking) { throw 'Excel native automation window did not become ready.' }
@@ -54,6 +81,24 @@ try {
     $settings = $excel.ActiveWorkbook
     $settings.EnableAutoRecover = $false
     $excel.Calculation = -4135
+    $excelPath = Find-ExcelExecutable
+    $excelFile = [Diagnostics.FileVersionInfo]::GetVersionInfo($excelPath)
+    $excelStream = [IO.File]::OpenRead($excelPath)
+    $excelHasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $excelHash = [BitConverter]::ToString($excelHasher.ComputeHash($excelStream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $excelHasher.Dispose()
+        $excelStream.Dispose()
+    }
+    $environment = @{
+        machine=$env:COMPUTERNAME;user=$env:USERNAME
+        excel_sha256=$excelHash
+        excel_version=$excelFile.FileVersion
+        culture=[Globalization.CultureInfo]::CurrentCulture.Name
+        ui_culture=[Globalization.CultureInfo]::CurrentUICulture.Name
+        calculation='manual';window_mode='owned-private-desktop'
+    }
     Write-Receipt (Join-Path $Session 'ready.json') @{pid=$excelPid;helper_pid=$PID}
     while ($true) {
         if ($ownerProcess.HasExited -or ([DateTimeOffset]$ownerProcess.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds() -ne $OwnerStartedMs) { break }
@@ -80,6 +125,9 @@ try {
         $phaseTimes = [ordered]@{}
         $phaseClock = [Diagnostics.Stopwatch]::StartNew()
         try {
+            if ([bool]$request.performance -ne $performanceWorker) {
+                throw 'The request operation does not match this dedicated worker pool.'
+            }
             $excel.AutomationSecurity = 3
             $excel.EnableEvents = $false
             $excel.AskToUpdateLinks = $false
@@ -98,15 +146,20 @@ try {
                 worker_session_id=[IO.Path]::GetFileName($Session)
                 excel_pid=$excelPid;workbooks_converted=($convertedCount + 1)
             }
-            $phase = 'saving XLSX conversion'
+            $phase = if ($request.performance) { 'optimizing workbook performance' } else { 'saving XLSX conversion' }
             Set-Phase $request.directory $phase
             $phaseClock.Restart()
-            $workbook.CheckCompatibility = $false
-            $pendingOutput = Join-Path $request.directory 'converted.pending.xlsx'
-            $metrics['shared_editing_removed'] = [bool]$workbook.MultiUserEditing
-            # Only the new conversion copy loses legacy sharing and revision history.
-            $exclusiveAccess = 3
-            $workbook.SaveAs($pendingOutput, 51, $missing, $missing, $false, $false, $exclusiveAccess)
+            $nativeResult = $null
+            if ($request.performance) {
+                $nativeResult = Invoke-WorkerPerformance $excel $workbook $process $request $DesktopName
+            } else {
+                $workbook.CheckCompatibility = $false
+                $pendingOutput = Join-Path $request.directory 'converted.pending.xlsx'
+                $metrics['shared_editing_removed'] = [bool]$workbook.MultiUserEditing
+                # Only the new conversion copy loses legacy sharing and revision history.
+                $exclusiveAccess = 3
+                $workbook.SaveAs($pendingOutput, 51, $missing, $missing, $false, $false, $exclusiveAccess)
+            }
             $phaseTimes[$phase] = $phaseClock.Elapsed.TotalSeconds
             $phase = 'closing workbook'
             Set-Phase $request.directory $phase
@@ -118,8 +171,15 @@ try {
             if ($excel.Workbooks.Count -ne 1) { throw 'Unexpected workbook remained in the conversion session.' }
             $phaseTimes[$phase] = $phaseClock.Elapsed.TotalSeconds
             $metrics['phase_seconds'] = $phaseTimes
-            Move-Item -LiteralPath $pendingOutput -Destination $request.output -Force
-            $response = @{success=$true;metrics=$metrics}
+            if ($request.performance) {
+                $metrics.Remove('workbooks_converted')
+                $metrics['worker_jobs_completed'] = $convertedCount + 1
+                $metrics['measurement_scope'] = 'current workbook in a reused Excel process'
+            }
+            if (-not $request.performance) {
+                Move-Item -LiteralPath $pendingOutput -Destination $request.output -Force
+            }
+            $response = @{success=$true;metrics=$metrics;native_result=$nativeResult;environment=$environment}
             $convertedCount++
         } catch {
             $response = @{success=$false;kind=(Get-LegacyConversionFailureKind $_.Exception.Message $phase);phase=$phase;error=$_.Exception.Message;hresult=$_.Exception.HResult;excel_pid=$excelPid}
@@ -150,7 +210,7 @@ try {
         }
     } finally {
         $owned.Dispose()
-        $desktop.Dispose()
+        if ($null -ne $desktop) { $desktop.Dispose() }
         $ownerProcess.Dispose()
     }
 }

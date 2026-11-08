@@ -383,3 +383,26 @@ additional seconds for its retained Excel handle. An unconfirmed exit remains a
 failure with explicit uncertainty; elapsed deadlines never imply successful
 cleanup. These bounds accommodate delayed teardown under load without adding a
 fixed sleep to ordinary closes.
+
+### Independent Check Performance preparation
+
+`regression performance-prepare` accepts prepared XLSX inputs and a new output
+directory. It runs a separate continuously refilled queue in long-lived owned
+Excel instances. Its worker target is independent of shrinker threads and may
+exceed logical processors. The shared pool enforces a 512 MiB memory-reserve
+floor, closes each workbook before reuse and replaces failed instances.
+UI automation runs on each worker's private desktop, with the previous native
+performance pane closed before requesting a fresh optimization result.
+
+Preparation retains saved-Original and before/after optimization controls, hashes,
+native confirmation, per-input outcomes and producing-environment measurements.
+The initial saved copy uses SaveAs. Optimization controls share that working
+filename, and this operation requests no rebuild. Source workbooks stay read-only,
+macro execution and external-link updates are disabled, and AutoRecover is
+disabled for owned instances and workbooks. Completion requires a positive native
+optimization/no-work response and all expected artifacts. Generation never
+certifies visual equality. A failed input remains failed and causes unsuccessful
+command exit without discarding other completed inputs.
+
+See `../visual-validation/experiments/performance-preparation/README.md` for
+the bounded native tests, retained evidence and current integration scope.

@@ -21,11 +21,14 @@ pub(in crate::regression) fn convert(
             directory: PathBuf::from(super::super::excel_automation::power_shell_path(
                 &directory,
             )?),
+            performance: false,
         };
         let result = run_request(root, &session, &request);
         drop(lease);
         match result {
-            Ok(Some(mut metrics)) => {
+            Ok(Some(response)) => {
+                let mut metrics: ExcelOpenMetrics =
+                    serde_json::from_value(response["metrics"].clone())?;
                 if attempt > 0 {
                     metrics.startup_retries = Some(attempt);
                 }
@@ -46,7 +49,7 @@ pub(in crate::regression) fn convert(
     unreachable!("bounded conversion retry")
 }
 
-fn lease_session(root: &Path) -> Result<(PathBuf, File)> {
+pub(super) fn lease_session(root: &Path) -> Result<(PathBuf, File)> {
     let started = Instant::now();
     let wait_path = std::env::var_os("EXCEL_SHRINK_PREPARATION_WAIT").map(PathBuf::from);
     let previous = wait_path
@@ -97,12 +100,20 @@ fn publish_wait(path: &Option<PathBuf>, previous: u64, started: Instant) -> Resu
 }
 
 /// Timeout is measured per observable COM phase, excluding the capacity wait above.
-fn run_request(root: &Path, session: &Path, request: &Request) -> Result<Option<ExcelOpenMetrics>> {
+pub(super) fn run_request(root: &Path, session: &Path, request: &Request) -> Result<Option<Value>> {
+    let operation = if request.performance {
+        "Check Performance"
+    } else {
+        "conversion"
+    };
     write_json(&session.join("request.json"), request)?;
-    let timeout = super::super::visual_diagnostics::seconds_from_env(
+    let mut timeout = super::super::visual_diagnostics::seconds_from_env(
         "EXCEL_SHRINK_AUTOMATION_STALL_SECONDS",
         120.0,
     );
+    if request.performance {
+        timeout = timeout.max(Duration::from_secs(180));
+    }
     let mut last_phase = Value::Null;
     let mut last_progress = Instant::now();
     loop {
@@ -113,11 +124,14 @@ fn run_request(root: &Path, session: &Path, request: &Request) -> Result<Option<
             }
             if response["success"] == true {
                 anyhow::ensure!(
-                    request.output.is_file(),
-                    "conversion response has no output workbook"
+                    if request.performance {
+                        request.output.is_dir()
+                    } else {
+                        request.output.is_file()
+                    },
+                    "Excel response has no output artifact"
                 );
-                let metrics = serde_json::from_value(response["metrics"].clone())?;
-                return Ok(Some(metrics));
+                return Ok(Some(response));
             }
             retire_and_wait(session)?;
             let work = request
@@ -135,7 +149,7 @@ fn run_request(root: &Path, session: &Path, request: &Request) -> Result<Option<
                 return Ok(None);
             }
             anyhow::bail!(
-                "Excel conversion {} during {}: {}",
+                "Excel {operation} {} during {}: {}",
                 response["kind"].as_str().unwrap_or("failed"),
                 response["phase"].as_str().unwrap_or("unknown phase"),
                 response["error"]
@@ -161,7 +175,7 @@ fn run_request(root: &Path, session: &Path, request: &Request) -> Result<Option<
                 serde_json::to_vec(&failure)?,
             )?;
             anyhow::bail!(
-                "Excel conversion timed out during {}; inspect {}",
+                "Excel {operation} timed out during {}; inspect {}",
                 last_phase["phase"],
                 request.directory.display()
             );

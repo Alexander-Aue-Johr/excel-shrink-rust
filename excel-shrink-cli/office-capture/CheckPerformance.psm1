@@ -94,6 +94,19 @@ function Invoke-WorkbookPerformanceOptimization {
     if ($Session.process.HasExited) { throw 'Owned Check Performance Excel process exited.' }
     Write-PerformanceTrace 'Activating owned workbook'
     $Session.workbook.Activate()
+    if ($Session.reset_pane) {
+        $existingRoot = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]$excel.Hwnd)
+        if ($null -ne (Get-PerformancePaneState $existingRoot)) {
+            $excel.CommandBars.ExecuteMso('CheckPerformance')
+            $closeDeadline = [DateTime]::UtcNow.AddSeconds(5)
+            while ($null -ne (Get-PerformancePaneState $existingRoot)) {
+                if ([DateTime]::UtcNow -ge $closeDeadline) {
+                    throw 'Previous workbook performance pane did not close.'
+                }
+                Start-Sleep -Milliseconds 100
+            }
+        }
+    }
     Write-PerformanceTrace 'Opening Check Performance'
     $excel.CommandBars.ExecuteMso('CheckPerformance')
     Write-PerformanceTrace 'Check Performance command returned'

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 mod client;
+pub(super) mod performance;
 use crate::process_job as job;
 #[cfg(test)]
 mod tests;
@@ -32,6 +33,8 @@ struct Request {
     input: PathBuf,
     output: PathBuf,
     directory: PathBuf,
+    #[serde(default)]
+    performance: bool,
 }
 
 pub(super) struct Pool {
@@ -44,6 +47,13 @@ pub(super) struct Pool {
 }
 
 impl Pool {
+    /// Keep UI-automation helpers on each optimization worker's private desktop.
+    pub fn new_performance(root: PathBuf) -> Result<Self> {
+        let pool = Self::new(root)?;
+        fs::write(pool.root.join("performance-pool"), b"check-performance")?;
+        Ok(pool)
+    }
+
     /// Publish one immutable helper program and seed workbook for this run.
     pub fn new(root: PathBuf) -> Result<Self> {
         let owner_started_ms = crate::native_process::current_started_unix_ms()
@@ -70,6 +80,20 @@ impl Pool {
         fs::write(
             root.join("ExcelConversionErrors.psm1"),
             format!("\u{feff}{}", include_str!("../ExcelConversionErrors.psm1")),
+        )?;
+        for name in [
+            "CheckPerformance.psm1",
+            "NativeWindow.cs",
+            "ExcelProcessId.cs",
+        ] {
+            fs::copy(
+                crate::validation::capture::capture_directory()?.join(name),
+                root.join(name),
+            )?;
+        }
+        fs::write(
+            root.join("WorkerPerformance.psm1"),
+            format!("\u{feff}{}", include_str!("performance.psm1")),
         )?;
         write_seed(&root.join("seed.xlsx"))?;
         fs::write(root.join("heartbeat"), b"running")?;
@@ -139,7 +163,7 @@ impl Pool {
         }
         anyhow::ensure!(
             self.startup_failures < 3,
-            "persistent Excel conversion startup failed three times; inspect pool session logs"
+            "persistent Excel worker startup failed three times; inspect pool session logs"
         );
         let active = self
             .workers
