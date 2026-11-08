@@ -23,6 +23,7 @@ mod visual_profile;
 mod capture_watchdog;
 mod validation;
 mod validation_sources;
+mod validation_corpora;
 mod validation_process;
 mod validation_report;
 mod validation_room;

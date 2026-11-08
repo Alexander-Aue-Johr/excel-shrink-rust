@@ -24,6 +24,20 @@ names and an archive changed during cataloging. It does not extract workbooks.
 
 ## Integration and download status
 
+The regular SheetShrink and DeltaSieve executables provide a read-only check.
+
+```powershell
+sheetshrink.exe corpus-inspect --profile destatis --artifacts 'V:\artifacts\destatis'
+deltasieve.exe corpus-inspect --profile datagov --artifacts 'V:\artifacts\datagov' --details
+```
+
+The default response contains counts. `--details` also returns missing and changed
+workbook names. Existing files must match both length and SHA-256. Symlink files
+and resolved paths outside the supplied artifact root are rejected. The command
+does not download, extract, modify originals or start Excel. A successful command
+can report incomplete coverage through `complete: false`; callers must inspect
+that field before treating the corpus as locally available.
+
 The ordinary configurator and artifact acquisition path still need to consume
 these manifests. Their presence does not establish that local artifact reuse,
 partition selection or first-run downloading has been integrated or accepted.

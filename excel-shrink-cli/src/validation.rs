@@ -86,6 +86,16 @@ enum Command {
     Open { report: PathBuf },
     /// Copy a completed report into a new, publishable static website directory.
     Export { report: PathBuf, output: PathBuf },
+    /// Verify extracted originals against a versioned corpus manifest without Excel.
+    CorpusInspect {
+        #[arg(long)]
+        profile: String,
+        #[arg(long)]
+        artifacts: PathBuf,
+        /// Include the names of missing and changed workbooks.
+        #[arg(long)]
+        details: bool,
+    },
     /// Collect finished reports with verified evidence and separate run provenance.
     Merge {
         #[arg(required = true, num_args = 2..)]
@@ -580,6 +590,22 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         }
         Some(Command::Template) => {
             println!("{}", serde_json::to_string_pretty(&RunConfig::default())?);
+            Ok(())
+        }
+        Some(Command::CorpusInspect {
+            profile,
+            artifacts,
+            details,
+        }) => {
+            let mut inspection = crate::validation_corpora::inspect(&profile, &artifacts)?;
+            if !details {
+                let summary = inspection
+                    .as_object_mut()
+                    .context("Invalid corpus inspection")?;
+                summary.remove("missing");
+                summary.remove("changed");
+            }
+            println!("{}", serde_json::to_string_pretty(&inspection)?);
             Ok(())
         }
         Some(Command::Merge { reports, output }) => {
