@@ -188,6 +188,17 @@ lifecycles and reuse checks.
 
 ## Local web package controls
 
+Check Performance preparation publishes a compact `progress.json` after pool
+initialization, at most once per second while running, and after the terminal
+outcome ledger. It records total, claimed, prepared, failed, queued, in-flight
+and unresolved counts plus requested concurrency and elapsed time. In-flight
+includes claimed requests waiting for worker admission; it is not the count of
+live Excel processes. Native worker ownership remains in the pool's evidence.
+A stale progress snapshot alone does not establish process liveness. Status
+queries can read this bounded counter document without scanning input receipts.
+Publication failure aborts the pool before leaving the manager loop so clients
+cannot remain waiting on an unserviced pool.
+
 The configuration workflow includes Check Performance package transfer. It uses
 the same package functions as the CLI through token-protected local POST routes
 `/api/preparation/preview`, `/api/preparation/import` and

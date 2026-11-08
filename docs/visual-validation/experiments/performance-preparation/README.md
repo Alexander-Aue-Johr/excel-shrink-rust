@@ -169,6 +169,14 @@ acceptance did not launch Excel, change the production Enron host or visually
 inspect the web layout. Browser layout acceptance and native preparation-job
 controls remain open.
 
+The preparation manager now emits one compact progress snapshot per second,
+plus initial and terminal snapshots. Four focused non-native preparation tests
+passed, covering queued/in-flight/terminal accounting, worker-count validation,
+legacy request compatibility and expected-baseline rejection before Excel lease.
+The existing ignored native test additionally asserts the completed progress
+receipt; it was not rerun for this telemetry-only change. The background web-job
+start/status integration remains open.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working

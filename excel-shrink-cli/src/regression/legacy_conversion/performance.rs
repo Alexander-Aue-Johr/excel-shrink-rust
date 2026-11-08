@@ -6,6 +6,38 @@ use std::sync::{
     Mutex,
 };
 
+#[derive(Default)]
+struct ProgressCounters {
+    prepared: AtomicUsize,
+    failed: AtomicUsize,
+}
+
+/// Publish compact counters without rescanning per-workbook receipts for web status queries.
+fn publish_progress(
+    output: &Path,
+    counters: &ProgressCounters,
+    started: usize,
+    total: usize,
+    workers: usize,
+    elapsed: Duration,
+    status: &str,
+) -> Result<()> {
+    let prepared = counters.prepared.load(Ordering::Acquire);
+    let failed = counters.failed.load(Ordering::Acquire);
+    let completed = prepared + failed;
+    let started = started.min(total).max(completed);
+    write_json(
+        &output.join("progress.json"),
+        &json!({
+            "version":1,"operation":"check-performance","status":status,
+            "total":total,"started":started,"prepared":prepared,"failed":failed,
+            "in_flight":started.saturating_sub(completed),"queued":total.saturating_sub(started),
+            "unresolved":total.saturating_sub(completed),"requested_workers":workers,
+            "elapsed_seconds":elapsed.as_secs_f64(),"updated_at":chrono::Utc::now().to_rfc3339()
+        }),
+    )
+}
+
 #[derive(clap::Args, Debug)]
 pub(crate) struct Args {
     /// Prepared XLSX inputs. Legacy conversion remains a separate operation.
@@ -43,8 +75,19 @@ pub(crate) fn run(args: Args) -> Result<()> {
     let mut pool = Pool::new_performance(output.join("workers"))?;
     let pool_root = pool.root.clone();
     let next = AtomicUsize::new(0);
+    let counters = ProgressCounters::default();
+    let started_at = Instant::now();
     let outcomes = Mutex::new(Vec::new());
     let count = args.workers.min(inputs.len());
+    publish_progress(
+        &output,
+        &counters,
+        0,
+        inputs.len(),
+        args.workers,
+        started_at.elapsed(),
+        "running",
+    )?;
     let pool_result = std::thread::scope(|scope| -> Result<()> {
         let handles: Vec<_> = (0..count)
             .map(|_| {
@@ -55,6 +98,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
                     };
                     let directory = output.join(format!("input-{index:06}"));
                     let result = prepare(&pool_root, input, &directory);
+                    let succeeded = result.is_ok();
                     let outcome = json!({
                         "index": index,
                         "source_id": input.source_id,
@@ -73,13 +117,34 @@ pub(crate) fn run(args: Args) -> Result<()> {
                         .lock()
                         .expect("preparation outcomes lock poisoned")
                         .push(outcome);
+                    if succeeded {
+                        counters.prepared.fetch_add(1, Ordering::Release);
+                    } else {
+                        counters.failed.fetch_add(1, Ordering::Release);
+                    }
                 })
             })
             .collect();
+        let mut last_progress = Instant::now();
         while handles.iter().any(|handle| !handle.is_finished()) {
             if let Err(error) = pool.reconcile(count, 512) {
                 pool.abort(&error)?;
                 return Err(error);
+            }
+            if last_progress.elapsed() >= Duration::from_secs(1) {
+                if let Err(error) = publish_progress(
+                    &output,
+                    &counters,
+                    next.load(Ordering::Acquire),
+                    inputs.len(),
+                    args.workers,
+                    started_at.elapsed(),
+                    "running",
+                ) {
+                    pool.abort(&error)?;
+                    return Err(error);
+                }
+                last_progress = Instant::now();
             }
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -115,6 +180,19 @@ pub(crate) fn run(args: Args) -> Result<()> {
             "failed": failed,
             "inputs": outcomes
         }),
+    )?;
+    publish_progress(
+        &output,
+        &counters,
+        next.load(Ordering::Acquire),
+        inputs.len(),
+        args.workers,
+        started_at.elapsed(),
+        if pool_result.is_ok() && failed == 0 {
+            "completed"
+        } else {
+            "failed"
+        },
     )?;
     pool_result?;
     anyhow::ensure!(
@@ -225,6 +303,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn compact_progress_counts_queued_in_flight_and_terminal_outcomes() -> Result<()> {
+        let output =
+            std::env::temp_dir().join(format!("performance-progress-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&output)?;
+        let counters = ProgressCounters::default();
+        counters.prepared.store(2, Ordering::Release);
+        counters.failed.store(1, Ordering::Release);
+        publish_progress(
+            &output,
+            &counters,
+            5,
+            10,
+            32,
+            Duration::from_secs(12),
+            "running",
+        )?;
+        let progress = read_json(&output.join("progress.json")).unwrap();
+        assert_eq!(progress["prepared"], 2);
+        assert_eq!(progress["failed"], 1);
+        assert_eq!(progress["in_flight"], 2);
+        assert_eq!(progress["queued"], 5);
+        assert_eq!(progress["unresolved"], 7);
+        assert_eq!(progress["requested_workers"], 32);
+        assert_eq!(progress["elapsed_seconds"], 12.0);
+        counters.prepared.store(9, Ordering::Release);
+        publish_progress(
+            &output,
+            &counters,
+            42,
+            10,
+            32,
+            Duration::from_secs(20),
+            "failed",
+        )?;
+        let progress = read_json(&output.join("progress.json")).unwrap();
+        assert_eq!(progress["started"], 10);
+        assert_eq!(progress["in_flight"], 0);
+        assert_eq!(progress["queued"], 0);
+        assert_eq!(progress["unresolved"], 0);
+        assert_eq!(progress["status"], "failed");
+        Ok(())
+    }
+
+    #[test]
     fn rejects_zero_workers_before_creating_output() {
         let output = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
         let error = run(Args {
@@ -285,6 +407,11 @@ mod tests {
             output: output.clone(),
             workers: 1,
         })?;
+        let progress =
+            read_json(&output.join("progress.json")).context("Progress receipt missing")?;
+        assert_eq!(progress["status"], "completed");
+        assert_eq!(progress["prepared"], 2);
+        assert_eq!(progress["unresolved"], 0);
         let first = read_json(&output.join("input-000000/prepared.json"))
             .context("First receipt missing")?;
         let second = read_json(&output.join("input-000001/prepared.json"))
