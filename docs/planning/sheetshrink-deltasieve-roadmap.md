@@ -604,6 +604,12 @@ retain their full remaining requirements.
   and retained cleaned outputs. Both owned test hosts were closed. Receipts are
   under `G:\deltasieve-work\application-entry-20261108`. Browser layout and a new
   native end-to-end SheetShrink web run remain acceptance work.
+- Subsequent ordinary browser/native acceptance completed both an identical
+  output and an actually cleaned input through the SheetShrink entry point.
+  Independent XML checks confirmed exactly 2,010 empty cells removed and seven
+  numeric cells preserved. Both zero-candidate paths retained their explicit
+  limits. See `docs/visual-validation/experiments/sheetshrink-web-entry-20261108.md`.
+  Changed-region capture and responsive layout remain acceptance work.
 - Cleanup-only web execution, full component extraction, unified corpus profiles
   and the remaining release gates remain open. These application entry points
   are an incremental structural change. Tasks 04–08 and 16 retain their scope.
