@@ -29,6 +29,19 @@ The discovered author-hosted ICDE 2023 `subtab-full.pdf` URL returned HTTP 404
 when opened on 2026-11-08. Its search snippet is insufficient evidence for a
 paper-design recommendation. Locate another primary full-text copy before use.
 
-## Remaining design evidence
+## ICDE example with verified research-track placement
+
+Gavriilidis, Beedkar, Quiané-Ruiz, and Markl, *In-Situ Cross-Database Query
+Processing*, ICDE 2023, DOI `10.1109/ICDE55515.2023.00214`. The conference program
+lists this paper in Research Session 10. Its author-hosted preprint was inspected
+for the introduction, evaluation setup and additional Related Work. The first
+page motivates the bottleneck with a measured breakdown figure. Evaluation states
+hardware, software versions, workload selection and measurement boundaries.
+Related Work is organized by technical approaches, supplementing earlier baseline
+discussion. For our drafts, infer a compact bottleneck figure and explicit
+measurement boundaries. These observations do not establish why the paper was
+accepted. [Author preprint](https://web.iitd.ac.in/~kbeedkar/publication/xdb-icde-23/GavriilidisBQM23_preprint.pdf), [official program](https://icde2023.ics.uci.edu/detailed-program/)
+
+## Further design evidence
 
 Inspect complete evaluation and Related Work sections, verify additional ICDE examples, and examine representative first-page layouts at publication size. Record the difference between an observed writing practice and a recommendation inferred for these manuscripts. The first-page Observatory figure remains an open design decision.
