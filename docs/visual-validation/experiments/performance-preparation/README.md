@@ -153,6 +153,22 @@ launcher logs. The static-site test verifies original-name selection and retaine
 producer metrics. This update did not repeat native rendering. Preparation web
 controls and richer metric presentation remain separate integration work.
 
+Package transfer now has a dedicated local web workflow. Four room tests passed,
+covering operation reservations, failure release, request fields, origin checks
+and bounded status behavior. Two package-control DOM/data tests cover explicit
+adoption, request paths, paging restoration, invalidated form state and separate
+configuration review. The existing two study-form tests also passed.
+
+An isolated server on port 18886 exercised the native fixture's package through
+the ordinary HTTP endpoints. Coverage reported one complete occurrence; import
+and export each retained one occurrence. The returned comparison configuration
+included its imported identity index. A tokenless POST was rejected, the module
+was served, and the room returned to inactive afterward. The owned test server
+was stopped. `package-web-acceptance.json` retains this private receipt. This
+acceptance did not launch Excel, change the production Enron host or visually
+inspect the web layout. Browser layout acceptance and native preparation-job
+controls remain open.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working

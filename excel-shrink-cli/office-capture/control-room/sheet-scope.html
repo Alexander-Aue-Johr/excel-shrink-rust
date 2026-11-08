@@ -26,7 +26,31 @@
         <label><input type="radio" name="mode" value="report"> Open a saved report</label>
         <label><input type="radio" name="mode" value="study"> Resume a corpus study</label>
         <label><input type="radio" name="mode" value="new-study"> Start a corpus study</label>
+        <label><input type="radio" name="mode" value="prepared"> Transfer Check Performance preparations</label>
       </div>
+    </section>
+
+    <section id="preparation-packages" class="panel" hidden>
+      <h2>Check Performance preparation packages</h2>
+      <p class="help">Inspect coverage before importing. Import creates paired workbook copies and a comparison configuration. Start validation separately after reviewing that configuration.</p>
+      <form id="preparation-import" class="grid">
+        <label class="wide">Package directory<span class="path"><input id="preparation-package" name="package" required><button type="button" data-browse="preparation-package">Browse…</button></span></label>
+        <label class="wide">Selected sources manifest<span class="path"><input id="preparation-sources" name="source_manifest" required><button type="button" data-browse="preparation-sources" data-kind="file">Browse…</button></span></label>
+        <label class="wide">New import directory<input name="output" placeholder="A new directory on your working drive"></label>
+        <label class="wide">Generation choices file, when needed<span class="path"><input id="preparation-generations" name="generation_choices"><button type="button" data-browse="preparation-generations" data-kind="file">Browse…</button></span></label>
+        <label class="check wide"><input name="adopt_packaged_baseline" type="checkbox"> Explicitly use the packaged baseline, preserving local files</label>
+        <div class="actions wide"><button id="preview-preparation" type="button">Check coverage</button><button type="submit">Import selected pairs</button><button id="use-preparation" type="button" hidden>Review comparison configuration</button></div>
+      </form>
+      <p id="preparation-summary" role="status"></p>
+      <div class="actions"><button id="preparation-previous" type="button" disabled>Previous 100</button><button id="preparation-next" type="button" disabled>Next 100</button></div>
+      <div id="preparation-items"></div>
+      <details><summary>Export completed preparation outcomes</summary>
+        <form id="preparation-export" class="grid">
+          <label class="wide">Completed preparation directory<input name="preparation" required></label>
+          <label class="wide">New transfer package directory<input name="output" required></label>
+          <button type="submit">Export verified package</button>
+        </form>
+      </details>
     </section>
 
     <form id="configuration">
@@ -40,6 +64,7 @@
             <span class="path"><input id="source-b" placeholder="Independent folder, workbook, ZIP file or archive URL"><button type="button" data-browse="source-b" data-kind="folder">Folder…</button><button type="button" data-browse="source-b" data-kind="file">File…</button></span>
           </label>
           <p class="help wide">Names are matched by relative path, then by unique filename. Ambiguous matches remain explicit failures. Visual comparison currently requires XLSX on both sides.</p>
+          <label id="preparation-index-row" class="wide">Prepared source identity index (optional)<span class="path"><input id="preparation-index" placeholder="import.json from a preparation package"><button type="button" data-browse="preparation-index" data-kind="file">Browse…</button></span><span class="help">Keeps original names and producer measurements and verifies the imported workbook bytes. Leave empty for an independent comparison.</span></label>
           <label>Validation partitions<input id="partition-count" type="number" min="1" max="1024" value="1"></label>
           <label>Selected partition<input id="partition-index" type="number" min="1" max="1" value="1"></label>
           <p class="help wide">Stable filename hashing selects paired workbooks after matching. Processing steps still cover the complete source. Use processing-stage reuse to avoid repeating preparation.</p>

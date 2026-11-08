@@ -4,6 +4,7 @@
 import { createTargetedPanel } from '/observatory-assets/targeted-panel.js';
 import { optionValue, setOption } from '/observatory-assets/processor-options.js';
 import { installStudyConfiguration } from '/observatory-assets/study-configuration.js';
+import { installPreparationPackages } from '/observatory-assets/preparation-packages.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -60,11 +61,13 @@ function mode() {
 
 function showSections() {
   const selected = mode();
-  byId('configuration').hidden = ['report', 'study', 'new-study'].includes(selected);
+  byId('configuration').hidden = ['report', 'study', 'new-study', 'prepared'].includes(selected);
+  byId('preparation-packages').hidden = selected !== 'prepared';
   byId('new-study').hidden = selected !== 'new-study';
   byId('saved-report').hidden = selected !== 'report';
   byId('saved-study').hidden = selected !== 'study';
   byId('source-b-row').hidden = selected !== 'compare';
+  byId('preparation-index-row').hidden = selected !== 'compare';
   byId('processing').hidden = selected !== 'process';
   byId('output-settings').hidden = selected !== 'process';
   byId('output-path-row').hidden = byId('output-kind').value === 'temporary';
@@ -80,6 +83,7 @@ function populate(config) {
   const check = (id, value) => { byId(id).checked = Boolean(value); };
   set('source-a', config.source_a);
   set('source-b', config.source_b);
+  set('preparation-index', config.preparation_index);
   set('report-dir', config.report_dir);
   set('parallel', config.max_processes ?? 1);
   set('partition-count', config.partition?.count ?? 1);
@@ -113,6 +117,7 @@ function populate(config) {
 
 function readConfiguration() {
   const config = structuredClone(configuration);
+  config.preparation_index = mode() === 'compare' ? byId('preparation-index').value.trim() || null : null;
   const value = id => byId(id).value.trim();
   config.source_a = value('source-a');
   config.source_b = mode() === 'compare' ? value('source-b') : null;
@@ -366,6 +371,7 @@ function choosePath(path, directory) {
     path = appendPath(path, byId('output-kind').value === 'archive' ? `processed-${dateLabel()}.zip` : `processed-${dateLabel()}`);
   }
   input.value = path;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
   byId('browser').close();
   browserTarget = null;
 }
@@ -628,6 +634,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     shrinkPreset = session.shrink_preset;
     logicalProcessors = session.logical_processors;
     installStudyConfiguration({ api, message, defaults: session.study_defaults, logicalProcessors });
+    installPreparationPackages({ api, message, onImported: populate });
     workingDirectory = session.working_directory;
     browseDirectoryDefault = session.browse_directory || workingDirectory;
     populate(session.config);

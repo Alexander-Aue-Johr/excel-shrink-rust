@@ -60,6 +60,12 @@ td:first-child { overflow-wrap: anywhere; }
 summary { cursor: pointer; font-weight: 550; padding: .25rem 0; }
 details > .grid { margin-top: 1rem; }
 #message { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem 0; }
+#preparation-items pre {
+  max-height: 20rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 #message.error { color: #ffc1b8; }
 dialog { color: inherit; background: #172231; border: 1px solid #5c7599; border-radius: .8rem; width: min(850px, 94vw); max-height: 90vh; padding: 1.5rem; }
 dialog::backdrop { background: #0009; }

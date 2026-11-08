@@ -28,6 +28,8 @@ const HTML: &str = include_str!("../office-capture/control-room/sheet-scope.html
 const JS: &str = include_str!("../office-capture/control-room/sheet-scope.js");
 const CSS: &str = include_str!("../office-capture/control-room/sheet-scope.css");
 
+mod preparation;
+
 struct Room {
     port: u16,
     token: String,
@@ -107,6 +109,9 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         .route("/api/study/ready", get(study_ready))
         .route("/api/open", post(open_report))
         .route("/api/export", post(export_report))
+        .route("/api/preparation/preview", post(preparation::preview))
+        .route("/api/preparation/import", post(preparation::import))
+        .route("/api/preparation/export", post(preparation::export))
         .route("/reports/{id}/{*path}", get(report_asset))
         .nest_service(
             "/observatory-assets",

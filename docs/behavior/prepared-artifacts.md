@@ -5,7 +5,8 @@ acceptance experiment. The explicit-input and source-manifest preparation CLI
 interfaces, package export and read-only package verification are implemented.
 Selection coverage preview and strict paired-folder import are also available
 through the CLI, including explicit baseline adoption and generation selection.
-Web integration remains an implementation requirement.
+The local web configurator also exposes package transfer controls. Native
+preparation-job configuration and full visual browser acceptance remain open.
 
 ## Source identity and selection
 
@@ -185,7 +186,24 @@ SheetShrink evaluation can explicitly adopt the same packaged baseline where
 needed. Native generation, artifact import and visual verdicts retain separate
 lifecycles and reuse checks.
 
-## Acceptance gates
+## Local web package controls
+
+The configuration workflow includes Check Performance package transfer. It uses
+the same package functions as the CLI through token-protected local POST routes
+`/api/preparation/preview`, `/api/preparation/import` and
+`/api/preparation/export`. File verification and copying run on blocking workers
+with the room's exclusive operation reservation. Status queries remain separate.
+The operation retains its reservation if its HTTP caller disconnects.
+
+Coverage details are paged in groups of 100. Candidate identities are displayed
+as text, with generation-choice and explicit baseline-adoption controls for
+import. Input changes invalidate the previously imported configuration action.
+Import returns a configuration for separate review and start; it does not open
+Excel or start validation. A supplied prepared identity index is visible and
+editable in the ordinary comparison configuration. Export preserves native
+failed outcomes as part of the package denominator.
+
+## Remaining acceptance gates
 
 Test valid transfer, relocation, partial coverage, failed inputs, hash corruption,
 source/baseline changes, duplicate occurrences, multiple generations, changed
