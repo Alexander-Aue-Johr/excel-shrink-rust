@@ -54,3 +54,40 @@ completed in 15.43 seconds, excluding Rust compilation. Its local receipt is
 under the configured temporary directory. This is one small, serial trial.
 The earlier launch-to-add-in-ready numbers have a broader scope and must not be
 presented as a directly matched speedup over these COM-only open measurements.
+
+## Office.js readiness after switching
+
+`office-ready.ps1` is a separate exploratory harness using the existing native
+ownership helpers. It retains one seed workbook and Excel process, one manifest
+ID, one isolated browser profile and one resident HTTP host. Each test workbook
+is copied, receives the normal auto-open metadata, and is opened read-only through
+the owned COM application. The host verifies its new workbook name.
+
+The harness dispatches no comparison commands. It uses the existing authenticated
+startup reset between files, which is explicitly rejected after data work begins.
+This does not implement the generation boundary needed between real comparisons.
+
+The successful trial `office-ready-switch-20261108-06` produced four distinct
+Office.js document IDs in the same window-verified Excel PID. The process was
+confirmed ended and input hashes were unchanged.
+
+| Request | Input | COM open, seconds | Open through verified Office.js ready, seconds |
+| --- | --- | ---: | ---: |
+| 1 | Original | 1.693 | 2.634 |
+| 2 | SheetShrink | 0.386 | 1.109 |
+| 3 | Original | 0.280 | 1.114 |
+| 4 | SheetShrink | 0.339 | 0.777 |
+
+Worker readiness before these requests took 4.928 seconds. Trial 04 instead
+created a new manifest ID and HTTP host per file. Its first workbook became ready
+in 2.239 seconds, but the second timed out waiting for Office.js. This suggests
+retaining the registration/host is worth pursuing; it does not isolate which
+change resolved the failure. Earlier setup trials failed on unavailable hashing
+cmdlets, a missing workbook helper, an incorrect zero-based worksheet index and
+an omitted launcher token. They provide no successful switching measurements.
+
+The final harness also checks that only the seed remains after each close and
+that all four document IDs differ. Trial 07 passed these added assertions and
+again confirmed final Excel exit and unchanged source hashes. Captures, pixels,
+rebuilds, multiple workers and post-comparison generation changes remain
+untested in this probe.
