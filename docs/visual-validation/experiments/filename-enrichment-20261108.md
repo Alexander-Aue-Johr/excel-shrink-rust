@@ -56,7 +56,25 @@ source values never receive OR/SDR captured-value labels. The fixture-specific
 diagnostic reader also recognizes the first retained source directly.
 
 This acceptance checks the API and presentation logic. A fresh browser layout
-check and production-host deployment remain subsequent steps. Existing static
+check remains a subsequent step. Existing static
 exports are not rewritten or automatically enriched. The limited diagnostic
 parser retains its existing reference, text and search budgets independently
 of scientific capture coverage.
+
+## Production host checkpoint
+
+After the isolated acceptance and commit `27c3956`, the old standalone host was
+stopped before its replacement started at the existing port 18777. The scientific
+runner PID 50844 retained its executable and creation time. The replacement is
+PID 36180 with binary SHA-256
+`89e7935efec9e11eb0a753c805e37dd6b60baafb2baa88c967f09e2533066ee9`.
+It returned the supplementary environment path through the production API.
+Enron was observed at 7,320 completed comparisons with four active groups and ten
+skips. The prepared rollback was not needed. Deployment settings and ownership
+are retained under `G:\deltasieve-work\host-filename-enrichment-20261108`.
+
+The first replacement command stopped before any process mutation because a
+CIM timestamp had omitted the seventh fractional digit. The guard was resolved
+against the exact process creation time and executable/command identity before
+performing the replacement. No two hosts were run concurrently on the production
+root. Browser sessions need a reload to discard their earlier diagnostic cache.
