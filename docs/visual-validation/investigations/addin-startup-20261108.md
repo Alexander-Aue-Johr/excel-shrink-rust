@@ -42,3 +42,22 @@ Commit `abb5713c` introduced separate WebView profiles after peer taskpanes
 restarted when another group cleaned up a shared browser process. The rationale
 and peer experiment are recorded in `docs/visual-validation/cleanup-isolation.md`.
 A single-pair startup experiment cannot establish concurrent cleanup safety.
+
+For attempt 07, a separate copy of the Office runtime assets removed both
+assignments of `WEBVIEW2_USER_DATA_FOLDER`. Each assignment was replaced with
+removal of the environment override, allowing Office to select its default
+profile. The ordinary runtime sources retained isolation. The first invocation
+(attempt 06) failed before Excel because the copied runtime lacked its sibling
+archive cleanup helper. That failed invocation provides no startup measurement.
+The helper and its C# companion were included before attempt 07.
+
+| Attempt | Profile policy | Original ready, seconds | SheetShrink ready, seconds |
+| --- | --- | ---: | ---: |
+| 05 | Fresh isolated profiles | 4.569 | 4.724 |
+| 07 | Office default, no environment override | 6.297 | 6.595 |
+
+Attempt 07 completed with the comparison's existing limitations and confirmed
+both owned Excel client exits. Disabling the override did not improve startup
+in this sequential single-pair comparison. These observations do not establish
+cold-start performance, explain the earlier 31-second pre-WebView delay, or
+retest independent-group cleanup. Keep profile isolation in the normal runner.
