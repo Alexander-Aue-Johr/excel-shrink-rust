@@ -121,6 +121,62 @@ mod tests {
     use super::*;
     use std::io::Read;
 
+    /// Exercise a corpus-sized recording without Excel and retain the measured storage costs.
+    #[test]
+    #[ignore = "writes 100,000 checkpoints to REPLAY_COST_OUTPUT on a working drive"]
+    fn corpus_sized_recording_retains_bounded_chunks() -> Result<()> {
+        let root = PathBuf::from(std::env::var("REPLAY_COST_OUTPUT")?);
+        let started = Instant::now();
+        let mut recorder = Recorder::new(root.clone())?;
+        let mut maximum_pending_bytes = 0;
+        for sequence in 0..100_000u64 {
+            recorder.record_at(
+                sequence * 1_000,
+                json!({
+                    "state":"comparing","current":format!("synthetic workbook {}", sequence / 5),
+                    "total":20_000,"completed":sequence / 5,"failed":0,"reused":0,
+                    "different_pairs":sequence / 500,"checked_equal_pairs":sequence / 5,
+                }),
+            )?;
+            maximum_pending_bytes = maximum_pending_bytes.max(recorder.pending_bytes);
+        }
+        recorder.finish()?;
+        let recording_seconds = started.elapsed().as_secs_f64();
+        let mut verified_events = 0u64;
+        let mut compressed_bytes = 0u64;
+        let mut maximum_decoded_chunk_bytes = 0;
+        for chunk in &recorder.chunks {
+            let bytes = fs::read(root.join(chunk["file"].as_str().unwrap()))?;
+            assert_eq!(format!("{:x}", Sha256::digest(&bytes)), chunk["sha256"]);
+            compressed_bytes += bytes.len() as u64;
+            let mut decoded = Vec::new();
+            flate2::read::GzDecoder::new(&bytes[..]).read_to_end(&mut decoded)?;
+            maximum_decoded_chunk_bytes = maximum_decoded_chunk_bytes.max(decoded.len());
+            assert!(decoded.len() <= MAX_CHUNK_BYTES + 64);
+            let events: Vec<Value> = serde_json::from_slice(&decoded)?;
+            assert!(events.len() <= MAX_CHUNK_EVENTS);
+            for event in events {
+                assert_eq!(event["sequence"], verified_events);
+                assert_eq!(event["at_ms"], verified_events * 1_000);
+                verified_events += 1;
+            }
+        }
+        assert_eq!(verified_events, 100_000);
+        assert!(maximum_pending_bytes <= MAX_CHUNK_BYTES);
+        let report = json!({
+            "synthetic":true,"events":verified_events,"chunks":recorder.chunks.len(),
+            "recording_seconds":recording_seconds,"compressed_chunk_bytes":compressed_bytes,
+            "manifest_bytes":fs::metadata(root.join("manifest.json"))?.len(),
+            "journal_bytes":fs::metadata(root.join("chunks.jsonl"))?.len(),
+            "maximum_pending_serialized_bytes":maximum_pending_bytes,
+            "maximum_decoded_chunk_bytes":maximum_decoded_chunk_bytes,
+            "limitations":"serialized-byte bounds do not measure allocator or process peak memory"
+        });
+        fs::write(root.join("cost.json"), serde_json::to_vec_pretty(&report)?)?;
+        println!("{report}");
+        Ok(())
+    }
+
     #[test]
     fn checkpoints_roll_into_independent_bounded_chunks() -> Result<()> {
         let root = std::env::temp_dir().join(format!("replay-{}", uuid::Uuid::new_v4()));

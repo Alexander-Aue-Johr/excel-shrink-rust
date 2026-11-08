@@ -93,6 +93,11 @@ exercise. The private acceptance receipt is retained under
 
 ## Remaining delivery gates
 
-Long-run cost measurements and shared live process-component playback remain open.
+A [100,000-checkpoint recording experiment](../visual-validation/experiments/replay-cost-20261108.md)
+verified all retained event identities and bounded chunk sizes. It measured
+17.369 seconds of recording wall time and approximately 3.30 MB of logical
+history files in one debug-build trial alongside Enron. Process peak memory,
+allocation overhead and broader long-run costs remain unmeasured.
+Shared live process-component playback remains open.
 Process/sheet/capture/heartbeat recording and long-run memory/cost acceptance
 remain open too. This storage channel alone does not complete roadmap Task 15.
