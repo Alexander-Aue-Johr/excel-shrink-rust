@@ -220,6 +220,38 @@ original measurements were preserved, and baseline bytes matched. The private
 operation was required for this acceptance. A mixed native cache-hit/cache-miss
 run and controlled owner-interruption recovery remain acceptance work.
 
+## Interrupted-owner recovery acceptance
+
+The bounded native web experiment on 2026-11-08 selected two logical occurrences
+of one small XLSX fixture. The second occurrence used a synthetic source identity
+to exercise a missing result. These two occurrences are acceptance controls and
+do not contribute to empirical corpus counts.
+
+With one worker, the first input reached its durable successful receipt. The
+test then terminated its own isolated preparation host before the second receipt
+or terminal batch ledger existed. Interruption occurred after approximately
+23.27 seconds. The original worker Excel process departed within ten seconds.
+The stale progress snapshot remained running, demonstrating why a snapshot alone
+cannot establish owner liveness.
+
+A fresh host continued into a new destination with two requested workers. It
+reused the first input and created one native worker for the missing input.
+Both inputs completed, with one reuse and zero failures, in approximately
+28.06 seconds. The first receipt retained its worker session, producer identity
+and measurements. Its original bytes remained unchanged. The second input used
+a distinct session, and the pool reported stopped after completion. Both test
+Excel processes were confirmed absent afterward.
+
+Private evidence is retained under
+`G:\deltasieve-work\performance-pool-native-20261108`, including
+`run-crash-resume-acceptance.ps1`, `crash-resume-acceptance.json`, the frozen
+selection, and both preparation directories. This is functional recovery
+evidence under concurrent Enron load. Automatic in-place job reattachment,
+browser layout acceptance and live worker-target adjustment remain open.
+
+Both isolated hosts were closed and Enron admission was restored to four.
+A subsequent live query confirmed four active groups and continuing completions.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working
