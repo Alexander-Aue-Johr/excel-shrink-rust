@@ -11,6 +11,8 @@ import zipfile
 
 SPREADSHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 NS = {"s": SPREADSHEET}
+ET.register_namespace("", SPREADSHEET)
+ET.register_namespace("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
 
 
 def create_controls(seed: Path, output: Path) -> None:
@@ -18,8 +20,10 @@ def create_controls(seed: Path, output: Path) -> None:
     with zipfile.ZipFile(seed) as source:
         workbook = ET.fromstring(source.read("xl/workbook.xml"))
         sheets = workbook.findall("s:sheets/s:sheet", NS)
-        if len(sheets) != 1:
-            raise ValueError("The seed must contain exactly one worksheet")
+        worksheet_parts = [name for name in source.namelist()
+                           if name.startswith("xl/worksheets/") and name.endswith(".xml")]
+        if not sheets or worksheet_parts != ["xl/worksheets/sheet1.xml"]:
+            raise ValueError("The seed must contain exactly one worksheet at sheet1.xml")
         sheets[0].set("name", "Sheet1")
         for label, value, cached in [("a", 2, 999), ("b", 3, 1111)]:
             sheet = ET.fromstring(source.read("xl/worksheets/sheet1.xml"))
@@ -101,6 +105,28 @@ def verify_pool(directory: Path) -> None:
     print(f"Verified {len(expected)} pool snapshots, including the unaffected peer's stale cache.")
 
 
+def create_chart_controls(output: Path) -> None:
+    """Add one embedded chart and one chart sheet to the existing formula control."""
+    from openpyxl import Workbook
+    from openpyxl.chart import BarChart, Reference
+
+    output.mkdir(parents=True, exist_ok=False)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Sheet1"
+    sheet.append([2, "=A1*3"])
+    embedded = BarChart()
+    embedded.add_data(Reference(sheet, min_col=2, min_row=1, max_row=1))
+    sheet.add_chart(embedded, "D3")
+    chart_sheet = workbook.create_chartsheet("ChartControl")
+    standalone = BarChart()
+    standalone.add_data(Reference(sheet, min_col=2, min_row=1, max_row=1))
+    chart_sheet.add_chart(standalone)
+    seed = output / "chart-base.xlsx"
+    workbook.save(seed)
+    create_controls(seed, output / "controls")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -111,10 +137,14 @@ if __name__ == "__main__":
     check.add_argument("result", type=Path)
     pool = commands.add_parser("verify-pool")
     pool.add_argument("directory", type=Path)
+    charts = commands.add_parser("create-chart-controls")
+    charts.add_argument("output", type=Path)
     arguments = parser.parse_args()
     if arguments.command == "create":
         create_controls(arguments.seed, arguments.output)
     elif arguments.command == "verify":
         verify(arguments.result)
-    else:
+    elif arguments.command == "verify-pool":
         verify_pool(arguments.directory)
+    else:
+        create_chart_controls(arguments.output)

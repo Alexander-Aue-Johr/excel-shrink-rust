@@ -922,7 +922,7 @@ try {
     if ($poolLease -and $poolWorkbookClosed) {
         try {
             if ($hostProcess -and -not $hostProcess.WaitForExit(10000)) { throw 'Capture host exit unconfirmed.' }
-            Release-WorkbookPoolLease $poolConnection $poolLease
+            Remove-WorkbookPoolLease $poolConnection $poolLease
             $metrics.pool_lease_released = $true
         } catch {
             $metrics.status = 'failed'

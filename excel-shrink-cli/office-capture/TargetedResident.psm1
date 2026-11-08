@@ -4,6 +4,7 @@ $sessions = @{}
 $script:responseWatcher = $null
 $utf8 = [Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'TargetedSessionIdentity.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'WorkbookPool.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartWarnings.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedDialogText.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'TargetedChartSheets.psm1') -Force -DisableNameChecking
@@ -515,6 +516,14 @@ function SaveAs-TargetedWorkbook {
     param($Command)
     $entry = $sessions[$Command.lane]
     if ($null -eq $entry) { throw 'Save As requires an open owned workbook.' }
+    if ($entry.pooled) {
+        $destination = Join-Path ([IO.Path]::GetDirectoryName($entry.staged)) 'one-save-as.xlsx'
+        Invoke-ResidentPoolCommand $entry 'save_as' $destination | Out-Null
+        $entry.staged = $destination
+        Copy-Item -LiteralPath $destination -Destination $Command.output
+        Remove-TargetedTaskpane @{path=$Command.output;staged=$entry.staged}
+        return @{saved=$true;method='Workbook.SaveAs';format=51;output=$Command.output}
+    }
     $scope = [CaptureErrorChecking]::TryDisable($entry.process, (Get-TargetedSessionDesktop $entry))
     if ($null -eq $scope) { throw 'Owned Excel workbook is inaccessible.' }
     $excel = $null; $book = $null

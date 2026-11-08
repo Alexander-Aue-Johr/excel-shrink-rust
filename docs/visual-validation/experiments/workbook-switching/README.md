@@ -397,3 +397,31 @@ This acceptance uses two tiny worksheet-only fixtures. Standalone chart-sheet
 native operations, native chart fallback, optional Check Performance and corpus
 scheduler ownership are still separate integration gates. Do not start a corpus
 through this path until its required gates pass.
+
+### Native chart acceptance on 2026-11-09
+
+The retained C# session now enumerates chart sheets and exports chart sheets or
+embedded charts. It preserves the existing chart-sheet viewport/page-size recipe,
+restores temporary window/sheet state and bounds render retries. Embedded exports
+retain the chart-order/name check and zero-area classification. Save As also uses
+the pool command path when a resident is pooled.
+
+`create-chart-controls` creates a small embedded chart plus ChartControl chart
+sheet around the stale-cache fixtures. Trial `workbook-pool-charts-20261108-09`
+passed two complete v10 comparisons using the same PIDs 31224 and 33240. Each
+comparison detected the intentional difference in both charts, with unchanged
+capture geometry. Two forced native embedded exports matched byte-for-byte.
+Owner-death replacement, source hashes and final cleanup passed. The independent
+verifier checked all five serialized caches. Four focused Rust tests and the
+C# framing/import test passed.
+
+Failed setup attempts remain evidence. The factory first rejected the extra chart
+sheet, then serialized relationship attributes using an unrecognized namespace
+prefix. The factory now preserves the standard r prefix. A module import warning
+then polluted the JSON protocol. Renaming the unapproved release verb and adding
+a warning-fatal import check fixed it. An expanded probe initially waited on the
+wrong previously recorded process for owner-death cleanup. It now retains the
+abandoned lease's exact process. Finally ChartObjects.Item required method dispatch
+as well as property access. Isolated trials 06–08 localized and corrected that
+binding before the final combined trial passed. These results do not establish
+optional Check Performance or corpus scheduler ownership.

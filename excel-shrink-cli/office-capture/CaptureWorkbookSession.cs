@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 /// The caller owns process termination and transfers one COM application reference.
 /// A failed operation faults the session, requiring its owner to discard the process.
 /// </summary>
-public sealed class CaptureWorkbookSession : IDisposable
+public sealed partial class CaptureWorkbookSession : IDisposable
 {
     // Excel's automation object model uses LCID 1033 independently of display language.
     static readonly CultureInfo AutomationCulture = CultureInfo.GetCultureInfo(1033);

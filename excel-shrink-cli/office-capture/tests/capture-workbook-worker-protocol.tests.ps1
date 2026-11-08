@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot '../TargetedResident.psm1') -Force -DisableNameChecking -WarningAction Stop
 $root = Split-Path -Parent $PSScriptRoot
-$sources = @('CaptureProcesses.cs', 'CaptureDesktop.cs', 'CaptureWorkbookSession.cs', 'CaptureWorkbookWorker.cs') |
+$sources = @('CaptureProcesses.cs', 'CaptureDesktop.cs', 'CaptureWorkbookSession.cs', 'CaptureWorkbookCharts.cs', 'CaptureWorkbookWorker.cs') |
     ForEach-Object { Join-Path $root $_ }
 Add-Type -Path $sources -ReferencedAssemblies @('System', 'System.Core', 'System.Web.Extensions')
 $read = [CaptureWorkbookWorker].GetMethod('ReadCommand', [Reflection.BindingFlags]'NonPublic,Static')

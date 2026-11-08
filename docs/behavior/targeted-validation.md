@@ -1203,3 +1203,12 @@ uses warm-workbook-open-to-addin-ready-v1 rather than the cold-launch measuremen
 label. Background error checking is confirmed by the retained C# owner.
 The normal worksheet capture/rebuild path passed two serial comparisons reusing
 both worker identities. Chart fallback and scheduler integration remain pending.
+
+Pooled native chart enumeration/export executes through the retained C# workbook.
+It follows the existing normalized chart-sheet viewport and restores temporary
+view state. Embedded fallback checks the requested collection index and chart
+name, preserves geometry and treats zero area as non-rendering. Any native export
+or restoration failure retires the worker. Two complete controlled comparisons
+and forced repeated native embedded exports passed with shared worker identities.
+Module imports in the JSON host must remain warning-free, enforced by the worker
+protocol test. Corpus scheduler ownership remains a separate gate.

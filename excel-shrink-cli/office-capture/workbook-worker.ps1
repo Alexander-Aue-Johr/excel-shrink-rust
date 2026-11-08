@@ -4,7 +4,7 @@ param(
     [ValidateSet('immediate','owned')][string]$Startup = 'immediate'
 )
 $ErrorActionPreference = 'Stop'
-$sources = @('CaptureProcesses.cs', 'CaptureDesktop.cs', 'CaptureWorkbookSession.cs', 'CaptureWorkbookWorker.cs') |
+$sources = @('CaptureProcesses.cs', 'CaptureDesktop.cs', 'CaptureWorkbookSession.cs', 'CaptureWorkbookCharts.cs', 'CaptureWorkbookWorker.cs') |
     ForEach-Object { Join-Path $PSScriptRoot $_ }
 Add-Type -Path $sources -ReferencedAssemblies @('System', 'System.Core', 'System.Web.Extensions')
 if ($Startup -eq 'owned' -and [Console]::ReadLine() -ne 'start') {

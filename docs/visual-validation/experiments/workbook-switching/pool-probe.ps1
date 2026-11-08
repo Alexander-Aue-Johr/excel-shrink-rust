@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Original,
     [Parameter(Mandatory=$true)][string]$Candidate,
     [Parameter(Mandatory=$true)][string]$Output,
-    [switch]$ResidentComparisons
+    [switch]$ResidentComparisons,
+    [switch]$NativeChartControls
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new pool probe directory.' }
@@ -152,6 +153,30 @@ try {
             if (-not $response.IsSuccessStatusCode -or -not $reply.ok -or $reply.id -ne $job.id) { throw 'Concurrent open failed.' }
         } finally { $response.Dispose(); $job.request.Dispose() }
     }
+    if ($NativeChartControls) {
+        $embedded = @{sheet='Sheet1';chart='Chart 1'}
+        if ($ResidentComparisons) {
+            $embedded = @($report.comparisons | ForEach-Object { $_.charts } | Where-Object { $_.kind -eq 'embedded' })[0]
+        }
+        if (-not $embedded) { throw 'Native chart control requires an embedded chart.' }
+        $previousHash = $null
+        for ($export = 0; $export -lt 2; $export++) {
+            $image = Join-Path $Output ('native-embedded-' + $export + '.png')
+            $id = [Guid]::NewGuid().ToString()
+            $reply = Pool-Request ('/command/' + $first.slot) @{
+                id=$id;kind='export_chart';path=$image;chart_kind='embedded'
+                sheet=$embedded.sheet;chart=$embedded.chart;chart_index=0
+            } $first
+            Write-PoolProbeJson (Join-Path $Output ('native-chart-response-' + $export + '.json')) $reply
+            if (-not $reply.ok -or $reply.id -ne $id -or $reply.result.path -ne $image -or
+                $reply.result.geometry.width -le 0 -or $reply.result.geometry.height -le 0) {
+                throw 'Native embedded chart export returned invalid evidence.'
+            }
+            $hash = (Get-FileHash -LiteralPath $image).Hash
+            if ($previousHash -and $hash -ne $previousHash) { throw 'Repeated native embedded chart export changed pixels.' }
+            $previousHash = $hash
+        }
+    }
     Pool-Command $first 'save_copy' (Join-Path $Output 'first-before.xlsx')
     Pool-Command $first 'rebuild' ''
     Pool-Command $first 'save_copy' (Join-Path $Output 'first-after.xlsx')
@@ -175,8 +200,10 @@ try {
     $helper = $desktop.Start((Join-Path $PSHOME 'powershell.exe'), '-NoProfile -Command "Start-Sleep -Seconds 60"', $owned)
     $abandoned = Pool-Request '/acquire' (Owner-Request $helper) $null
     Pool-Command $abandoned 'open' $Original
+    Remember-Excel $abandoned
+    $abandonedProcess = $excelProcesses[-1]
     if (-not [CaptureProcesses]::Stop($helper)) { throw 'Probe owner exit unconfirmed.' }
-    if (-not $excelProcesses[0].WaitForExit(10000)) { throw 'Abandoned workbook worker remained alive.' }
+    if (-not $abandonedProcess.WaitForExit(10000)) { throw 'Abandoned workbook worker remained alive.' }
     Pool-Command $second 'save_copy' (Join-Path $Output 'survivor.xlsx')
     $replacement = $null
     $replacementClock = [Diagnostics.Stopwatch]::StartNew()
@@ -203,6 +230,7 @@ try {
         acquire_retry_reused=$true;release_retry_safe=$true
         save_as_identity_verified=$true
         writable_staged_copy=$true
+        native_chart_controls=[bool]$NativeChartControls
     }
 } finally {
     $http.Dispose()

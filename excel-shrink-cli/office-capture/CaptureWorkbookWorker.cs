@@ -49,12 +49,26 @@ public static class CaptureWorkbookWorker
                         Guid identity;
                         if (!Guid.TryParse(requestId, out identity)) throw new InvalidDataException("Command ID must be a GUID.");
                         string kind = RequiredString(request, "kind");
+                        object result = null;
                         if (kind == "open") session.OpenReadOnly(RequiredString(request, "path"));
                         else if (kind == "open_working_copy") session.OpenWorkingCopy(RequiredString(request, "path"));
                         else if (kind == "close") session.CloseCurrent();
                         else if (kind == "rebuild") session.Rebuild();
                         else if (kind == "save_copy") session.SaveCopy(RequiredString(request, "path"));
                         else if (kind == "save_as") session.SaveAs(RequiredString(request, "path"));
+                        else if (kind == "chart_sheets") result = session.ChartSheets();
+                        else if (kind == "export_chart")
+                        {
+                            string chartKind = RequiredString(request, "chart_kind");
+                            if (chartKind != "chart_sheet" && chartKind != "embedded")
+                                throw new InvalidDataException("Unknown native chart kind.");
+                            bool chartSheet = chartKind == "chart_sheet";
+                            object index;
+                            int? chartIndex = request.TryGetValue("chart_index", out index) && index != null
+                                ? (int?)Convert.ToInt32(index) : null;
+                            result = session.ExportChart(chartSheet ? "" : RequiredString(request, "sheet"),
+                                RequiredString(request, "chart"), chartSheet, chartIndex, RequiredString(request, "path"));
+                        }
                         else if (kind == "stop")
                         {
                             session.CloseCurrent();
@@ -62,7 +76,7 @@ public static class CaptureWorkbookWorker
                             return;
                         }
                         else throw new InvalidDataException("Unknown workbook worker command.");
-                        Reply(json, new { id = requestId, ok = true, pid = process.Id });
+                        Reply(json, new { id = requestId, ok = true, pid = process.Id, result = result });
                     }
                     catch (Exception error)
                     {

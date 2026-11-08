@@ -1,6 +1,7 @@
 # Standalone chart sheets use the existing PID-validated resident, never a new Excel application.
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'TargetedSessionIdentity.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'WorkbookPool.psm1') -Force
 
 function Invoke-OwnedChartOperation {
     <# .SYNOPSIS
@@ -41,6 +42,9 @@ function Get-TargetedChartSheets {
         }).Count -gt 0
     } finally { $archive.Dispose() }
     if (-not $hasChartSheets) { return }
+    if ($Entry.pooled) {
+        return (Invoke-ResidentPoolCommand $Entry 'chart_sheets' '').result
+    }
     Invoke-OwnedChartOperation $Entry {
         param($Book, $Charts)
         for ($index = 1; $index -le $Charts.Count; $index++) {
@@ -60,6 +64,10 @@ function Export-TargetedChartSheet {
     Exports a chart sheet at a consistent viewport, restoring the previous view without saving.
     #>
     param($Entry, $Command)
+    if ($Entry.pooled) {
+        return (Invoke-ResidentPoolCommand $Entry 'export_chart' $Command.output `
+            @{chart_kind='chart_sheet';chart=$Command.chart}).result
+    }
     Invoke-OwnedChartOperation $Entry {
         param($Book, $Charts)
         $chart = $null
@@ -144,6 +152,10 @@ function Export-TargetedEmbeddedChart {
     Restores the active sheet and visibility without saving the temporary render state.
     #>
     param($Entry, $Command)
+    if ($Entry.pooled) {
+        return (Invoke-ResidentPoolCommand $Entry 'export_chart' $Command.output `
+            @{chart_kind='embedded';sheet=$Command.sheet;chart=$Command.chart;chart_index=$Command.chart_index}).result
+    }
     Invoke-OwnedChartOperation $Entry {
         param($Book, $Charts)
         $active = $null

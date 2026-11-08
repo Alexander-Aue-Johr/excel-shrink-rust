@@ -56,20 +56,32 @@ function Get-WorkbookPoolLease {
 }
 
 function Invoke-WorkbookPoolCommand {
-    param($Connection, $Lease, [string]$Kind, [string]$Path, [int]$TimeoutSeconds = 120)
+    param($Connection, $Lease, [string]$Kind, [string]$Path, [int]$TimeoutSeconds = 120, $Details = @{})
     $id = [Guid]::NewGuid().ToString()
+    $request = @{id=$id;kind=$Kind;path=$Path}
+    foreach ($key in $Details.Keys) {
+        if ($request.ContainsKey($key)) { throw 'Pool command details cannot replace transport identity.' }
+        $request[$key] = $Details[$key]
+    }
     $reply = Invoke-WorkbookPoolRequest $Connection ('/command/' + $Lease.slot) `
-        @{id=$id;kind=$Kind;path=$Path} $Lease $TimeoutSeconds
+        $request $Lease $TimeoutSeconds
     if (-not $reply.ok -or $reply.id -ne $id -or $reply.pid -ne $Lease.process.pid) {
         throw ('Workbook pool command failed: ' + [string]$reply.error)
     }
     return $reply
 }
 
-function Release-WorkbookPoolLease {
+function Invoke-ResidentPoolCommand {
+    param($Entry, [string]$Kind, [string]$Path, $Details = @{})
+    $connection = Read-WorkbookPoolConnection $env:EXCEL_SHRINK_WORKBOOK_POOL_CONNECTION
+    $lease = [IO.File]::ReadAllText((Join-Path $Entry.session 'pool-lease.json')) | ConvertFrom-Json
+    Invoke-WorkbookPoolCommand $connection $lease $Kind $Path 120 $Details
+}
+
+function Remove-WorkbookPoolLease {
     param($Connection, $Lease)
     $reply = Invoke-WorkbookPoolRequest $Connection ('/release/' + $Lease.slot) @{} $Lease 10
     if ($reply.ok -ne $true) { throw 'Workbook pool did not confirm release.' }
 }
 
-Export-ModuleMember -Function Read-WorkbookPoolConnection, Get-WorkbookPoolLease, Invoke-WorkbookPoolCommand, Release-WorkbookPoolLease
+Export-ModuleMember -Function Read-WorkbookPoolConnection, Get-WorkbookPoolLease, Invoke-WorkbookPoolCommand, Remove-WorkbookPoolLease, Invoke-ResidentPoolCommand
