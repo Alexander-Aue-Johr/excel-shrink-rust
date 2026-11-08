@@ -1,8 +1,8 @@
 # Portable preparation artifacts
 
 This contract defines the next integration step after the persistent-worker
-acceptance experiment. The explicit-input preparation CLI is implemented.
-The package, import preview and source-manifest interfaces described here remain
+acceptance experiment. The explicit-input and source-manifest preparation CLI
+interfaces are implemented. Package publication and import preview remain
 implementation requirements until their acceptance evidence is recorded.
 
 ## Source identity and selection
@@ -17,6 +17,17 @@ The input manifest resolves relative baseline paths against its own directory.
 It verifies each expected baseline hash before native processing. Source IDs
 must be unique within the selection. Logical names remain metadata and cannot
 select arbitrary output paths. Native generation preserves the source files.
+Raw-source references are supplied by the manifest producer. The baseline hash
+is verified locally; conversion provenance retains its upstream evidence.
+
+Use `--source-manifest sources.json` instead of `--input` for corpus preparation.
+Version one contains `version` and an `inputs` array. Each input requires
+`source_id`, `name`, `baseline` and `baseline_sha256`. Optional `raw_source`
+contains `sha256`, `format` and an optional `member` with `corpus_id`, `index`
+and `name`. The reader accepts UTF-8 with or without a BOM. Missing XLSX paths
+remain selected so their job outcomes report failure instead of dropping them.
+An invalid manifest version, duplicate ID or invalid hash syntax rejects the
+configuration before native work starts.
 
 An explicit file list remains supported for small experiments. Its generated
 occurrence identities are scoped to that list and do not establish a mapping

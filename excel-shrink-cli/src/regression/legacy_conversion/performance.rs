@@ -1,5 +1,6 @@
 //! Prepare independent, attributable optimization artifacts with continuously reused Excel.
 use super::*;
+use crate::validation_preparation::{self, Input};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Mutex,
@@ -8,8 +9,11 @@ use std::sync::{
 #[derive(clap::Args, Debug)]
 pub(crate) struct Args {
     /// Prepared XLSX inputs. Legacy conversion remains a separate operation.
-    #[arg(long, required = true, num_args = 1..)]
+    #[arg(long, required_unless_present = "source_manifest", conflicts_with = "source_manifest", num_args = 1..)]
     input: Vec<PathBuf>,
+    /// Stable source occurrences and expected baseline hashes for corpus reuse.
+    #[arg(long)]
+    source_manifest: Option<PathBuf>,
     /// New directory retaining per-input results, failures and worker ownership.
     #[arg(long)]
     output: PathBuf,
@@ -28,27 +32,11 @@ pub(crate) fn run(args: Args) -> Result<()> {
         !args.output.exists(),
         "Choose a new preparation output directory"
     );
-    anyhow::ensure!(
-        !args.input.is_empty(),
-        "Choose at least one prepared XLSX input"
-    );
-    let inputs = args
-        .input
-        .iter()
-        .map(|path| -> Result<PathBuf> {
-            let path = fs::canonicalize(path)?;
-            anyhow::ensure!(
-                path.extension()
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("xlsx")),
-                "Check Performance preparation requires XLSX input"
-            );
-            let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
-            archive
-                .by_name("xl/workbook.xml")
-                .context("Expected an XLSX workbook")?;
-            Ok(path)
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let inputs = match &args.source_manifest {
+        Some(path) => validation_preparation::read(path)?,
+        None => validation_preparation::explicit(&args.input)?,
+    };
+    let selection_hash = validation_preparation::selection_hash(&inputs)?;
     fs::create_dir(&args.output)?;
     let output = fs::canonicalize(&args.output)?;
     let producer = super::super::artifact_cache::hash_file(&std::env::current_exe()?)?;
@@ -69,7 +57,9 @@ pub(crate) fn run(args: Args) -> Result<()> {
                     let result = prepare(&pool_root, input, &directory);
                     let outcome = json!({
                         "index": index,
-                        "input": input,
+                        "source_id": input.source_id,
+                        "name": input.name,
+                        "input": input.baseline,
                         "directory": directory,
                         "status": if result.is_ok() { "prepared" } else { "failed" },
                         "error": result.err().map(|error| format!("{error:#}"))
@@ -117,6 +107,8 @@ pub(crate) fn run(args: Args) -> Result<()> {
             "workers": count,
             "requested_workers": args.workers,
             "producer_sha256": producer,
+            "selection_sha256": selection_hash,
+            "identity_scope": if args.source_manifest.is_some() { "source-manifest" } else { "explicit-file-list" },
             "manager_error": pool_result.as_ref().err().map(|error| format!("{error:#}")),
             "visual_validation": "pending",
             "total": inputs.len(),
@@ -132,11 +124,21 @@ pub(crate) fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn prepare(root: &Path, input: &Path, directory: &Path) -> Result<()> {
+fn prepare(root: &Path, source: &Input, directory: &Path) -> Result<()> {
+    let input = &source.baseline;
     fs::create_dir(directory)?;
     let runtime = directory.join("runtime");
     fs::create_dir(&runtime)?;
     let source_hash = super::super::artifact_cache::hash_file(input)?;
+    if let Some(expected) = &source.expected_sha256 {
+        anyhow::ensure!(
+            expected == &source_hash,
+            "Prepared baseline does not match its expected source identity"
+        );
+    }
+    zip::ZipArchive::new(File::open(input)?)?
+        .by_name("xl/workbook.xml")
+        .context("Expected an XLSX workbook")?;
     let (session, lease) = client::lease_session(root)?;
     let request = Request {
         id: uuid::Uuid::new_v4().to_string(),
@@ -193,6 +195,9 @@ fn prepare(root: &Path, input: &Path, directory: &Path) -> Result<()> {
             "version": 1,
             "operation": "check-performance",
             "source": input,
+            "source_id": source.source_id,
+            "name": source.name,
+            "raw_source": source.raw_source,
             "source_sha256": source_hash,
             "artifacts": artifacts,
             "native_result": response["native_result"],
@@ -213,6 +218,7 @@ mod tests {
         let output = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
         let error = run(Args {
             input: vec![],
+            source_manifest: None,
             output: output.clone(),
             workers: 0,
         })
@@ -231,6 +237,32 @@ mod tests {
     }
 
     #[test]
+    fn expected_baseline_mismatch_fails_before_leasing_excel() -> Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("preparation-identity-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root)?;
+        let baseline = root.join("source.xlsx");
+        fs::write(&baseline, b"changed source")?;
+        let pool = root.join("pool");
+        fs::create_dir(&pool)?;
+        write_json(
+            &pool.join("error.json"),
+            &json!({"error":"Excel leasing must not be reached"}),
+        )?;
+        let input = Input {
+            source_id: "stable-source".into(),
+            name: "source.xlsx".into(),
+            baseline,
+            expected_sha256: Some("a".repeat(64)),
+            raw_source: None,
+        };
+        let error = prepare(&pool, &input, &root.join("result")).unwrap_err();
+        assert!(error.to_string().contains("expected source identity"));
+        assert!(!root.join("result/prepared.json").exists());
+        Ok(())
+    }
+
+    #[test]
     #[ignore = "requires desktop Excel with Check Performance and PERFORMANCE_PREPARATION_FIXTURE"]
     fn native_performance_worker_reuses_excel_and_retains_controls() -> Result<()> {
         let input = PathBuf::from(std::env::var("PERFORMANCE_PREPARATION_FIXTURE")?);
@@ -238,6 +270,7 @@ mod tests {
             std::env::temp_dir().join(format!("performance-pool-{}", uuid::Uuid::new_v4()));
         run(Args {
             input: vec![input.clone(), input],
+            source_manifest: None,
             output: output.clone(),
             workers: 1,
         })?;

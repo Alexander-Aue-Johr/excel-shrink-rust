@@ -30,8 +30,9 @@ confirmation, Excel identity, machine attribution, measurements and recipe hashe
 failures and a coordinator error if one occurred. An unsuccessful input makes the
 command exit unsuccessfully while preserving other inputs' completed artifacts.
 
-The entry point currently accepts an explicit input list. Corpus selection,
-portable package import and the preparation UI are separate integration work.
+The entry point accepts an explicit input list or `--source-manifest` with stable
+source occurrences and expected baseline hashes. Corpus selection, portable
+package import and the preparation UI are separate integration work.
 These files are generation evidence, with visual validation still pending.
 
 ## Native observations on 2026-11-08
@@ -56,6 +57,14 @@ Worker shutdown receipts report zero remaining processes. The native Rust test
 additionally checks retained PID/creation-time identities after teardown.
 These timings include concurrent Enron activity and are correctness observations,
 not a controlled throughput comparison.
+
+Attempt `06-manifest` exercised the ordinary CLI with a one-input source manifest
+using the fixture corpus's existing source ID, raw-source reference and a relative
+baseline path. Native optimization completed, and the output preserved those
+identities and its verified baseline SHA-256. `manifest-acceptance.json` records
+the checks. Focused tests cover missing paths, duplicate occurrences, selection
+order, unsupported versions, relative parent paths, Windows UTF-8 BOMs and a
+changed baseline failing before Excel leasing.
 
 Two repeatable native tests also passed. The existing conversion test exercised
 two reused Excel instances, password rejection, failed-instance replacement,
