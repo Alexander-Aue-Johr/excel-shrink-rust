@@ -70,4 +70,10 @@ reported error. Its corpus summary retained one completed comparison, zero
 remaining workbooks and zero skips. All capture-attempt directories were unchanged,
 confirming that the existing comparison was reused. Receipts are retained under
 `validation-temp/study-resume-smoke-20261108`. Enron continued throughout the test.
-Browser hostname resolution and full browser interaction remain pending.
+The in-app browser resolved `deltasieve.localhost:18778`, displayed the initial
+configuration dialog and switched to the study-resume form. Submitting the active
+Enron receipt displayed the expected held-lock error. This check exposed missing
+`updateMany` and `reset` methods in the shared comparison panel. Both methods are
+implemented, and a focused frontend test covers the initial empty update and
+report reset. Reloading the page cleared the observed startup error. Broader
+browser checks for processing and portable-report exploration remain pending.

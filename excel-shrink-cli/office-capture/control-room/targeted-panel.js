@@ -312,6 +312,22 @@ export function createTargetedPanel(root) {
   return {
     get supported() { return supported; },
     update(comparison) { if (comparison?.run_id) { accept(comparison); render(); } },
+    updateMany(comparisons) {
+      for (const comparison of comparisons) {
+        if (comparison?.run_id) accept(comparison);
+      }
+      render();
+    },
+    reset() {
+      for (const view of views.values()) view.destroy();
+      views.clear();
+      records.clear();
+      retired.clear();
+      completedLimit = 3;
+      connected = true;
+      notice.hidden = true;
+      render();
+    },
     async refresh() {
       if (refreshing || document.hidden || Date.now() < nextRefresh) return;
       refreshing = true; nextRefresh = Date.now() + 3000;
