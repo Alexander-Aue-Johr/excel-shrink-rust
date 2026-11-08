@@ -257,7 +257,8 @@ impl LogLevel {
     }
 }
 
-fn main() -> anyhow::Result<()> {
+/// Dispatch the cleanup, regression, and capture-host commands from the shared application.
+pub fn run_excel_shrink() -> anyhow::Result<()> {
     let mut raw_args = std::env::args_os();
     let program = raw_args.next().unwrap_or_else(|| "excel-shrink".into());
     match raw_args.next().as_deref().and_then(OsStr::to_str) {
