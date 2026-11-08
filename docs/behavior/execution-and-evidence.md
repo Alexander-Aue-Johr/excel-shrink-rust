@@ -396,6 +396,9 @@ performance pane closed before requesting a fresh optimization result.
 
 Preparation retains saved-Original and before/after optimization controls, hashes,
 native confirmation, per-input outcomes and producing-environment measurements.
+The exact input baseline is copied and byte-verified before Excel admission,
+retained as `baseline.xlsx`, and opened read-only. Its relative receipt is usable
+after relocation of the preparation directory.
 The initial saved copy uses SaveAs. Optimization controls share that working
 filename, and this operation requests no rebuild. Source workbooks stay read-only,
 macro execution and external-link updates are disabled, and AutoRecover is

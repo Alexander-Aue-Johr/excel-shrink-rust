@@ -136,13 +136,19 @@ fn prepare(root: &Path, source: &Input, directory: &Path) -> Result<()> {
             "Prepared baseline does not match its expected source identity"
         );
     }
-    zip::ZipArchive::new(File::open(input)?)?
+    let baseline = directory.join("baseline.xlsx");
+    fs::copy(input, &baseline)?;
+    anyhow::ensure!(
+        source_hash == super::super::artifact_cache::hash_file(&baseline)?,
+        "Baseline changed while freezing the preparation input"
+    );
+    zip::ZipArchive::new(File::open(&baseline)?)?
         .by_name("xl/workbook.xml")
         .context("Expected an XLSX workbook")?;
     let (session, lease) = client::lease_session(root)?;
     let request = Request {
         id: uuid::Uuid::new_v4().to_string(),
-        input: PathBuf::from(super::super::power_shell_path(input)?),
+        input: PathBuf::from(super::super::power_shell_path(&baseline)?),
         output: PathBuf::from(super::super::power_shell_path(directory)?),
         directory: PathBuf::from(super::super::power_shell_path(&runtime)?),
         performance: true,
@@ -199,6 +205,11 @@ fn prepare(root: &Path, source: &Input, directory: &Path) -> Result<()> {
             "name": source.name,
             "raw_source": source.raw_source,
             "source_sha256": source_hash,
+            "baseline": {
+                "file": "baseline.xlsx",
+                "sha256": source_hash,
+                "bytes": fs::metadata(&baseline)?.len()
+            },
             "artifacts": artifacts,
             "native_result": response["native_result"],
             "measurements": response["metrics"],
@@ -290,6 +301,15 @@ mod tests {
                 receipt["native_result"]["status"].as_str(),
                 Some("optimization_confirmed" | "no_optimization_needed")
             ));
+        }
+        for directory in ["input-000000", "input-000001"] {
+            let receipt = read_json(&output.join(directory).join("prepared.json")).unwrap();
+            assert_eq!(
+                super::super::super::artifact_cache::hash_file(
+                    &output.join(directory).join("baseline.xlsx")
+                )?,
+                receipt["source_sha256"]
+            );
         }
         assert_eq!(
             read_json(&output.join("workers/status.json")).unwrap()["stopped"],

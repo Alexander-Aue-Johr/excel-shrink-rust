@@ -21,6 +21,9 @@ replacement and other workers to continue the queue.
 
 Each successful input retains `original-saved.xlsx`,
 `before-optimization.xlsx`, `after-optimization.xlsx` and `prepared.json`.
+It also retains the exact input as `baseline.xlsx` with a relative hash/length
+receipt. Excel opens this verified private copy. The external source location
+can subsequently move without losing the input bytes needed for transfer.
 The working copy is created with SaveAs, then saved before optimization. Both
 optimization controls come from the same working filename. No explicit rebuild
 is requested by this operation. Source files are opened read-only with macros
@@ -65,6 +68,10 @@ identities and its verified baseline SHA-256. `manifest-acceptance.json` records
 the checks. Focused tests cover missing paths, duplicate occurrences, selection
 order, unsupported versions, relative parent paths, Windows UTF-8 BOMs and a
 changed baseline failing before Excel leasing.
+
+The `07-baselines` repeatable native test passed in 39.09 s after adding the
+retained baseline. It checked both baseline copies against their recorded input
+hashes, two successful jobs in one reused Excel and confirmed process exit.
 
 Two repeatable native tests also passed. The existing conversion test exercised
 two reused Excel instances, password rejection, failed-instance replacement,

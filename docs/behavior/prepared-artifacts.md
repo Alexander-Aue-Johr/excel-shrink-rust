@@ -19,6 +19,9 @@ must be unique within the selection. Logical names remain metadata and cannot
 select arbitrary output paths. Native generation preserves the source files.
 Raw-source references are supplied by the manifest producer. The baseline hash
 is verified locally; conversion provenance retains its upstream evidence.
+Each job retains a byte-verified `baseline.xlsx` and opens that private copy
+read-only in Excel. Its receipt records the relative baseline filename, length
+and hash, allowing later export after the external input path has moved.
 
 Use `--source-manifest sources.json` instead of `--input` for corpus preparation.
 Version one contains `version` and an `inputs` array. Each input requires
