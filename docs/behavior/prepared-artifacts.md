@@ -211,9 +211,15 @@ most 64 KiB of preparation counters. The page displays preparation progress
 outside the configuration dialog and keeps producer failures explicit.
 
 The owner process must remain running. Reloading or closing the browser does not
-stop the job. After interruption, select the same source manifest, a new output
+stop the job. A fresh page obtains the retained job from `/api/state`, restores
+its progress and initializes the live worker control from the latest requested
+target. Subsequent polling preserves a user's unfinished worker-count edit.
+Selecting a different job initializes the control again using that job's target.
+This browser reattachment requires the original room process to remain alive.
+After interruption, select the same source manifest, a new output
 directory and the earlier preparation in the optional reuse field. Changing the
-worker target during a running job remains an integration requirement. Completed native
+worker target during a running job uses the identity-bound control endpoint
+described below. Completed native
 outcomes and job receipts are retained even though the room currently exposes
 only its most recent preparation job.
 

@@ -62,12 +62,41 @@ test('live control binds the requested target to the observed job identity', asy
   try {
     const view = installPerformancePreparation({ api: async (...args) => calls.push(args), message() {} });
     view.render({ id: 'selected-job', status: 'running', workers: 2, total: 10 }, true);
+    assert.equal(nodes['performance-worker-target'].value, '2');
+    nodes['performance-worker-target'].value = '48';
+    view.render({ id: 'selected-job', status: 'running', workers: 2, total: 10,
+      progress: { requested_workers: 3 } }, true);
+    assert.equal(nodes['performance-worker-target'].value, '48');
     await nodes['performance-worker-control'].handlers.submit({ preventDefault() {} });
     assert.deepEqual(calls, [['/api/preparation/control', { job_id: 'selected-job', workers: 48 }]]);
     view.render({ id: 'selected-job', status: 'completed', workers: 2, total: 10 }, false);
     assert.equal(nodes['performance-worker-control'].hidden, true);
     await nodes['performance-worker-control'].handlers.submit({ preventDefault() {} });
     assert.equal(calls.length, 1);
+  } finally {
+    globalThis.document = previous;
+  }
+});
+
+test('a fresh page reattaches the server job and restores its current worker target', () => {
+  const names = ['performance-job', 'performance-job-fields', 'performance-job-observation',
+    'performance-job-status', 'performance-job-progress', 'performance-job-detail',
+    'performance-worker-control', 'performance-worker-target', 'performance-worker-apply'];
+  const nodes = Object.fromEntries(names.map(name => [name, {
+    value: '', addEventListener() {},
+  }]));
+  const previous = globalThis.document;
+  globalThis.document = { getElementById: name => nodes[name] };
+  try {
+    const view = installPerformancePreparation({ api() {}, message() {} });
+    view.render({ id: 'retained-job', status: 'running', workers: 2, total: 10,
+      progress: { requested_workers: 16, prepared: 4, failed: 1 } }, true);
+    assert.equal(nodes['performance-worker-target'].value, '16');
+    assert.equal(nodes['performance-job-progress'].value, 5);
+    assert.equal(nodes['performance-job-fields'].disabled, true);
+    assert.equal(nodes['performance-worker-control'].hidden, false);
+    view.render({ id: 'next-job', status: 'running', workers: 8, total: 20 }, true);
+    assert.equal(nodes['performance-worker-target'].value, '8');
   } finally {
     globalThis.document = previous;
   }

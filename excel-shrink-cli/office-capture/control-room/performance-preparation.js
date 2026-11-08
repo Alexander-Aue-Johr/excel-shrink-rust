@@ -16,6 +16,10 @@ export function installPerformancePreparation({ api, message }) {
   let changingWorkers = false;
 
   function render(job, active) {
+    // Restore the selected job after page load without overwriting an in-progress edit on polling.
+    if (job && job.id !== currentJob?.id) {
+      byId('performance-worker-target').value = String(job.progress?.requested_workers ?? job.workers);
+    }
     currentJob = job;
     byId('performance-worker-control').hidden = !job || job.status !== 'running';
     byId('performance-worker-apply').disabled = changingWorkers;
