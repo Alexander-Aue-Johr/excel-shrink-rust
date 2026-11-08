@@ -8,6 +8,8 @@ This is the reviewable work queue for the two tools, their Observatory, and thei
 
 Begin Tasks 01–19 after that approval. The independently running Enron process may continue while the plan awaits review. The existing monitoring Pursuing Goal is paused at the user's requested approval gate. Resume it after approval and use this queue to preserve the implementation order.
 
+That Go authorizes autonomous execution through Task 19. Resolve routine implementation, sampling, and presentation choices using the agreed requirements and record material assumptions. Perform the reviews and acceptance checks in this plan during execution. The author's later manuscript revision and optional external research can follow the completed working drafts.
+
 ## Delivery rules
 
 - Preserve prepared workbooks, source identities, completed evidence, and restart compatibility throughout changes. Bind reusable results to the source, relevant configuration, method, and producing implementation.
@@ -16,6 +18,18 @@ Begin Tasks 01–19 after that approval. The independently running Enron process
 - Separate mechanical restructuring from behavioral changes. Apply Single Level of Abstraction and useful Rustdoc or Python docstrings in touched code according to the repository agreements.
 - Record a task's outcome, verification, commit IDs, and unresolved limitations before checking its box. A failed or unsupported comparison retains its reason and coverage status.
 - Keep unknown, unverified, and failed cases distinct from equality. Preserve raw findings alongside reviewed classifications.
+- Use ordinary web research and verified primary publications for the literature work. Save optional ChatGPT Deep Research prompts for later use and continue the queue with the research available directly.
+- Record unavailable optional archives, comparison tools, credentials, or supplementary research and continue independent tasks. Keep claims within the evidence actually obtained. Escalate a genuine access or correctness blocker with its exact cause while advancing unaffected work.
+
+## Keep Enron advancing throughout implementation
+
+After Go, supervise the existing Enron run throughout Tasks 01–18. Keep it advancing during research, writing, development, and other work whenever native validation capacity is available. Background supervision begins with Task 01 and continues into Task 19's final sustained supervision and reconciliation phase.
+
+Use the current run at `V:\excel-shrink-paper\external\excel-shrink-rust\.tmp\enron-20261107` and its existing results as the mandatory fallback evaluation corpus. Preserve its 20,872-input selection, source manifest, conversion and shrink artifacts, findings, and completed coverage. Advance it toward completion even while preparing a possible Enron XML corpus. Freeze a dated fallback result snapshot for the papers if a replacement corpus is not ready in time.
+
+Prepare fixtures, builds, and expected results before reserving native Excel capacity for a test. Prefer one small fixture and one comparison group initially, using spare capacity or one released group while the remaining Enron groups continue. Give every native experiment a case count, resource allocation, and wall-time budget before starting it. Target five-minute test batches and cap an exclusive Enron pause at ten minutes per batch. Split larger experiments across successive batches or schedule them on spare capacity. Retain timed-out or incomplete test outcomes and complete the required verification before deploying a change.
+
+When an exclusive test window is necessary, checkpoint the run and record why it is paused. Restore the configured Enron admission target after test success, failure, or timeout, clean up owned test processes, and verify that corpus progress resumes. Limit heavy build and benchmark concurrency when it materially reduces Enron throughput. Record interruption durations and resume failures so they can be investigated.
 
 ## Priority and dependencies
 
@@ -23,7 +37,7 @@ The approval gate comes first. Establish the baseline and scientific protocols b
 
 Give correctness, a reproducible evaluation, and a shareable results explorer priority over replay and larger structural work. Preserve a dated evaluation snapshot for submission even if corpus supervision continues afterward. Express its coverage precisely.
 
-Scheduling experiments and new corpus acquisition have bounded initial acceptance criteria. Their depth depends on measured benefit and the paper schedule. Sustained corpus monitoring is Task 19 and remains the final open task until its completion condition is met.
+Scheduling experiments and new corpus acquisition have bounded initial acceptance criteria. Their depth depends on measured benefit and the paper schedule. Background Enron supervision spans the entire queue. Task 19 remains the final open task until its completion condition is met.
 
 ## 01 Establish the implementation and run baseline
 
@@ -58,6 +72,8 @@ Create `papers/sheetshrink/` and `papers/deltasieve/` with a main LaTeX source, 
 Treat historical manuscripts and reviews as sources of observations, experiments, requirements, and development history. Develop the new papers' argument, organization, wording, and figure choices independently from those earlier manuscripts.
 
 Before selecting the structures, conduct a documented full-text study of accepted ICDE papers and relevant papers from comparable venues such as SIGMOD and VLDB. Verify publication and track from primary sources. Select examples for methodological relevance, including systems, optimization, data preparation, validation, and experimental evaluation. Record the selection rationale and evidence supporting each recommendation. Distinguish observed practices from official requirements and from hypotheses about what contributed to acceptance.
+
+Complete this study autonomously using available research and publication sources. Optional ChatGPT Deep Research reports may supplement it later. Use known author metadata and explicit placeholders for missing details while preparing the working projects.
 
 Analyze problem and contribution framing, narrative and section order, space allocation, scientific English, terminology, claim strength, evaluation design, limitations, and reproducibility. Examine how Related Work is grouped, how finely methods are compared, where the discussion appears, and how citations support the introduction, method, and evaluation as well as a dedicated section. Derive a justified design for each paper from that analysis and the actual evidence available.
 
@@ -131,7 +147,7 @@ Use relative assets and a data source suitable for static hosting. Present the c
 
 Organize exports by corpus, date, implementation, and an anonymous hardware description. Keep large corpus archives and bulk image artifacts in suitable artifact storage. Prepare a GitHub Pages deployment procedure and a stable per-run link format.
 
-Acceptance requires a served static-export smoke test with the local runner unavailable, checksum verification, and a privacy review. Publishing a particular report uses an explicitly selected, frozen result set.
+Acceptance requires a served static-export smoke test with the local runner unavailable, checksum verification, and a privacy review performed during execution. Select a dated, frozen result set for the export and record its identity. Prepare the deployment procedure and release files so later public publication can use the verified package when the destination and access are available.
 
 ## 10 Measure the performance report's proposals
 
@@ -148,6 +164,8 @@ Acceptance requires a reproducible experiment and a separate decision for each p
 - [ ] Measure whether current scheduling leaves capacity unused for small workbooks and mixed corpora.
 
 Create bounded synthetic corpora covering many small one-sheet workbooks, many sheets, a few massive sheets, and mixed sizes. Inspect current large-sheet chunking, task priority, work stealing, and memory admission using timings and Perfetto where useful.
+
+Apply the shared native-test budgets when an experiment needs Excel or validation-engine resources. Start with a small pilot and expand in bounded batches according to its measured cost and benefit.
 
 Change scheduling only where measurements identify a bottleneck. Preserve bounded memory and consistent outputs. Record useful throughput across process and thread configurations, including oversubscription where appropriate for conversion.
 
@@ -173,6 +191,8 @@ Acceptance requires reproducible tables, declared denominators, evidence for cla
 
 Choose a predefined stratified real-world subset with a seed, time budget, and inclusion criteria. Record timeouts and failures. Include held-out cases. Generate reference captures independently of the candidate selector being evaluated.
 
+Run native validation and full-reference experiments in bounded batches under the shared interruption policy. Preserve partial experiment progress between batches so required tests can finish while Enron continues to advance.
+
 Cover values, formulas, relative and absolute references, ranges, cross-sheet references, supported INDIRECT patterns, names, unknown and external dependencies, mixed conditional-formatting rules, data bars, duplicate rules, color scales, charts, drawings, merges, heights, widths, hidden dimensions, wrapping, overflow, inherited styles, protection, and reference errors. Mutations need a verified expected visual effect or an explicit invariance expectation.
 
 Measure detection of changed visible regions, candidate coverage, unnecessary captures, analysis cost, native capture cost, and fallback behavior. Include same-input rendering controls and representation-only changes such as reordered equivalent style and shared-string identities.
@@ -189,11 +209,13 @@ Write substantive scientific English for every planned section, including the ab
 
 These drafts serve as editable starting points for the author's comprehensive review, rewriting, restructuring, and replacement of text or figures. Preserve a clear draft status and record substantive author decisions. Prepare the complete drafts and accompanying review notes for that human revision.
 
+Deliver the working drafts and proceed through the remaining tasks while the author's revision is pending. Record open author questions in the handoff notes and use provisional wording or metadata where necessary.
+
 Examine Microsoft Spreadsheet Compare and Inquire, Check Performance, Synkronizer, DiffEngineX, efficient spreadsheet readers, and relevant dependency-based and visual regression-testing research. Verify whole-workbook reports, property coverage, chart handling, automation, scalability, and licensing constraints where they affect experiments.
 
 Build Related Work around the closest methods and the specific dimensions on which they differ. Explain their assumptions, guarantees, scope, dependencies, cost, and evaluation where supported by the sources. Integrate this positioning into the argument wherever it motivates a design or comparison. Verify citations against the full publications and use precise, evidence-qualified language.
 
-Prepare one Deep Research prompt per paper as a follow-up to Task 03's initial study. Ask for primary sources, competing methods, and evidence that challenges novelty. Incorporate and verify the returned research when available. The drafts' literature foundation must also rest on the completed primary-source research.
+Save one optional Deep Research prompt per paper for the user's later use. Request primary sources, competing methods, and evidence that challenges novelty. Complete the drafts using the autonomous primary-source research and continue through Task 19 while these optional reports are pending. When the user later supplies them, verify the sources and integrate relevant additions or corrections into the literature review, claims, figures, and experiments. Record which conclusions or results require further work.
 
 Select the preservation and selection mechanisms that carry the papers' central arguments. Keep comprehensive rule inventories in versioned documentation. Report corpus and method versions, sampling, hardware, Excel build, limitations, artifact availability, and required AI-use disclosure under the applicable venue rules.
 
@@ -235,21 +257,23 @@ Separate reusable extraction mechanisms from Enron-specific source descriptions.
 
 The current 20,872-file Enron selection remains an identifiable corpus version. A newly extracted selection receives its own manifest and run identity.
 
+Protect the current run's progress and retained artifacts while preparing the XML-derived corpus. Keep evaluation, drafting, and release preparation moving with the current corpus as the fallback if the new corpus misses the evaluation freeze. Identify each result's corpus version and coverage explicitly.
+
 Initial acceptance requires a reviewed profile, representative nested-container tests, restart verification, and a frozen corpus manifest. Schedule a full new acquisition according to its cost and the evaluation plan.
 
 ## 18 Prepare releases and assess the shrinker replay extension
 
 - [ ] Freeze the paper artifacts, validate the ordinary start and resume instructions, and evaluate the value of a SheetShrink scheduling replay.
 
-Create versioned manifests and checksums for code, profiles, evaluation scripts, results, and static reports. Verify publication links and artifact storage boundaries. Retain useful Perfetto traces and figures that explain scheduling.
+Create versioned manifests and checksums for code, profiles, evaluation scripts, results, and static reports. Verify existing publication links and artifact storage boundaries, and record deployment status for prepared exports. Retain useful Perfetto traces and figures that explain scheduling.
 
 For a possible shrinker Observatory, determine whether existing traces can support a small useful demonstration of workbook, sheet, and chunk scheduling with slowed playback. Record the decision and remaining work. Give paper evidence and the delivered results explorer priority when scheduling that extension.
 
-Acceptance requires reproducible release instructions, an artifact inventory, verified start and resume examples, and a documented decision on the extension.
+Acceptance requires reproducible release instructions, an artifact inventory, verified start and resume examples, a publication-ready export package, and a documented decision on the extension. Final author metadata, author approval, paper submission, and external publication can follow later. Record any required credentials or destination choices in the handoff.
 
-## 19 Resume sustained pipeline supervision through completion
+## 19 Continue sustained pipeline supervision through completion
 
-- [ ] Resume the approved monitoring goal and continue until every selected input has a final, evidenced outcome or the user explicitly stops the work.
+- [ ] Continue the supervision maintained during Tasks 01–18 until every selected input has a final, evidenced outcome or the user explicitly stops the work.
 
 Continue the current Enron selection with compatible existing results. Follow up on remaining Data.gov and Destatis coverage required by Task 12, identifying already completed work from its manifests. Monitor conversion, shrinking, opening, rebuilding, geometry, captures, comparisons, failures, resource usage, and remaining coverage.
 
