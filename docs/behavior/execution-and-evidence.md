@@ -240,6 +240,17 @@ not a pure `Workbooks.Open` benchmark. Read process memory externally against it
 exact identity at that observation. Do not wait for a partner merely to timestamp
 an already ready client, or present one readiness sample as a complete memory peak.
 
+Optional `startup_diagnostics` records the browser document's epoch time origin,
+monotonic milestone offsets, and up to 24 resource timing entries. Milestones
+cover Office script loading, Office readiness, resident script loading,
+configuration retrieval and workbook identity verification. Resource entries
+retain paths and durations without query strings. The native host accepts at
+most 16 KiB of this diagnostic object per client and resets it on configuration.
+Older clients may omit it. Missing diagnostics do not establish a fast startup.
+The readiness verdict and scientific comparison remain separate from these
+observations. Correlating document navigation with the owned process birth time
+can localize a delay before browser navigation, but cannot identify its cause.
+
 ## E6. Authoritative result and failure semantics
 
 | Artifact / field | Meaning |
