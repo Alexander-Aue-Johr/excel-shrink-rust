@@ -78,3 +78,66 @@ trials. No production scheduling change follows from the pilot.
 Counter meanings follow the Windows process APIs.
 [Memory counters](https://learn.microsoft.com/en-us/windows/win32/psapi/process-memory-usage-information),
 [process times](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes)
+
+## Million-row follow-up
+
+The larger follow-up used 1,048,576 rows per large sheet, three repetitions,
+and the pinned `317200b` release executable. All 36 trials completed with
+identical decompressed output members and available resource counters.
+Enron continued throughout. Median wall seconds were
+
+| Workload | One thread, one workbook | Two threads, one workbook | Two threads, four workbooks |
+| --- | ---: | ---: | ---: |
+| Small workbooks | 0.099 | 0.098 | 0.060 |
+| Many sheets | 0.057 | 0.047 | 0.046 |
+| Million-row sheets | 14.382 | 10.591 | 6.756 |
+| Mixed | 13.371 | 10.864 | 7.749 |
+
+For the million-row workload, median direct-child user plus kernel CPU seconds
+were 13.125, 14.234 and 13.359. Observed peak working sets were approximately
+516, 809 and 900 MiB. More concurrent work used more memory in this fixture.
+The complete receipts and traces occupy about 1.24 GiB under
+`G:\deltasieve-work\scheduling-million-rows-20261108`.
+
+One two-thread, one-workbook trace spent 6.933 seconds in
+`wait_workbook_permit`. Code inspection confirms that this wait uses a condition
+variable inside a Rayon worker. That worker cannot steal sheet work while
+blocked. This is a concrete scheduling limitation, although its contribution
+to the measured wall-time difference needs an isolated intervention test.
+
+A cooperative yield inside `acquire` alone needs care. It could execute another
+workbook admission on the same call stack while the current workbook still
+holds the permit, creating nested waits. A follow-up should keep admission
+outside the sheet worker pool or dispatch only admitted work, preserve the
+active-workbook bound, and test continuous refill and one-thread completion.
+The production Enron preparation uses separate single-threaded shrink
+processes. These measurements do not establish an Enron throughput benefit,
+and the active Enron runner retains its pinned build.
+
+## Bounded dispatcher intervention
+
+The follow-up limits the number of input-dispatch loops to the active-workbook
+limit. Each loop claims its next input immediately after orchestration returns.
+Permits still remain held through asynchronous writing. This avoids creating
+extra input tasks that block Rayon workers while admitted sheets need them.
+
+The regression test processes nine inputs with thread/workbook limits `(1,1)`,
+`(2,1)`, `(2,3)` and `(2,16)`, checking identical archive bytes for every output.
+All 38 pipeline regression tests pass. A release comparison then repeated the
+million-row and mixed fixtures three times in alternating baseline/candidate
+order, using two threads and one active workbook. All twelve invocations
+retained identical decompressed members. Median wall seconds were
+
+| Workload | Baseline | Bounded dispatch |
+| --- | ---: | ---: |
+| Million-row sheets | 9.342 | 6.523 |
+| Mixed | 11.455 | 6.578 |
+
+Baseline large-sheet permit waits ranged from 5.646 to 6.368 seconds. Candidate
+waits ranged from 0.008 to 0.009 seconds and occurred at writer completion.
+The trace counters retain the configured one-workbook bound. These measurements
+ran alongside Enron and an archived-variant experiment, so the wall observations
+remain confounded. The code and trace change establish that pending workbook
+admission no longer occupies an additional sheet worker in this workload.
+Receipts, executable checksums, native resource counters and traces remain at
+`G:\deltasieve-work\scheduling-dispatch-followup-20261108`.

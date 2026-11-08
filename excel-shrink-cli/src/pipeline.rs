@@ -3744,7 +3744,19 @@ fn run_input_files(
     if cli.disable_multiprocessing {
         input_files.iter().for_each(process);
     } else {
-        input_files.par_iter().for_each(process);
+        // Dispatch only as many orchestration loops as can hold a workbook
+        // permit. Additional Rayon workers remain available for sheet work.
+        // Each loop refills immediately, while writer-owned permits continue
+        // to bound workbook memory until output completion.
+        let dispatchers = workbook_limiter.inner.max_active.min(input_files.len());
+        let next_input = AtomicUsize::new(0);
+        (0..dispatchers).into_par_iter().for_each(|_| loop {
+            let index = next_input.fetch_add(1, Ordering::Relaxed);
+            let Some(input) = input_files.get(index) else {
+                break;
+            };
+            process(input);
+        });
     }
 }
 

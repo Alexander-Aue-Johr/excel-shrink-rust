@@ -70,6 +70,15 @@ identical Default preparation does not bypass requested Check Performance work.
 
 ## E3. Admission, pause, cancellation and timeouts
 
+The ordinary shrink CLI bounds workbook orchestration by
+`--max-active-workbooks`. At most that many dispatcher loops claim inputs, and
+each loop claims its next input after completing its current orchestration.
+The workbook permit remains held through asynchronous output writing. Pending
+inputs therefore do not occupy additional Rayon workers waiting for admission,
+leaving those workers available for sheet and chunk work. Input ordering among
+concurrent dispatchers is unspecified. The limit includes writer-owned work,
+and completion waits for all output writers.
+
 `target_groups` controls concurrent workbook groups, not the number of Excel
 processes. The current differing-input Default comparison uses two Excel instances
 and rebuilds Default in place. Explicit Check Performance adds one instance.

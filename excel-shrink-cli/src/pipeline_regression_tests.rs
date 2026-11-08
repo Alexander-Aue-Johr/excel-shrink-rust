@@ -655,6 +655,43 @@ fn write_batch_test_workbook(path: &Path, sheet: &[u8]) {
 }
 
 #[test]
+fn bounded_workbook_dispatch_refills_and_preserves_outputs() {
+    let root = batch_test_directory("bounded_dispatch");
+    let input_directory = root.join("input");
+    for index in 0..9 {
+        let sheet = format!(
+            "<worksheet><sheetData><row r=\"1\"><c r=\"A1\"><v>{index}</v></c><c r=\"B1\"/><c r=\"C1\"/></row></sheetData></worksheet>"
+        );
+        write_batch_test_workbook(
+            &input_directory.join(format!("book-{index}.xlsx")),
+            sheet.as_bytes(),
+        );
+    }
+    let inputs = crate::gather_files(&input_directory, false).unwrap();
+    let mut reference = None;
+    for (threads, active_workbooks) in [(1, 1), (2, 1), (2, 3), (2, 16)] {
+        let mut cli = cli_with_analysis_flags(false, None);
+        cli.path = input_directory.clone();
+        cli.output = root.join(format!("output-{threads}-{active_workbooks}"));
+        cli.rayon_threads = Some(threads);
+        cli.max_active_workbooks = Some(active_workbooks);
+        cli.writer_workers = Some(1);
+        process_files(inputs.clone(), &cli).unwrap();
+        let outputs: Vec<_> = (0..9)
+            .map(|index| {
+                std::fs::read(cli.output.join(format!("book-{index}.xlsx"))).unwrap()
+            })
+            .collect();
+        if let Some(expected) = &reference {
+            assert_eq!(&outputs, expected);
+        } else {
+            reference = Some(outputs);
+        }
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn analysis_csv_keeps_the_measured_shrink_output() {
     let root = batch_test_directory("analysis_same_output");
     let input = root.join("source.xlsx");
