@@ -117,7 +117,10 @@ pub(super) async fn comparisons(State(room): State<Arc<Room>>) -> HttpResult<Jso
             .await
         {
             let mut snapshot = snapshot.as_ref().clone();
-            if reconcile_cleanup(&mut snapshot, crate::native_process::process_alive) {
+            let ended_without_telemetry = reconcile_saved_attempt(&room, &mut snapshot, &mut diagnostics).await;
+            if ended_without_telemetry
+                || reconcile_cleanup(&mut snapshot, crate::native_process::process_alive)
+            {
                 resolved_cleanup.push(snapshot["run_id"].clone());
             }
             comparisons.push(snapshot);
@@ -131,6 +134,81 @@ pub(super) async fn comparisons(State(room): State<Arc<Room>>) -> HttpResult<Jso
     Ok(Json(
         json!({"comparisons":comparisons,"retired_run_ids":resolved_cleanup,"retained_limit":100,"diagnostics":diagnostics}),
     ))
+}
+
+/// A durable final workbook record can outlive a killed comparison's last snapshot.
+/// Reconcile only this study's matching workbook and positively departed processes.
+async fn reconcile_saved_attempt(room: &Room, snapshot: &mut Value, diagnostics: &mut Vec<Value>) -> bool {
+    if snapshot["status"] != "running" {
+        return false;
+    }
+    let Some(study) = room.root.parent() else { return false };
+    let Some(directory) = snapshot["report_directory"].as_str().map(PathBuf::from) else { return false };
+    if !directory.starts_with(study.join("evidence")) {
+        return false;
+    }
+    let Some(id) = directory.parent().and_then(Path::file_name).and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if safe_id(id).is_err() {
+        return false;
+    }
+    let Some(record) = read_snapshot(&study.join(format!("records/{id}.json")), diagnostics, SNAPSHOT_LIMIT).await else {
+        return false;
+    };
+    let Some(identity) = record["identity"].as_str() else { return false };
+    if &crate::regression::artifact_cache::sha256(identity.as_bytes())[..20] != id {
+        return false;
+    }
+    reconcile_ended_snapshot(snapshot, &record, crate::native_process::process_alive)
+}
+
+/// Preserve unknown/live attempts and leave the durable scientific verdict untouched.
+fn reconcile_ended_snapshot(
+    snapshot: &mut Value,
+    record: &Value,
+    mut observe: impl FnMut(i64, i64) -> Option<bool>,
+) -> bool {
+    if snapshot["status"] != "running" || record["complete"] != true
+        || record["name"] != snapshot["workbook"] || snapshot["updated_at"].as_i64().is_none()
+    {
+        return false;
+    }
+    let Some(lanes) = snapshot["lanes"].as_array() else { return false };
+    let mut observed_process = false;
+    for lane in lanes {
+        match (lane["pid"].as_i64(), lane["process_started_at"].as_i64()) {
+            (Some(pid), Some(started)) => {
+                observed_process = true;
+                if observe(pid, started) != Some(false) {
+                    return false;
+                }
+            }
+            (None, _) if matches!(lane["lifecycle"].as_str(),
+                Some("not_started" | "unavailable" | "skipped" | "closed")) => {}
+            _ => return false,
+        }
+    }
+    if !observed_process {
+        return false;
+    }
+    for lane in snapshot["lanes"].as_array_mut().expect("validated lanes") {
+        if lane["pid"].is_number() {
+            lane["process_alive"] = json!(false);
+            lane["lifecycle"] = json!("closed");
+        }
+    }
+    snapshot["status"] = json!("attempt_ended");
+    // The last observation orders history; it does not invent a process-exit time.
+    snapshot["finished_at"] = snapshot["updated_at"].clone();
+    snapshot["completion_observation"] = json!({
+        "source":"final-workbook-record-and-pid-creation-time",
+        "all_processes_exited":true, "exact_end_time_known":false,
+        "recorded_status":"running", "workbook_status":record["status"]});
+    if snapshot["error"].is_null() {
+        snapshot["error"] = json!("This attempt ended without final telemetry. Its Excel processes have exited; the saved workbook result remains authoritative.");
+    }
+    true
 }
 
 /// Refresh a failed attempt's frozen cleanup observations without changing its
@@ -333,6 +411,45 @@ fn retain_recent(mut comparisons: Vec<Value>) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn final_record_and_departed_processes_retire_a_frozen_running_snapshot() {
+        let record = json!({"name":"book.xls", "complete":true, "status":"skipped"});
+        let mut snapshot = json!({"workbook":"book.xls", "status":"running", "updated_at":300,
+            "error":null, "lanes":[{"pid":12,"process_started_at":100,
+                "lifecycle":"open","process_alive":true}, {"lifecycle":"not_started"}]});
+        assert!(reconcile_ended_snapshot(&mut snapshot, &record, |pid, started| {
+            assert_eq!((pid, started), (12, 100));
+            Some(false)
+        }));
+        assert_eq!(snapshot["status"], "attempt_ended");
+        assert_eq!(snapshot["finished_at"], 300);
+        assert_eq!(snapshot["lanes"][0]["lifecycle"], "closed");
+        assert!(snapshot["lanes"][0]["closed_at"].is_null());
+        assert_eq!(snapshot["completion_observation"]["exact_end_time_known"], false);
+        assert_eq!(record["status"], "skipped");
+    }
+
+    #[test]
+    fn frozen_running_snapshot_requires_both_final_record_and_exact_exit_evidence() {
+        let record = json!({"name":"book.xls", "complete":true, "status":"differences"});
+        let snapshot = json!({"workbook":"book.xls", "status":"running", "updated_at":300,
+            "lanes":[{"pid":12,"process_started_at":100,"lifecycle":"open"}]});
+        for observation in [Some(true), None] {
+            let mut candidate = snapshot.clone();
+            assert!(!reconcile_ended_snapshot(&mut candidate, &record, |_, _| observation));
+            assert_eq!(candidate, snapshot);
+        }
+        for invalid in [json!({"name":"other.xls","complete":true}),
+            json!({"name":"book.xls","complete":false})] {
+            assert!(!reconcile_ended_snapshot(&mut snapshot.clone(), &invalid,
+                |_, _| panic!("Unrelated or unfinished record")));
+        }
+        let mut missing_birth = snapshot.clone();
+        missing_birth["lanes"][0]["process_started_at"] = Value::Null;
+        assert!(!reconcile_ended_snapshot(&mut missing_birth, &record,
+            |_, _| panic!("Missing process birth time")));
+    }
 
     #[test]
     fn departed_cleanup_process_becomes_failed_history_without_erasing_the_error() {

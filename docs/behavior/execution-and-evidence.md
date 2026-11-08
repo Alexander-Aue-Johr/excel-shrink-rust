@@ -249,6 +249,16 @@ reviewed terminal exclusions merely because they have no prepared ZIP.
 
 ## E9. Telemetry and the Observatorium
 
+A comparison can leave a final `running` telemetry snapshot if its publisher
+ends before publishing a terminal state. The read-only registry adapter may move
+that snapshot out of active work only when a matching, identity-verified final
+workbook record exists and every recorded Excel PID/creation-time pair is
+positively confirmed absent. Unknown process observations retain the active
+snapshot. The derived `attempt_ended` status records incomplete terminal telemetry,
+keeps the saved workbook verdict authoritative and does not invent an exact exit
+time. The original telemetry and scientific record remain unchanged. Explicit
+retirement IDs remove reconciled snapshots that fall outside recent history.
+
 - Cyan stationary chip/gear: Windows process liveness for exact PID/birth.
 - Green Excel symbol: opening / known workbook lifecycle / confirmed closure.
 - Violet XML symbol: timestamped host XML analysis activity.
