@@ -30,4 +30,6 @@ The cleanup executable exposes `excel-shrink-cli --describe-cli` for typed optio
 
 The integration passed compilation of all targets, five focused watchdog tests, and 54 tests selected by the validation filter. Two fixture or explicit local tests were ignored. Three frontend tests cover relative evidence paths, shared comparison projection, and typed processor fields.
 
-HTTP smoke tests returned the configuration page and idle session state. The updated server accepted the `deltasieve.localhost` Host and Origin headers, rejected a foreign Host with 403, and returned report and cache paths beneath the selected V: data directory. Browser hostname resolution, a real native comparison through the standalone coordinator, existing-study resume integration, and full browser interaction remain pending.
+HTTP smoke tests returned the configuration page and idle session state. The updated server accepted the `deltasieve.localhost` Host and Origin headers, rejected a foreign Host with 403, and returned report and cache paths beneath the selected V: data directory.
+
+A native CLI smoke test processed one known Original/Default workbook pair through the standalone coordinator. It published `completed_with_limitations`, zero different regions, no failed pairs, and no unmatched candidates. Its retained report also exported successfully to a separate static directory. Browser hostname resolution, existing-study resume integration, and full browser interaction remain pending.

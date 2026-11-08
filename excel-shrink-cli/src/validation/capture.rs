@@ -56,6 +56,7 @@ pub(super) fn compare(
         .arg("-CaptureIdleTimeoutSeconds")
         .arg(options.idle_timeout_seconds.to_string())
         .env("EXCEL_SHRINK_TARGETED_WORKBOOK_LABEL", label)
+        .env("EXCEL_SHRINK_LOG_DIR", power_shell_path(logs)?)
         // The legacy engine can cache saved/rebuilt XLSX controls globally.
         // Standalone temporary output must own those workbook copies as well.
         .env(
