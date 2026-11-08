@@ -216,3 +216,39 @@ Next integration work must retain one stable host origin per exclusive worker,
 bind its lease to the scheduler owner, discard timed-out workers and preserve
 comparison-scoped HTTP hosts and evidence. Concurrent pool and rebuild tests
 remain required before changing the corpus runner's default lifecycle.
+
+## Rust-owned worker transport
+
+`capture-host workbook-worker settings.json` is an internal Windows entry point
+for the same worker. Settings specify absolute `seed`, `excel_executable`,
+`capture_root` and a new exclusive `profile_root`, plus `timeout_seconds` from
+1 through 600. The Rust adapter owns a kill-on-close process job. The bootstrap
+waits for an ownership gate before starting Excel, so a helper cannot launch
+Excel before job assignment. Startup checks the reported PID and birth time
+against the live native process.
+
+Bounded reader and writer channels carry UTF-8 JSON frames up to 65,536 bytes.
+Writing and receiving share one command deadline. Replies must echo the request
+GUID and successful replies must retain the expected Excel PID. On EOF, error
+or deadline failure, job closure terminates the owned helper tree, and cleanup
+waits for both helper and matching Excel identity to be observed ended.
+`-RustWorker -WorkerProcess` selects this adapter in the native harness.
+
+Trial `office-resident-switch-20261108-11-ü` passed four production resident
+capture/upload/release sequences through Rust and C#. It initialized in 5.723
+seconds. Open through Office.js ready took 1.854, 1.950, 1.512 and 1.083 seconds.
+It passed repeated images, deliberate difference, nine old-token rejection
+checks, retained PNG receipt checks, unchanged source hashes and failed-command
+worker retirement. These times exclude the subsequent capture/upload/release
+commands.
+
+Two Rust tests pass for UTF-8/framing limits and stalled mock-helper transport.
+The latter uses no Excel. It bounds an unanswered read, fills the pipe while
+the helper is not reading and verifies owned helper termination. Its first
+version incorrectly assumed a 64 KiB write would fill the pipe and failed its
+test assertion. An 8 MiB test-only write exercises the blocked writer without
+depending on the pipe's default buffer size. Normal protocol frames retain
+their 64 KiB limit.
+
+The adapter is callable and natively tested. Corpus scheduling and worker leases
+still require integration, alongside matched rebuild and concurrent-pool tests.

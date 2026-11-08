@@ -18,6 +18,14 @@ origins per exclusive worker, owner-death and interruption recovery, matched
 rebuild checks and concurrent worker isolation. No broader delivery task is
 complete on the strength of these single-worker probes.
 
+The internal Rust `capture-host workbook-worker` adapter now owns the C# helper
+tree, gates Excel startup on successful job assignment, verifies native birth
+identity and bounds both command writing and reply waits. A native four-workbook
+trial through this adapter passed the same image, Unicode, isolation and failure
+controls. Two focused Rust tests cover framing and a stalled mock helper without
+Excel. The remaining integration is the corpus scheduler's exclusive worker
+leases and stable origins, not the tested single-worker command transport.
+
 This is the reviewable work queue for the two tools, their Observatory, and their papers. Follow the phased dependencies below after approval, retaining the task numbers as stable references and recording each task's evidence and remaining work here. Tasks marked as existing work require verification and integration. Their status does not establish that the planned acceptance checks have passed.
 
 ## 00 Wait for approval

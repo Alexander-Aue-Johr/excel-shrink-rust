@@ -9,12 +9,14 @@ param(
     [switch]$ExpectDifferentPixels,
     [switch]$ResidentCommands,
     [switch]$WorkerProcess,
-    [switch]$FailWorkerAtEnd
+    [switch]$FailWorkerAtEnd,
+    [switch]$RustWorker
 )
 $ErrorActionPreference = 'Stop'
 if ($ExpectDifferentPixels -and -not $CaptureRange) { throw 'Different-pixel control requires CaptureRange.' }
 if ($ResidentCommands -and $CaptureRange) { throw 'Choose the production resident page or the minimal pixel page.' }
 if ($FailWorkerAtEnd -and -not $WorkerProcess) { throw 'Worker failure control requires WorkerProcess.' }
+if ($RustWorker -and -not $WorkerProcess) { throw 'RustWorker requires WorkerProcess.' }
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new probe output directory.' }
 [void][IO.Directory]::CreateDirectory($Output)
 Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
@@ -246,9 +248,19 @@ try {
     $startup = [Diagnostics.Stopwatch]::StartNew()
     if ($WorkerProcess) {
         $start = New-Object Diagnostics.ProcessStartInfo
-        $start.FileName = Join-Path $PSHOME 'powershell.exe'
-        $start.Arguments = '-NoProfile -ExecutionPolicy Bypass -File ' + (Quote-Argument (Join-Path $CaptureRoot 'workbook-worker.ps1')) +
-            ' -ExcelExecutable ' + (Quote-Argument (Find-ExcelExecutable)) + ' -Seed ' + (Quote-Argument $seedCopy)
+        if ($RustWorker) {
+            $settings = Join-Path $Output 'worker-settings.json'
+            Write-ProbeJson $settings @{
+                seed=$seedCopy;excel_executable=(Find-ExcelExecutable);capture_root=$CaptureRoot
+                profile_root=(Join-Path $Output 'rust-worker-profile');timeout_seconds=120
+            }
+            $start.FileName = $Binary
+            $start.Arguments = 'capture-host workbook-worker ' + (Quote-Argument $settings)
+        } else {
+            $start.FileName = Join-Path $PSHOME 'powershell.exe'
+            $start.Arguments = '-NoProfile -ExecutionPolicy Bypass -File ' + (Quote-Argument (Join-Path $CaptureRoot 'workbook-worker.ps1')) +
+                ' -ExcelExecutable ' + (Quote-Argument (Find-ExcelExecutable)) + ' -Seed ' + (Quote-Argument $seedCopy)
+        }
         $start.UseShellExecute = $false
         $start.CreateNoWindow = $true
         $start.RedirectStandardInput = $true
@@ -385,5 +397,6 @@ if ($ResidentCommands) {
 Write-ProbeJson (Join-Path $Output 'result.json') @{
     samples=$samples;startup_seconds=$startupSeconds
     worker_process_used=[bool]$WorkerProcess;worker_failure_control=[bool]$FailWorkerAtEnd
+    rust_worker_used=[bool]$RustWorker
     owned_excel_exit_confirmed=$true;source_hashes_unchanged=$true
 }

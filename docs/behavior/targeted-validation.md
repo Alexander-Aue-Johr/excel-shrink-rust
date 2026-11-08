@@ -1135,3 +1135,12 @@ retires the worker and terminates its Excel job. A caller timeout requires worke
 discard and must not trigger an unverified replay of an open command. Command
 framing rejects truncated input and frames exceeding 16,384 characters. HTTP
 capture sessions and immutable evidence remain separate from workbook control.
+
+The internal Rust workbook-worker adapter assigns the helper to its process job
+before sending the bootstrap gate that permits Excel startup. It verifies the
+reported native birth identity. Bounded UTF-8 reader/writer channels apply one
+deadline to command write and reply. Response GUID and Excel PID must match.
+Closing the owned job is followed by bounded cleanup confirmation. A stopped
+process with the same numeric PID but a different birth identity does not count
+as the original process still running. Unknown liveness remains unconfirmed.
+This adapter does not yet alter the corpus scheduler's worker lifecycle.

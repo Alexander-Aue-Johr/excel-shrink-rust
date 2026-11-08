@@ -64,6 +64,10 @@ pub fn run(arguments: Vec<OsString>) -> Result<()> {
         .build()?;
     runtime.block_on(async {
         match mode.to_str() {
+            #[cfg(windows)]
+            Some("workbook-worker") if arguments.len() == 1 => {
+                crate::regression::workbook_worker::run(Path::new(&arguments[0]))
+            }
             Some("inject-addin-probe") if arguments.len() == 1 => {
                 crate::regression::addin_probe::run(Path::new(&arguments[0]))
             }

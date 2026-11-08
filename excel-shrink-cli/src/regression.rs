@@ -23,6 +23,8 @@ mod excel_automation;
 pub(crate) use excel_automation::power_shell_path;
 #[cfg(windows)]
 mod legacy_conversion;
+#[cfg(windows)]
+pub(crate) mod workbook_worker;
 
 /// Start the same native preparation implementation used by the standalone CLI.
 pub(crate) fn prepare_performance_manifest(
