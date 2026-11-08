@@ -240,6 +240,17 @@ The historical Excel Shrink papers and reviews are available in the local archiv
 
 Acceptance requires two complete, compilable first-draft PDFs and their fresh LaTeX projects, verified citations, claim-to-evidence checks, reproducible figures and tables, the first-page figure decision, a list of unresolved evidence gaps, and an author-review checklist. Recheck current venue requirements and disclosure when preparing a later submission version.
 
+The author-review checklist must also verify the actual submission and revision
+instructions received for that cycle, including response-letter placement,
+marked changes, upload fields and page accounting. Preserve a requirement-to-
+response mapping for any revision. Verify that source-code and data links are
+easy to locate in the paper itself. Use labeled examples and explicit invariants
+to connect low-level mechanisms to the data-management contribution. Evaluate
+functional value/formula preservation separately from selected visual evidence.
+Record serialization edge cases, source diversity, matched baseline conditions,
+color-independent figure cues and the intentional shared-table cleanup boundary.
+Keep confidential correspondence and full reviews in private working storage.
+
 ## 15 Add bounded event history and replay
 
 - [ ] Add replay using compact events, periodic checkpoints, and a virtual clock.
@@ -345,6 +356,20 @@ Approval was received on 2026-11-08. Task 01 is in progress. The live runner PID
   Private launch, backup and verification receipts are retained under
   `G:\deltasieve-work\enron-font-fix-refresh-20261108`. Final resumed progress
   and difference review remain open.
+- `5df6cbc` reconciles frozen running telemetry only against a matching final
+  workbook record and positively departed PID/creation-time pairs. Eight focused
+  tests passed. A shadow host on real Enron data retired exactly five stale
+  attempts and retained current work. The host-only deployment preserved runner
+  PID 50844, and browser checks confirmed the stale cards disappeared.
+- The native inspection lifecycle test passed in 17.46 seconds while Enron
+  continued. It verified same-process selection reuse, reopening only a closed
+  partner, switching workbook copies in surviving processes, and complete owned
+  cleanup. The browser also loaded a measured capture-region list successfully.
+- `df46f23` adds the synthetic scheduling experiment. The initial 24-trial pilot
+  and expanded 36-trial run retained identical decompressed output members.
+  Subsecond timings alongside Enron remain exploratory. Independent expected
+  numeric coordinates and values passed on the two-sheet fixture. No scheduler
+  change was adopted, and CPU/peak-memory follow-up remains open.
 - `77959b2` preserves finite uniform-background bounds around supported drawings.
   The interrupted Enron group `cade66d204a8e1b3760d` contains unsupported rotated
   shapes and lines, so that improvement does not resolve its full-sheet plan.
