@@ -1617,3 +1617,283 @@ fn automatic_row_keeps_each_mask_of_an_unrepresented_hidden_column_font() {
         assert_eq!(cleaned, source);
     }
 }
+
+#[test]
+fn row_font_promotion_accepts_standard_attributes_in_any_order() {
+    let params = promotion_params();
+    for first_cell in [
+        r#"<c r="A1" s="2" t="n"><v>7</v></c>"#,
+        r#"<c t='n' s='2' r='A1'><v>7</v></c>"#,
+        "<c\n s = '2'\t r = 'A1'\r\n t = 'n'><v>7</v></c>",
+    ] {
+        let input = format!(
+            "<row r=\"1\" ht=\"9\" customHeight=\"1\">{first_cell}\
+             <c r=\"B1\" s=\"2\"/><c r=\"C1\" s=\"2\"/><c r=\"D1\" s=\"2\"/></row>"
+        );
+        let expected = format!(
+            "<row r=\"1\" ht=\"9\" customHeight=\"1\" s=\"1\" customFormat=\"1\">\
+             {first_cell}</row>"
+        );
+        let mut metrics = promotion_columns(&params, true);
+        let cleaned = replace_single_row_with_metrics(input.as_bytes(), &params, &mut metrics);
+        assert_eq!(cleaned, expected.as_bytes());
+        assert_eq!(metrics.deleted_cell_count, 3);
+    }
+}
+
+#[test]
+fn row_font_promotion_leaves_nonstandard_cell_metadata_on_the_normal_path() {
+    let params = promotion_params();
+    for extra_attribute in [
+        r#"cm="3""#,
+        r#"vm="4""#,
+        r#"custom="preserve""#,
+        r#"xmlns:q="urn:test" q:flag="preserve""#,
+    ] {
+        let first_cell = format!(
+            "<c r=\"A1\" s=\"2\" {extra_attribute}><f>1+6</f><v>7</v></c>"
+        );
+        let input = format!(
+            "<row r=\"1\" ht=\"9\" customHeight=\"1\">{first_cell}\
+             <c r=\"B1\" s=\"2\"/><c r=\"C1\" s=\"2\"/><c r=\"D1\" s=\"2\"/></row>"
+        );
+        let mut metrics = promotion_columns(&params, true);
+        let cleaned = replace_single_row_with_metrics(input.as_bytes(), &params, &mut metrics);
+        let cleaned = String::from_utf8(cleaned).unwrap();
+        assert!(cleaned.starts_with(r#"<row r="1" ht="9" customHeight="1">"#));
+        assert!(cleaned.contains(first_cell.as_str()));
+        assert!(!cleaned.contains("customFormat"));
+    }
+}
+
+#[test]
+fn row_font_promotion_preserves_fallback_for_malformed_cells_and_unknown_styles() {
+    let params = promotion_params();
+    for first_cell in [
+        r#"<c r="A1" s=2><v>7</v></c>"#,
+        r#"<c r="A1" s="2" broken><v>7</v></c>"#,
+        r#"<c r="A0A1" s="2"><v>7</v></c>"#,
+        r#"<c s="2"><v>7</v></c>"#,
+        r#"<c r="A1" s="999"><v>7</v></c>"#,
+    ] {
+        let input = format!(
+            "<row r=\"1\" ht=\"9\" customHeight=\"1\">{first_cell}\
+             <c r=\"B1\" s=\"2\"/><c r=\"C1\" s=\"2\"/><c r=\"D1\" s=\"2\"/></row>"
+        );
+        let mut metrics = promotion_columns(&params, true);
+        let cleaned = replace_single_row_with_metrics(input.as_bytes(), &params, &mut metrics);
+        let cleaned = String::from_utf8(cleaned).unwrap();
+        assert!(cleaned.contains(first_cell));
+        assert!(!cleaned.contains("customFormat"));
+    }
+}
+
+fn sparse_promotion_style_for_test(
+    content: &[u8],
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+) -> Option<u32> {
+    let row = crate::sheet::row_view::RowView::parse(
+        br#" r="1" ht="9" customHeight="1""#,
+        params,
+    )
+    .unwrap();
+    super::choose_promoted_row_style(&row, content, params, metrics)
+        .map(|promotion| promotion.style_id)
+}
+
+#[test]
+fn row_font_promotion_does_not_substitute_a_promotable_minority_style() {
+    let params = promotion_params();
+    let metrics = promotion_columns(&params, true);
+    // Style 0 cannot promote; style 1 could cover the trailing gap, but loses 3:2.
+    let content = br#"<c r="A1" s="0"/><c r="B1" s="0"/><c r="C1" s="0"/><c r="D1" s="1"/><c r="E1" s="1"/>"#;
+    assert_eq!(sparse_promotion_style_for_test(content, &params, &metrics), None);
+    // Removing the competing majority changes the answer: the fixture contains
+    // a real promotable alternative, rather than a row that fails every guard.
+    let eligible = br#"<c r="A1" s="1"/><c r="B1" s="1"/><c r="C1" s="1"/><c r="D1" s="1"/><c r="E1" s="1"/>"#;
+    assert_eq!(sparse_promotion_style_for_test(eligible, &params, &metrics), Some(1));
+}
+
+#[test]
+fn row_font_promotion_ties_keep_the_lower_style_id_even_when_unsuitable() {
+    let params = promotion_params();
+    let metrics = promotion_columns(&params, true);
+    // The lower ID wins, irrespective of encounter order or target suitability.
+    for content in [
+        br#"<c r="A1" s="1"/><c r="B1" s="0"/><c r="C1" s="1"/><c r="D1" s="0"/>"#.as_slice(),
+        br#"<c r="A1" s="0"/><c r="B1" s="1"/><c r="C1" s="0"/><c r="D1" s="1"/>"#.as_slice(),
+    ] {
+        assert_eq!(sparse_promotion_style_for_test(content, &params, &metrics), None);
+    }
+    let eligible = br#"<c r="A1" s="3"/><c r="B1" s="1"/><c r="C1" s="3"/><c r="D1" s="1"/>"#;
+    assert_eq!(sparse_promotion_style_for_test(eligible, &params, &metrics), Some(1));
+}
+
+#[test]
+fn row_font_promotion_can_use_a_font_target_when_the_dominant_xf_does_not_apply_font() {
+    let mut params = promotion_params();
+    let dominant = params.patterns.xfs_by_index.get_mut(&2).unwrap();
+    dominant.apply_font = false;
+    assert_eq!(dominant.row_font_style_id, Some(1));
+    let metrics = promotion_columns(&params, true);
+    let content = br#"<c r="A1" s="2"><v>7</v></c><c r="B1" s="2"/><c r="C1" s="2"/><c r="D1" s="2"/>"#;
+    assert_eq!(
+        sparse_promotion_style_for_test(content, &params, &metrics),
+        Some(1)
+    );
+}
+
+#[test]
+fn one_style_representative_is_selected_again_in_each_row() {
+    let params = params_with_styles(&[(0, font_only_style()), (7, font_only_style())]);
+    let source = br#"<row r="1" spans="1:3"><c r="A1" s="7"/><c r="B1" s="7"/><c r="C1" s="7"/></row><row r="2" spans="1:3"><c r="A2" s="7"/><c r="B2" s="7"/><c r="C2" s="7"/></row>"#;
+    let expected = br#"<row r="1" spans="1:1"><c r="A1" s="7"/></row><row r="2" spans="1:1"><c r="A2" s="7"/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cleaned =
+        clean_sheet_rows_and_cells_in_cell_range(source, &params, &mut metrics).unwrap();
+
+    assert_eq!(cleaned, expected);
+    assert_eq!(metrics.deleted_cell_count, 4);
+    assert_eq!(metrics.kept_cell_states.len(), 2);
+    assert_eq!(metrics.kept_cell_states[0].row, 1);
+    assert_eq!(metrics.kept_cell_states[1].row, 2);
+}
+
+#[test]
+fn first_style_stays_represented_after_two_other_styles() {
+    let params = params_with_styles(&[
+        (0, font_only_style()),
+        (7, font_only_style()),
+        (9, font_only_style()),
+        (11, font_only_style()),
+    ]);
+    let source = br#"<row r="3" spans="1:6"><c r="A3" s="7"/><c r="B3" s="9"/><c r="C3" s="11"/><c r="D3" s="7"/><c r="E3" s="9"/><c r="F3" s="11"/></row>"#;
+    let expected = br#"<row r="3" spans="1:3"><c r="A3" s="7"/><c r="B3" s="9"/><c r="C3" s="11"/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+
+    let cleaned = replace_single_row_with_metrics(source, &params, &mut metrics);
+
+    assert_eq!(cleaned, expected);
+    assert_eq!(metrics.deleted_cell_count, 3);
+    assert_eq!(metrics.kept_cell_states.len(), 3);
+}
+
+#[test]
+fn explicit_zero_style_and_styleless_cells_keep_separate_representatives() {
+    let params = params_with_styles(&[(0, font_only_style()), (7, font_only_style())]);
+    let source = br#"<row r="3" spans="1:9"><c r="A3" s="0"/><c r="B3"/><c r="C3" s="65000"/><c r="D3" s="65000"/><c r="E3" s="0"/><c r="F3"/><c r="G3" s="7"/><c r="H3" s="7"/><c r="I3" s="65000"/></row>"#;
+    let expected = br#"<row r="3" spans="1:7"><c r="A3" s="0"/><c r="B3"/><c r="C3" s="65000"/><c r="D3" s="65000"/><c r="G3" s="7"/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.merge_cell_ranges.push(crate::models::CellRange {
+        start_col: 3,
+        end_col: 4,
+        start_row: 3,
+        end_row: 3,
+    });
+
+    let cleaned = replace_single_row_with_metrics(source, &params, &mut metrics);
+
+    assert_eq!(cleaned, expected);
+    assert_eq!(metrics.deleted_cell_count, 4);
+    assert_eq!(metrics.kept_cell_states.len(), 5);
+    assert_eq!(metrics.tail_anchor_max_row, Some(3));
+}
+
+#[test]
+fn multi_style_fixed_height_pruning_keeps_previous_row_metrics() {
+    let params = params_with_styles(&[
+        (0, font_only_style()),
+        (7, font_only_style()),
+        (9, font_only_style()),
+    ]);
+    let previous = br#"<row r="1"><c r="A1"><v>42</v></c></row>"#;
+    let source = br#"<row r="2" ht="12.75" customHeight="1"><c r="A2" s="7"/><c r="B2" s="9"/><c r="C2" s="7"/><c r="D2" s="9"/></row>"#;
+    let expected = br#"<row r="2" ht="12.75" customHeight="1"/>"#;
+    let mut metrics = CleanSheetMetrics::default();
+    assert_eq!(
+        replace_single_row_with_metrics(previous, &params, &mut metrics),
+        previous
+    );
+
+    let cleaned = replace_single_row_with_metrics(source, &params, &mut metrics);
+
+    assert_eq!(cleaned, expected);
+    assert_eq!(metrics.deleted_cell_count, 4);
+    assert_eq!(metrics.kept_cell_states.len(), 1);
+    assert_eq!(metrics.kept_cell_states[0].row, 1);
+    assert_eq!(metrics.kept_cell_states[0].col, 1);
+    assert_eq!(metrics.tail_anchor_max_row, Some(1));
+}
+
+// These expectations concern the chosen row style, not the counter layout.
+fn performance_count_promotion(styles: &[u32], blocked: Option<u32>) -> Option<u32> {
+    let mut definitions = Vec::new();
+    for id in [0, 3, 7, 11, 19, 23] {
+        definitions.push((
+            id,
+            Xf::builder()
+                .font_id(Some(0))
+                .non_font_style_id(Some(1))
+                .fill_id(Some(0))
+                .border_id(Some(0))
+                .apply_font(id != 0 && blocked != Some(id))
+                .has_no_empty_cell_visible_style(true)
+                .build_xf(),
+        ));
+    }
+    let params = params_with_styles(&definitions);
+    let metrics = CleanSheetMetrics::default();
+    let row = super::RowView::parse(br#" r="1" ht="12" customHeight="1""#, &params)
+        .unwrap();
+    let mut content = String::new();
+    for (index, style_id) in styles.iter().enumerate() {
+        let column = char::from(b'A' + u8::try_from(index).unwrap());
+        content.push_str(&format!("<c r=\"{column}1\" s=\"{style_id}\"/>"));
+    }
+    super::choose_promoted_row_style(&row, content.as_bytes(), &params, &metrics)
+        .map(|promotion| promotion.style_id)
+}
+
+#[test]
+fn performance_counts_four_styles_choose_lowest_id_on_ties() {
+    for styles in [
+        [3, 19, 11, 7, 3, 19, 11, 7],
+        [19, 11, 7, 3, 19, 11, 7, 3],
+    ] {
+        assert_eq!(performance_count_promotion(&styles, None), Some(3));
+    }
+}
+
+#[test]
+fn performance_counts_fifth_style_can_win_a_tie() {
+    assert_eq!(
+        performance_count_promotion(&[19, 11, 7, 23, 3, 23, 19, 11, 7, 3], None),
+        Some(3)
+    );
+}
+
+#[test]
+fn performance_counts_preserve_earlier_occurrences_after_fifth_style() {
+    assert_eq!(
+        performance_count_promotion(&[11, 11, 11, 11, 19, 7, 23, 3, 19, 19], None),
+        Some(11)
+    );
+}
+
+#[test]
+fn performance_counts_do_not_ignore_an_ineligible_dominant_style() {
+    assert_eq!(
+        performance_count_promotion(&[7, 7, 7, 7, 3, 3, 11, 19, 23], Some(7)),
+        None
+    );
+}
+
+#[test]
+fn performance_counts_style_zero_remains_a_real_counted_candidate() {
+    assert_eq!(
+        performance_count_promotion(&[11, 11, 0, 0, 19, 7, 23], None),
+        None
+    );
+}
