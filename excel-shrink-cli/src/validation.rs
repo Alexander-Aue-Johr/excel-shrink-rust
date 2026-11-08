@@ -4,6 +4,7 @@
 pub(crate) mod capture;
 mod pairing;
 mod processing_progress;
+mod replay;
 mod run;
 mod storage;
 

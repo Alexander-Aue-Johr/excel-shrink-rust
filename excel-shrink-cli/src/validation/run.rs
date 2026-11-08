@@ -91,6 +91,7 @@ struct Run {
     processing_failures: usize,
     cleanup_unconfirmed: bool,
     preparation: Option<crate::validation_preparation::imported::ImportedEvidence>,
+    replay: Mutex<super::replay::Recorder>,
 }
 
 struct PreviousRun {
@@ -133,6 +134,7 @@ impl Run {
             "pairs":[], "unmatched_candidates":[], "steps":[],
             "preparation":preparation.as_ref().map(|evidence| &evidence.summary),
         });
+        let replay = Mutex::new(super::replay::Recorder::new(root.join("replay"))?);
         let mut run = Self {
             config,
             root,
@@ -144,6 +146,7 @@ impl Run {
             processing_failures: 0,
             cleanup_unconfirmed: false,
             preparation,
+            replay,
         };
         run.update_progress(|progress| {
             *progress = LiveProgress {
@@ -710,6 +713,10 @@ impl Run {
         } else {
             RunState::Completed
         })?;
+        self.replay
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Replay lock poisoned"))?
+            .finish()?;
         eprintln!(
             "DeltaSieve report: {}",
             self.root.join("index.html").display()
@@ -755,7 +762,18 @@ impl Run {
             .lock()
             .map_err(|_| anyhow::anyhow!("Progress lock poisoned"))?;
         update(&mut progress);
-        storage::write_json(&self.root.join("progress.json"), &*progress)
+        storage::write_json(&self.root.join("progress.json"), &*progress)?;
+        let checkpoint = json!({
+            "state":progress.state,"current":progress.current.as_ref().map(|value| value.chars().take(512).collect::<String>()),
+            "total":progress.total,"completed":progress.completed,"failed":progress.failed,
+            "reused":progress.reused,"different_pairs":progress.different_pairs,
+            "checked_equal_pairs":progress.checked_equal_pairs,
+            "error":progress.error.as_ref().map(|value| value.chars().take(2048).collect::<String>()),
+        });
+        self.replay
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Replay lock poisoned"))?
+            .record(checkpoint)
     }
 }
 
@@ -943,6 +961,32 @@ mod tests {
         assert!(RunState::Processing.permits(RunState::Failed));
         assert!(!RunState::Validating.permits(RunState::Completed));
         assert!(!RunState::Completed.permits(RunState::Validating));
+    }
+
+    #[test]
+    fn failed_source_run_closes_replay_with_the_actual_terminal_state() -> Result<()> {
+        use std::io::Read;
+        let root = std::env::temp_dir().join(format!("run-replay-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root)?;
+        let report = root.join("report");
+        let config = RunConfig {
+            source_a: root.join("missing-a").to_string_lossy().into_owned(),
+            source_b: Some(root.join("missing-b").to_string_lossy().into_owned()),
+            report_dir: report.clone(),
+            cache_dir: root.join("cache"),
+            ..RunConfig::default()
+        };
+        assert!(execute(config, None).is_err());
+        let manifest = storage::read_json(&report.join("replay/manifest.json"))?;
+        assert_eq!(manifest["complete"], true);
+        let chunks = manifest["chunks"].as_array().unwrap();
+        let last = chunks.last().unwrap()["file"].as_str().unwrap();
+        let bytes = fs::read(report.join("replay").join(last))?;
+        let mut decoded = Vec::new();
+        flate2::read::GzDecoder::new(&bytes[..]).read_to_end(&mut decoded)?;
+        let states: Vec<Value> = serde_json::from_slice(&decoded)?;
+        assert_eq!(states.last().unwrap()["state"]["state"], "failed");
+        Ok(())
     }
 
     #[test]
