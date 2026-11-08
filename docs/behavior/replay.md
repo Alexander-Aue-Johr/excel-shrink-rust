@@ -54,9 +54,31 @@ gzip checkpoint JSON within the same bounds, so compressed error text remains
 subject to local-path and credential checks. Original recordings and source
 run metadata stay unchanged.
 
+## Static browser playback
+
+The static run page offers an explicitly loaded, initially paused replay panel.
+It supports play/pause, restart, ten-second jumps, a seek slider and speeds from
+0.1 to 1,000 times real time. A monotonic virtual clock preserves position across
+speed changes. The historical panel labels each checkpoint's own timestamp and
+leaves the final workbook-result list unchanged.
+
+The browser validates the manifest and chunk identities, limits compressed reads
+and decompression, and retains at most two decoded chunks. It selects the last
+recorded checkpoint at or before the requested time without interpolation.
+Requests are same-origin relative HTTP/HTTPS fetches. File-URL playback is
+unavailable, while the rest of the standalone report retains its existing
+file-URL behavior. Static servers must serve `.json.gz` as raw gzip assets so
+the browser can verify the retained compressed-byte identity.
+
+Explicit seeks cancel obsolete requests. Paused playback schedules no animation
+frames. During playback checkpoint refresh is limited to ten per second and
+unchanged checkpoints do not rewrite the historical status. Page departure
+cancels outstanding work. Missing or unsupported browser history shows an
+explicit unavailable message.
+
 ## Remaining delivery gates
 
-Browser readers, virtual-clock UI,
-play/pause/seek/speed controls and shared live component playback remain open.
+Browser layout and static-host acceptance, long-run cost measurements,
+and shared live process-component playback remain open.
 Process/sheet/capture/heartbeat recording and long-run memory/cost acceptance
 remain open too. This storage channel alone does not complete roadmap Task 15.

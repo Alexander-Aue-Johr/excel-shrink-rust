@@ -1,6 +1,7 @@
 import { atelierRegions } from './atelier-model.js';
 import { createPixelInspector } from './atelier-pixels.js';
 import { createRetainedFormulaInspector, retainedFormulaDiagnosis } from './formula-inspector.js';
+import { installReportReplay } from './report-replay.js';
 
 /** Only immutable package images are addressable, on file:// or a static host. */
 export function portableImageUrl(path) {
@@ -98,6 +99,7 @@ function showRunReport(content, data) {
   if (data.error) content.append(reportElement('p', 'report-warning', `Recorded run failure: ${data.error}`));
   if (data.summary) content.append(reportDetails('Recorded run summary', data.summary));
   if (data.selection) content.append(reportDetails('Validation partition and coverage', data.selection));
+  installReportReplay(content, data.replay);
   const controls = reportElement('div', 'report-controls');
   const search = reportElement('input');
   search.type = 'search';

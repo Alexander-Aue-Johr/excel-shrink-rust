@@ -61,6 +61,10 @@
 .report-verdict { color: #f0d293; }
 .report-status { color: #8ed6cb; font-weight: 600; }
 .report-status.failed, .report-status.incomplete { color: #ffc08a; }
+.report-replay-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border: 0; padding: 12px 0; }
+.report-replay-controls input[type="range"] { flex: 1 1 240px; min-width: 120px; }
+.report-replay-controls output { min-width: 180px; font-variant-numeric: tabular-nums; }
+.report-replay progress { width: 100%; }
 @media (max-width: 700px) {
   .report-header { align-items: flex-start; flex-direction: column; padding: 18px; }
   #report-content { padding: 14px 18px 28px; }

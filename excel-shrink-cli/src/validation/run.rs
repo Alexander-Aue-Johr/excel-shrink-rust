@@ -133,6 +133,7 @@ impl Run {
             "baseline_after_step":config.baseline_after_step,
             "pairs":[], "unmatched_candidates":[], "steps":[],
             "preparation":preparation.as_ref().map(|evidence| &evidence.summary),
+            "replay":{"available":true,"manifest":"replay/manifest.json","channel":"run-progress"},
         });
         let replay = Mutex::new(super::replay::Recorder::new(root.join("replay"))?);
         let mut run = Self {

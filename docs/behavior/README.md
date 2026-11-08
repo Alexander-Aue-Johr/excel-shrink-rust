@@ -14,6 +14,9 @@ Check Performance lane and reuse requirements are specified in
 remains historical. Current experiments and claim boundaries are recorded in the
 [evaluation protocol](../planning/evaluation-protocol.md).
 
+The [replay contract](replay.md) describes recorded progress, bounded static
+playback, export verification and unavailable historical telemetry.
+
 ## Product objective and acceptance
 
 Owner clarification, 2026-11-04. Default is the production preservation target.

@@ -12,11 +12,13 @@ use std::{
 const TEMPLATE: &str = include_str!("../../office-capture/control-room/report.html");
 const OBSERVATORY_CSS: &str = include_str!("../../office-capture/control-room/style.css");
 const REPORT_CSS: &str = include_str!("../../office-capture/control-room/report.css");
-const SCRIPTS: [&str; 5] = [
+const SCRIPTS: [&str; 7] = [
     include_str!("../../office-capture/control-room/atelier-model.js"),
     include_str!("../../office-capture/control-room/pixel-summary.js"),
     include_str!("../../office-capture/control-room/atelier-pixels.js"),
     include_str!("../../office-capture/control-room/formula-inspector.js"),
+    include_str!("../../office-capture/control-room/replay-engine.js"),
+    include_str!("../../office-capture/control-room/report-replay.js"),
     include_str!("../../office-capture/control-room/report.js"),
 ];
 
