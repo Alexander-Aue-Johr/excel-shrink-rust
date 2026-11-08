@@ -185,6 +185,8 @@ Select the preservation and selection mechanisms that carry the papers' central 
 
 Preserve useful historical unpublished manuscripts as clearly dated artifacts. Summarize prior feedback as requirements and research motivation. Check applicable confidentiality conditions before distributing full review text.
 
+The historical Excel Shrink papers and reviews are available in the local archive `V:\excel_shrink_papers_and_reviews.7z`. The user reports favorable reviews and attributes the unsuccessful submission outcome in substantial part to an overlooked instruction concerning a review letter. If this history becomes relevant, inspect the archived documents to establish the exact sequence, requirements, and decision. Include any required review or response letter in the submission checklist for the new papers.
+
 Acceptance requires compiling manuscripts, claim-to-evidence checks, reproducible figures and tables, and venue-specific submission checks against current official guidance.
 
 ## 15 Add bounded event history and replay
