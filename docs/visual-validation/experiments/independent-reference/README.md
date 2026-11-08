@@ -94,6 +94,25 @@ The six sampler/preparer tests include grid edges, dimension union, graphical
 exclusion, corrupt member hashes and missing preparations. Inputs and receipts
 remain privately under `G:\deltasieve-work\reference-samples-20261108`.
 
+The first three native sample observations completed in 38.182, 45.587 and
+37.345 seconds, covering nine declared rectangles. Eight matched in geometry
+and RGBA pixels. `0966d3e126908018b94a`, `Capital Structure!A1:D15`, had a
+264-pixel-high Original and 263-pixel-high Default. All overlapping RGBA bytes
+matched exactly; the additional 817 pixels were opaque white. The rebuilt
+Original retained an empty trailing row 15, while the rebuilt Default omitted
+it. This is a verified exterior-canvas observation under the agreed contract.
+The strict reference receipt retains the raw difference. Two of these sample
+members had byte-identical prepared inputs, so their observations are
+same-input native controls. The remaining selected cases retain pending or
+unsupported outcomes, and this initial subset is no coverage-rate estimate.
+
+Each case used at most one reference slot while Enron continued with three
+groups, restoring its target to four in a `finally` block. The launcher runtime
+change was verified by a successful native case and a rejected empty plan.
+Both restored the caller's environment exactly, including absent variables.
+The rejected plan started no workbook and retained a failure receipt even
+though no comparison directory was created.
+
 ## Initial check on 2026-11-08
 
 Two trials used a synthetic worksheet whose reference area was fixed at

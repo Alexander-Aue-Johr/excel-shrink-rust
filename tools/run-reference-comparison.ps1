@@ -51,7 +51,7 @@ try {
         throw "Reference comparison exceeded its $TotalTimeoutSeconds-second experiment budget."
     }
     $exitCode = $process.ExitCode
-    if ($exitCode -ne 0) { throw "Reference comparison failed. Inspect $outputPath/reference.json." }
+    if ($exitCode -ne 0) { throw "Reference comparison failed with code $exitCode. Runtime logs are in $runtimePath." }
 } catch {
     $failure = $_.Exception.Message
     throw
