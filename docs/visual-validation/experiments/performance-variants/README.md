@@ -94,3 +94,17 @@ Unit tests cover unchanged and changed members, wrong group identities and fixed
 extraction destinations for traversal-shaped archive member names. A future
 production refresh must explicitly reconcile these results and preserve prior
 comparison provenance. The preflight itself supplies no new visual verdict.
+
+For an explicitly reviewed changed subset, the study command accepts
+`--refresh-preparation --workbook-list changed-identities.json --prepare-only`.
+The JSON array contains full workbook identities from the records, rather than
+their shortened filename hashes. This mode includes previously completed
+workbooks, bypasses preparation reuse for that selection, archives their prior
+records and resets comparison completion. Back up the selected preparation ZIPs
+before invoking it. Converted-original reuse still requires matching source and
+content hashes. Ordinary resume must omit `--refresh-preparation`.
+
+The one-workbook completed-study smoke test was refreshed successfully through
+this entry point. It retained archived records, produced a new preparation and
+left `complete=false`, requiring a fresh comparison. CLI tests reject an
+unbounded refresh and incompatible report/compare-only modes.

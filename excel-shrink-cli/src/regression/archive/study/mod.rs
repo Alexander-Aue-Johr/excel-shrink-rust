@@ -44,6 +44,9 @@ pub(in crate::regression) struct StudyArgs {
     /// Compare only workbook identities in this JSON array, in the listed order.
     #[arg(long, value_name = "JSON")]
     workbook_list: Option<PathBuf>,
+    /// Recompute preparations for the explicit workbook list, including completed results.
+    #[arg(long, requires = "workbook_list", conflicts_with_all = ["compare_only", "report_only", "selection_only", "diagnose_whitespace_only", "full_scan_deferred", "preparation_hash_profile"])]
+    refresh_preparation: bool,
     /// Compare the strongest relative Default reductions first, after preparation.
     #[arg(long)]
     largest_reduction_first: bool,
@@ -552,6 +555,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         manifest,
         json!({
             "prepare_only":args.prepare_only,"compare_only":args.compare_only,
+            "refresh_preparation":args.refresh_preparation,
             "full_scan_deferred":args.full_scan_deferred,
             "resident_capture":args.resident_capture,"comparison_workers":args.comparison_workers,
             "targeted_comparison":args.targeted_comparison,
@@ -602,7 +606,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             if args.diagnose_whitespace_only {
                 return Vec::new();
             }
-            let mut pending = if args.targeted_comparison {
+            let mut pending = if args.refresh_preparation {
+                selection::ordered_members(source, args.order)
+            } else if args.targeted_comparison {
                 selection::ordered_members(source, args.order).into_iter().filter(|(index, name)| {
                     let id = identity(source, *index, name);
                     records.iter().find(|record| record["identity"] == id).is_none_or(|record| {

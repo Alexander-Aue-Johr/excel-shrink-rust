@@ -46,13 +46,15 @@ fn run_phase(
         for (index, name) in selected {
             let id = identity(source, *index, name);
             let position = ensure_record(records, source, *index, name);
-            if !args.control_room
-                && records[position]["complete"] == true
-                && records[position]["status"] == "skipped"
+            if args.refresh_preparation
+                || (!args.control_room
+                    && records[position]["complete"] == true
+                    && records[position]["status"] == "skipped")
             {
                 control_room::archive_record(&room, &id, &records[position])?;
             }
-            if !args.reuse_prepared_from.is_empty()
+            if !args.refresh_preparation
+                && !args.reuse_prepared_from.is_empty()
                 && records[position]["prepared_by"] != producer
                 && records[position]["preparation_accepted_by"] != producer
                 && reusable_preparation(
@@ -78,6 +80,7 @@ fn run_phase(
             let id = identity(source, *index, name);
             let position = ensure_record(records, source, *index, name);
             if !hash_sweep
+                && !args.refresh_preparation
                 && reusable_preparation(
                     &records[position],
                     &bundle_path(output, &id),

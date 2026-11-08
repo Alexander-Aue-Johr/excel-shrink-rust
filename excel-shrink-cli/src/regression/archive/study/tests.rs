@@ -1,6 +1,23 @@
 use super::*;
 
 #[test]
+fn preparation_refresh_requires_a_bounded_explicit_selection() -> Result<()> {
+    assert!(StudyArgs::try_parse_from(["study", "--refresh-preparation"]).is_err());
+    let args = StudyArgs::try_parse_from([
+        "study", "--refresh-preparation", "--workbook-list", "changed.json", "--prepare-only",
+    ])?;
+    assert!(args.refresh_preparation);
+    assert!(args.prepare_only);
+    for conflict in ["--compare-only", "--report-only", "--selection-only"] {
+        assert!(StudyArgs::try_parse_from([
+            "study", "--refresh-preparation", "--workbook-list", "changed.json", conflict,
+        ]).is_err());
+    }
+    assert!(!StudyArgs::try_parse_from(["study"])?.refresh_preparation);
+    Ok(())
+}
+
+#[test]
 fn deferred_full_scan_requires_an_explicit_comparison_run() -> Result<()> {
     assert!(StudyArgs::try_parse_from(["study", "--full-scan-deferred"]).is_err());
     let args = StudyArgs::try_parse_from([
