@@ -20,6 +20,80 @@ fn highlights_the_complete_volatile_call_without_matching_string_literals() {
     assert!(syntax::volatile_span("IF(A1=1,\"RAND()\",0)").is_none());
     assert!(syntax::volatile_span("MYRAND()").is_none());
     assert!(syntax::volatile_span("ÅRAND()").is_none());
+    assert!(syntax::volatile_span("'RAND()'!A1").is_none());
+}
+
+#[test]
+fn filename_calls_require_a_literal_info_type_and_preserve_balanced_arguments() {
+    let formula = r#"IF(A1=1,CELL("filename",INDEX(B1:B3,2)),"")"#;
+    assert_eq!(
+        &formula[syntax::environment_span(formula).unwrap()],
+        r#"CELL("filename",INDEX(B1:B3,2))"#
+    );
+    assert!(syntax::environment_span(r#"cell ( "FILENAME" )"#).is_some());
+    for unsupported in [
+        r#"CELL(A1)"#,
+        r#"CELL("address",A1)"#,
+        r#"MYCELL("filename")"#,
+        r#"CELL("filename"&A1)"#,
+        r#""CELL(""filename"")""#,
+        r#"'CELL("filename")'!A1"#,
+        r#"CELL("filename",A1"#,
+    ] {
+        assert!(syntax::environment_span(unsupported).is_none(), "{unsupported}");
+    }
+}
+
+#[test]
+fn filename_dependency_paths_are_distinguished_from_random_time_and_keep_raw_changes() -> Result<()> {
+    let start = Address::parse("S", "A1")?;
+    let precedent = Address::parse("S", "B1")?;
+    let left = Workbook(BTreeMap::from([
+        (start.clone(), cell("B1", "left path")),
+        (precedent.clone(), cell(r#"CELL("filename")"#, "left path")),
+    ]));
+    let right = Workbook(BTreeMap::from([
+        (start, cell("B1", "right path")),
+        (precedent, cell(r#"CELL("filename")"#, "right path")),
+    ]));
+    let diagnosis = compare(&left, &right, "S", "A1")?;
+    assert_eq!(diagnosis["changed_value_cells"], 1);
+    assert_eq!(diagnosis["volatile_paths"], 0);
+    assert_eq!(diagnosis["environment_paths"], 1);
+    assert_eq!(diagnosis["all_changed_values_have_volatile_dependency"], false);
+    assert_eq!(diagnosis["exclusive_cause_proven"], false);
+    let example = &diagnosis["examples"][0];
+    assert_eq!(example["dependency_kind"], "environment");
+    assert_eq!(example["path"][0]["cell"], "A1");
+    assert_eq!(example["path"][1]["cell"], "B1");
+    assert_eq!(example["path"][1]["environment_span"], json!([0, 16]));
+    assert!(example["path"][1]["volatile_span"].is_null());
+    assert_eq!(example["path"][1]["left_value"], "left path");
+    assert_eq!(example["path"][1]["right_value"], "right path");
+    let source = source_examples(&right, "S", "A1:B1")?;
+    assert_eq!(source["evidence"], "prepared_source_cached_values");
+    assert_eq!(source["environment_paths"], 2);
+    assert_eq!(source["volatile_paths"], 0);
+    assert_eq!(source["coverage_complete"], false);
+    Ok(())
+}
+
+#[test]
+#[ignore = "Requires FORMULA_TRACE_FILENAME_SOURCE/OUTPUT for the retained Enron filename case"]
+fn retained_enron_filename_source_has_an_environment_path() -> Result<()> {
+    let source = read(Path::new(&std::env::var("FORMULA_TRACE_FILENAME_SOURCE")?))?;
+    let diagnosis = source_examples(&source, "Tab 1", "A13")?;
+    assert_eq!(diagnosis["environment_paths"], 1);
+    assert_eq!(diagnosis["volatile_paths"], 0);
+    assert_eq!(diagnosis["evidence"], "prepared_source_cached_values");
+    assert_eq!(diagnosis["exclusive_cause_proven"], false);
+    assert_eq!(diagnosis["examples"][0]["path"][0]["cell"], "A13");
+    let mut output = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(std::env::var("FORMULA_TRACE_FILENAME_OUTPUT")?)?;
+    serde_json::to_writer_pretty(&mut output, &diagnosis)?;
+    Ok(())
 }
 
 #[test]

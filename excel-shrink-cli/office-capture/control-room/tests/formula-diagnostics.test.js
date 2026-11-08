@@ -7,6 +7,8 @@ assert.deepEqual(formulaSegments('<script>', [-1, 3]), ['<script>', '', '']);
 assert.match(formulaSummary({ volatile_paths: 2, evidence: 'prepared_source_cached_values' }), /captured values unavailable/);
 assert.match(formulaSummary({ volatile_paths: 2, evidence: 'saved_compared_states' }), /other differences remain unclassified/);
 assert.equal(formulaSummary({ volatile_paths: 0 }), '');
+assert.match(formulaSummary({ volatile_paths: 0, environment_paths: 2 }), /2 filename\/environment dependency paths/);
+assert.doesNotMatch(formulaSummary({ volatile_paths: 0, environment_paths: 2 }), /random\/time/);
 console.log('PASS formula highlighting, UTF-16 spans and honest source/saved-state labels');
 
 const { requestFormulaDiagnostics } = await import('../formula-diagnostics.js');

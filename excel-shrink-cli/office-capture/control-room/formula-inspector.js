@@ -8,10 +8,15 @@ const formulaElement = (tag, className, text) => {
 
 /** A dependency observation is not an assertion that all differences are volatile. */
 export function formulaSummary(diagnosis) {
-  if (!diagnosis || !diagnosis.volatile_paths) return '';
+  const randomPaths = diagnosis?.volatile_paths || 0;
+  const environmentPaths = diagnosis?.environment_paths || 0;
+  if (!randomPaths && !environmentPaths) return '';
+  const kinds = [];
+  if (randomPaths) kinds.push(`${randomPaths} random/time dependency paths`);
+  if (environmentPaths) kinds.push(`${environmentPaths} filename/environment dependency paths`);
   return diagnosis.evidence === 'prepared_source_cached_values'
-    ? 'Random/time dependency in source · captured values unavailable'
-    : `${diagnosis.volatile_paths} random/time dependency paths · other differences remain unclassified`;
+    ? `${kinds.join(' · ')} in source · captured values unavailable`
+    : `${kinds.join(' · ')} · other differences remain unclassified`;
 }
 
 /** Split only the verified call span; all formula text stays text, never HTML. */
@@ -23,7 +28,7 @@ export function formulaSegments(formula, span) {
 
 function formulaCode(node, pulsing) {
   const code = formulaElement('code', 'formula-expression');
-  const [before, call, after] = formulaSegments(node.formula || '', node.volatile_span);
+  const [before, call, after] = formulaSegments(node.formula || '', node.volatile_span ?? node.environment_span);
   code.append(document.createTextNode(before));
   if (call) code.append(formulaElement('span', pulsing ? 'formula-volatile-call' : 'formula-volatile-call pulse-paused', call));
   code.append(document.createTextNode(after));
@@ -51,12 +56,13 @@ export function renderFormulaDiagnosis(root, region, diagnosis) {
   root.classList.toggle('formula-source-only', source);
   if (diagnosis.changed_value_cells != null) {
     root.append(formulaElement('p', '', `${diagnosis.changed_value_cells} changed saved cell values · `
-      + `${diagnosis.examined_cells} examined · ${diagnosis.volatile_paths} volatile dependency paths`
+      + `${diagnosis.examined_cells} examined · ${diagnosis.volatile_paths || 0} random/time dependency paths`
+      + ` · ${diagnosis.environment_paths || 0} filename/environment dependency paths`
       + (diagnosis.coverage_complete ? '' : ' · partial diagnostic coverage')));
   }
   const examples = (diagnosis.examples || []).filter(example => example.status === 'path_found');
   if (!examples.length) {
-    root.append(formulaElement('p', '', 'No supported random/time dependency path is available. This does not prove absence of volatile dependencies.'));
+    root.append(formulaElement('p', '', 'No supported random/time or filename dependency path is available. This does not prove absence of other dependencies.'));
     return;
   }
   const badge = formulaElement('p', 'formula-dependency-badge', formulaSummary(diagnosis));

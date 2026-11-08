@@ -21,7 +21,7 @@ export function attachFormulaSummary(element, id) {
 }
 
 function remember(id, diagnosis) {
-  if (!diagnosis.volatile_paths) return;
+  if (!diagnosis.volatile_paths && !diagnosis.environment_paths) return;
   summaries.set(id, formulaSummary(diagnosis));
   for (const element of document.querySelectorAll('.workbook-formula-summary')) {
     if (element.dataset.formulaGroup === id) element.textContent = formulaSummary(diagnosis);

@@ -52,4 +52,15 @@ assert.ok(descendants(root).some(node => node.className === 'formula-volatile-ca
 const unavailable = createRetainedFormulaInspector({}, { reason: 'No retained explanation.' });
 assert.ok(descendants(unavailable).some(node => node.textContent === 'No retained explanation.'));
 assert.ok(descendants(unavailable).some(node => node.textContent.includes('does not prove absence')));
+const environment = createRetainedFormulaInspector({ left: 'OR', right: 'SDR' }, {
+  evidence: 'saved_compared_states', changed_value_cells: 1, examined_cells: 1,
+  volatile_paths: 0, environment_paths: 1, coverage_complete: true,
+  examples: [{ status: 'path_found', dependency_kind: 'environment', path: [{
+    sheet: 'Data', cell: 'A1', left_value: 'left path', right_value: 'right path',
+    formula: 'CELL("filename")', volatile_span: null, environment_span: [0, 16],
+  }] }],
+});
+assert.equal(descendants(environment).find(node => node.className === 'formula-volatile-call').textContent,
+  'CELL("filename")');
+assert.ok(descendants(environment).some(node => node.textContent.includes('1 filename/environment dependency paths')));
 console.log('PASS offline formula paths, exact call highlight, text safety and pulse control');

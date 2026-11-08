@@ -39,6 +39,7 @@ pub(crate) fn compare(
     let mut changed = 0;
     let mut traced = 0;
     let mut paths = 0;
+    let mut environment_paths = 0;
     let mut examples = Vec::new();
     let mut budget = SEARCH_WORK;
     for key in keys {
@@ -60,8 +61,15 @@ pub(crate) fn compare(
         let example = match path {
             Ok(Some(path)) => match nodes(&left.0, &right.0, &path) {
                 Ok(nodes) => {
-                    paths += 1;
-                    json!({"status":"path_found","path":nodes})
+                    let environment = nodes.last().is_some_and(|node| {
+                        node["volatile_span"].is_null() && !node["environment_span"].is_null()
+                    });
+                    if environment {
+                        environment_paths += 1;
+                    } else {
+                        paths += 1;
+                    }
+                    json!({"status":"path_found","dependency_kind":if environment {"environment"} else {"random_time"},"path":nodes})
                 }
                 Err(error) => {
                     json!({"status":"not_resolved","cell":key.cell(),"reason":format!("{error:#}")})
@@ -74,14 +82,17 @@ pub(crate) fn compare(
                 json!({"status":"not_resolved","cell":key.cell(),"reason":format!("{error:#}")})
             }
         };
-        if examples.len() < MAX_EXAMPLES { examples.push(example); }
+        if examples.len() < MAX_EXAMPLES {
+            examples.push(example);
+        }
     }
     Ok(
         json!({"version":1,"evidence":"saved_compared_states","sheet":sheet,"range":range,
         "changed_value_cells":changed,"examined_cells":traced,"volatile_paths":paths,
+        "environment_paths":environment_paths,
         "coverage_complete":changed==traced,"examples":examples,
         "all_changed_values_have_volatile_dependency":changed>0 && changed==traced && paths==changed,
-        "exclusive_cause_proven":false,"note":"A volatile dependency is not proof that all visual differences have this cause."}),
+        "exclusive_cause_proven":false,"note":"A formula dependency is not proof that all visual differences have this cause."}),
     )
 }
 
@@ -102,7 +113,10 @@ pub(crate) fn source_examples(source: &Workbook, sheet: &str, range: &str) -> Re
         examined += 1;
         if let Ok(Some(path)) = find_path(&source.0, key, &mut budget) {
             if let Ok(nodes) = nodes(&source.0, &source.0, &path) {
-                examples.push(json!({"status":"path_found","path":nodes}));
+                let environment = nodes.last().is_some_and(|node| {
+                    node["volatile_span"].is_null() && !node["environment_span"].is_null()
+                });
+                examples.push(json!({"status":"path_found","dependency_kind":if environment {"environment"} else {"random_time"},"path":nodes}));
                 examples.sort_by_key(|example| {
                     std::cmp::Reverse(example["path"].as_array().map_or(0, Vec::len))
                 });
@@ -112,7 +126,9 @@ pub(crate) fn source_examples(source: &Workbook, sheet: &str, range: &str) -> Re
     }
     Ok(
         json!({"version":1,"evidence":"prepared_source_cached_values","sheet":sheet,"range":range,
-        "examined_cells":examined,"volatile_paths":examples.len(),"examples":examples,
+        "examined_cells":examined,
+        "volatile_paths":examples.iter().filter(|example| example["dependency_kind"]=="random_time").count(),
+        "environment_paths":examples.iter().filter(|example| example["dependency_kind"]=="environment").count(),"examples":examples,
         "coverage_complete":false,"exclusive_cause_proven":false,
         "note":"Compared-state values are unavailable for this older result. These are source formula dependencies and source cached values, not captured rebuilt values."}),
     )
@@ -148,7 +164,7 @@ fn find_path(
         let Some(formula) = &cell.formula else {
             continue;
         };
-        if syntax::volatile_span(formula).is_some() {
+        if syntax::volatile_span(formula).is_some() || syntax::environment_span(formula).is_some() {
             let mut path = vec![key.clone()];
             let mut previous = &key;
             while let Some(Some(parent)) = parents.get(previous) {
@@ -199,24 +215,41 @@ fn find_path(
     Ok(None)
 }
 
+/// Retain both saved values and expose call spans in the browser's UTF-16 coordinates.
 fn nodes(
     left: &workbook::Workbook,
     right: &workbook::Workbook,
     path: &[Address],
 ) -> Result<Vec<Value>> {
-    path.iter().map(|key| {
-        let a=left.get(key); let b=right.get(key);
-        let formula=b.and_then(|cell| cell.formula.as_deref()).unwrap_or("");
-        ensure!(formula.len()<=4096,"Formula is too long for an inline explanation");
-        for cell in [a,b].into_iter().flatten() {
-            ensure!(cell.value.as_ref().is_none_or(|value|value.len()<=512),"Value is too long for an inline explanation");
-        }
-        let span=syntax::volatile_span(formula).map(|span| [formula[..span.start].encode_utf16().count(),formula[..span.end].encode_utf16().count()]);
-        Ok(json!({"sheet":key.sheet,"cell":key.cell(),"formula":formula,
-            "left_formula":a.and_then(|cell| cell.formula.as_deref()),
-            "left_value":a.and_then(|cell|cell.value.as_deref()),"right_value":b.and_then(|cell|cell.value.as_deref()),
-            "shared_anchor":b.and_then(|cell|cell.shared_anchor.as_deref()),"volatile_span":span}))
-    }).collect()
+    path.iter()
+        .map(|key| {
+            let before = left.get(key);
+            let after = right.get(key);
+            let formula = after.and_then(|cell| cell.formula.as_deref()).unwrap_or("");
+            ensure!(formula.len() <= 4096, "Formula is too long for an inline explanation");
+            for cell in [before, after].into_iter().flatten() {
+                ensure!(
+                    cell.value.as_ref().is_none_or(|value| value.len() <= 512),
+                    "Value is too long for an inline explanation"
+                );
+            }
+            let browser_span = |span: std::ops::Range<usize>| [
+                formula[..span.start].encode_utf16().count(),
+                formula[..span.end].encode_utf16().count(),
+            ];
+            Ok(json!({
+                "sheet": key.sheet,
+                "cell": key.cell(),
+                "formula": formula,
+                "left_formula": before.and_then(|cell| cell.formula.as_deref()),
+                "left_value": before.and_then(|cell| cell.value.as_deref()),
+                "right_value": after.and_then(|cell| cell.value.as_deref()),
+                "shared_anchor": after.and_then(|cell| cell.shared_anchor.as_deref()),
+                "volatile_span": syntax::volatile_span(formula).map(browser_span),
+                "environment_span": syntax::environment_span(formula).map(browser_span),
+            }))
+        })
+        .collect()
 }
 
 #[cfg(test)]

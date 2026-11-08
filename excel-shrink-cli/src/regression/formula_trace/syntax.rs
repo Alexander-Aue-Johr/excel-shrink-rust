@@ -80,6 +80,21 @@ fn masked_strings(formula: &str) -> String {
     String::from_utf8(bytes).expect("Mask preserves remaining UTF-8")
 }
 
+/// Function-like text inside quoted worksheet names is an identifier, not a call.
+fn masked_call_context(formula: &str) -> String {
+    let mut masked = masked_strings(formula).into_bytes();
+    let mut quoted = false;
+    for (index, byte) in formula.bytes().enumerate() {
+        if byte == b'\'' && masked[index] != b' ' {
+            quoted = !quoted;
+            masked[index] = b' ';
+        } else if quoted {
+            masked[index] = b' ';
+        }
+    }
+    String::from_utf8(masked).expect("Mask preserves remaining UTF-8")
+}
+
 fn tokens(formula: &str, sheet: &str) -> Result<Vec<Reference>> {
     let masked = masked_strings(formula);
     let mut result = Vec::new();
@@ -131,7 +146,7 @@ pub(super) fn volatile_span(formula: &str) -> Option<Range<usize>> {
     let pattern = PATTERN.get_or_init(|| {
         Regex::new(r"(?i)(?:_xlfn\.)?(?:RAND|RANDBETWEEN|RANDARRAY|NOW|TODAY)\s*\(").unwrap()
     });
-    let masked = masked_strings(formula);
+    let masked = masked_call_context(formula);
     for matched in pattern.find_iter(&masked) {
         if word_before(&masked, matched.start()) {
             continue;
@@ -145,6 +160,33 @@ pub(super) fn volatile_span(formula: &str) -> Option<Range<usize>> {
             }
             if depth == 0 {
                 return Some(matched.start()..matched.end() + offset + 1);
+            }
+        }
+    }
+    None
+}
+
+/// Recognize only a literal filename information request, without evaluating CELL arguments.
+pub(super) fn environment_span(formula: &str) -> Option<Range<usize>> {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    let pattern = PATTERN.get_or_init(|| {
+        Regex::new(r#"(?i)(?:_xlfn\.)?CELL\s*\(\s*"filename"\s*(?:,|\))"#).unwrap()
+    });
+    let masked = masked_call_context(formula);
+    for matched in pattern.find_iter(formula) {
+        if word_before(&masked, matched.start()) || masked.as_bytes()[matched.start()] == b' ' {
+            continue;
+        }
+        let opening = matched.start() + matched.as_str().find('(')?;
+        let mut depth = 0;
+        for (offset, byte) in masked.as_bytes()[opening..].iter().enumerate() {
+            match byte {
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                return Some(matched.start()..opening + offset + 1);
             }
         }
     }
