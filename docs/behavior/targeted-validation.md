@@ -1238,6 +1238,11 @@ boundary conversions were fixed before the successful run. Eight focused manual
 scheduler tests passed, including fixed-capacity admission and prefetch handling.
 ## Capture job list and pinned details
 
+Warm-pool startup verifies that the deployed capture directory has its sibling
+`src/regression/archive_processes.ps1` and `ArchiveProcesses.cs` dependencies.
+A missing dependency rejects pool startup before Excel is launched or workbook
+comparisons are admitted. The error identifies the missing deployment path.
+
 The Observatory retains a compact, vertically scrollable capture-job list.
 Initial history is ordered by start time. Newly observed attempts append below
 existing entries. Completion updates the entry in place without moving it.

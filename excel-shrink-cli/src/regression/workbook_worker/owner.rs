@@ -26,6 +26,7 @@ impl PoolOwner {
             .join(uuid::Uuid::new_v4().to_string());
         fs::create_dir_all(&root)?;
         let assets = crate::validation::capture::capture_directory()?;
+        validate_cleanup_assets(&assets)?;
         let job = crate::process_job::Job::new()?;
         let excel = resolve_excel(&assets, &root, &job)?;
         let seed = root.join("seed.xlsx");
@@ -111,6 +112,38 @@ impl PoolOwner {
             "Owned warm workbook pool exited"
         );
         Ok(())
+    }
+}
+
+/// Reject incomplete deployments before starting Excel or admitting comparisons.
+fn validate_cleanup_assets(assets: &Path) -> Result<()> {
+    for name in ["archive_processes.ps1", "ArchiveProcesses.cs"] {
+        let path = assets.join("../src/regression").join(name);
+        ensure!(path.is_file(), "Incomplete capture runtime: missing {}", path.display());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod asset_tests {
+    use super::*;
+
+    #[test]
+    fn warm_pool_rejects_missing_cleanup_dependencies() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("pool-assets-{}", uuid::Uuid::new_v4()));
+        let assets = root.join("office-capture");
+        fs::create_dir_all(&assets)?;
+        let result = (|| -> Result<()> {
+            assert!(validate_cleanup_assets(&assets).unwrap_err().to_string().contains("archive_processes.ps1"));
+            let helpers = root.join("src/regression");
+            fs::create_dir_all(&helpers)?;
+            fs::write(helpers.join("archive_processes.ps1"), "fixture")?;
+            assert!(validate_cleanup_assets(&assets).unwrap_err().to_string().contains("ArchiveProcesses.cs"));
+            fs::write(helpers.join("ArchiveProcesses.cs"), "fixture")?;
+            validate_cleanup_assets(&assets)
+        })();
+        fs::remove_dir_all(&root)?;
+        result
     }
 }
 
