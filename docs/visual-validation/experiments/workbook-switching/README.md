@@ -117,3 +117,41 @@ the corresponding workbook after a warm COM switch. They dispatch no resident
 comparison commands and do not exercise command completion, retained-image
 release, production generation boundaries, rebuilds or multiple workers. Those
 remain required before using warm switching in the corpus pipeline.
+
+## Resident commands across isolated host sessions
+
+Optional `-ResidentCommands` uses the production taskpane and resident command
+handlers. It captures a deliberately small Sheet1 extent, uploads its PNG through
+the normal evidence endpoint and issues an unconditional `release`. The fixture
+extent is zero-based bottom row 10 and right column 2, producing A1:C11. This
+mode requires two deliberately different fixtures and checks repeated tile
+metadata and SHA-256 values across A/B/A/B. It cannot be combined with the
+minimal `CaptureRange` page.
+
+After release, the workbook is closed and only the seed remains. Before opening
+the next workbook, the harness confirms the old owned host process has exited
+and starts a new host on the same origin with a separate session directory.
+The manifest identity and Excel process stay fixed. This retains the existing
+host protocol boundary and its immutable evidence. It avoids relaxing the
+startup reset guard after data work has begun.
+
+Trial `office-resident-switch-20261108-01` failed on missing explicit overflow
+and drawing flags in the test command. It provides no successful capture result.
+Trial 02 completed four capture, upload and release sequences in Excel PID
+38324. Trial 03 added old-token rejection checks and completed in PID 1968.
+
+Trial 03 initialized Excel in 4.205 seconds. The four workbook-open through
+ready observations were 1.895, 2.000, 1.233 and 1.127 seconds. These observations
+exclude the subsequent resident capture/upload/release commands. All repeated
+captures matched. The distinct control rendered different pixels. The four
+uploaded PNGs were independently hashed from disk and matched their receipts,
+with 6,029 bytes for A and 6,321 for B. Every release reported zero retained
+capture plans, image bytes and geometry-cache entries. All nine attempts to use
+the previous host's client token for ready, result or image upload returned
+HTTP 400. Final Excel exit and unchanged source hashes were confirmed.
+
+This experiment supports retaining Excel while replacing its per-comparison
+HTTP host at a stable origin. Production integration still needs pool admission,
+source and comparison identity binding, interruption recovery, matched rebuild
+and pixel checks, and concurrent worker isolation. The single-worker probe does
+not establish those properties or change the corpus runner's lifecycle.

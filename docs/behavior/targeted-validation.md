@@ -1113,3 +1113,10 @@ the positive difference control. These readiness observations do not establish
 that the resident command protocol can retire a completed comparison and safely
 reuse its Excel process. Production reuse requires its own generation boundary
 and rejection of stale commands and uploads.
+
+The subsequent resident-command probe preserves this protocol boundary by
+closing each workbook and replacing its owned HTTP host, with a fresh session
+directory and client credentials at the same local origin. Excel remains alive
+with a seed workbook. Old-token ready, result and image requests must fail in
+the new session. Capture PNG receipts and release resource counters are checked.
+This remains a single-worker experiment pending pool and rebuild acceptance.

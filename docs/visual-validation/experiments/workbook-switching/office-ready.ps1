@@ -6,10 +6,12 @@ param(
     [Parameter(Mandatory=$true)][string]$Shrunk,
     [Parameter(Mandatory=$true)][string]$Output,
     [string]$CaptureRange,
-    [switch]$ExpectDifferentPixels
+    [switch]$ExpectDifferentPixels,
+    [switch]$ResidentCommands
 )
 $ErrorActionPreference = 'Stop'
 if ($ExpectDifferentPixels -and -not $CaptureRange) { throw 'Different-pixel control requires CaptureRange.' }
+if ($ResidentCommands -and $CaptureRange) { throw 'Choose the production resident page or the minimal pixel page.' }
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new probe output directory.' }
 [void][IO.Directory]::CreateDirectory($Output)
 Add-Type -Path @((Join-Path $CaptureRoot 'CaptureProcesses.cs'), (Join-Path $CaptureRoot 'CaptureDesktop.cs'))
@@ -30,8 +32,8 @@ function Get-ProbeHash([string]$Path) {
     finally { $hasher.Dispose(); $stream.Dispose() }
 }
 
-function Start-WorkbookHost([string]$Directory, [string]$Name, [switch]$ProbeAccessLog) {
-    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+function Start-WorkbookHost([string]$Directory, [string]$Name, [switch]$ProbeAccessLog, [int]$Port = 0) {
+    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
     $probe.Start()
     try { $port = $probe.LocalEndpoint.Port } finally { $probe.Stop() }
     $url = 'http://localhost:' + $port
@@ -54,7 +56,7 @@ function Start-WorkbookHost([string]$Directory, [string]$Name, [switch]$ProbeAcc
         if ($hostProcess.HasExited) { throw 'Probe HTTP host exited.' }
         try {
             $health = Invoke-RestMethod ($url + '/health') -TimeoutSec 2
-            if ($health.ok) { return @{url=$url;process=$hostProcess;directory=$Directory;session=$session;headers=@{'X-Launcher-Token'=$token}} }
+            if ($health.ok) { return @{url=$url;port=$port;process=$hostProcess;directory=$Directory;session=$session;headers=@{'X-Launcher-Token'=$token}} }
         } catch [Net.WebException] { }
         Start-Sleep -Milliseconds 100
     }
@@ -135,6 +137,56 @@ Office.onReady(async () => {
     [IO.File]::WriteAllText((Join-Path $HostInfo.directory 'web/taskpane.html'), $page, $utf8)
 }
 
+function Invoke-ProbeCommand($HostInfo, $Command) {
+    Write-ProbeJson (Join-Path $HostInfo.session ('commands/one/' + $Command.id + '.json')) $Command
+    $response = Join-Path $HostInfo.session ('responses/one/' + $Command.id + '.json')
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ($clock.Elapsed.TotalSeconds -lt 45) {
+        if ($HostInfo.process.HasExited -or $process.HasExited) { throw 'Owned probe process exited during capture.' }
+        if (Test-Path -LiteralPath $response) {
+            $result = [IO.File]::ReadAllText($response) | ConvertFrom-Json
+            if (-not $result.ok) { throw ('Resident command failed: ' + ($result | ConvertTo-Json -Depth 5)) }
+            return $result
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw ('Resident command exceeded 45 seconds: ' + $Command.kind)
+}
+
+function Test-ResidentCapture($HostInfo, $Ready) {
+    $sample = @{ready_at=$Ready.ready_at} | ConvertTo-Json -Compress
+    Invoke-RestMethod -Method Post ($HostInfo.url + '/launcher/startup-sampled/one') -Headers $HostInfo.headers -ContentType 'application/json' -Body $sample -TimeoutSec 5 | Out-Null
+    $capture = Invoke-ProbeCommand $HostInfo @{
+        id='capture';kind='capture';sheets=@(@{
+            index=1;name='Sheet1';bottom_row=10;base_right_column=2
+            capture_right_column=40;right_margin_pixels=0
+            horizontal_overflow_required=$false;drawing_fallback_required=$false
+        })
+    }
+    $images = Invoke-ProbeCommand $HostInfo @{id='images';kind='images';capture_id='capture';tiles=@($capture.tiles)}
+    $release = Invoke-ProbeCommand $HostInfo @{id='release';kind='release'}
+    if ($release.pane_resources.retained_capture_plans -ne 0 -or
+        $release.pane_resources.retained_image_bytes -ne 0 -or
+        $release.pane_resources.geometry_cache_entries -ne 0) {
+        throw 'Resident retained resources remained after release.'
+    }
+    return @{capture=$capture;images=$images;release=$release}
+}
+
+function Test-RetiredToken($HostInfo, [string]$Token) {
+    $observations = @()
+    foreach ($path in @('/ready?client=one', '/result/one/capture', '/image/one/images/1/0')) {
+        try {
+            Invoke-RestMethod -Method Post ($HostInfo.url + $path) -Headers @{'X-Client-Token'=$Token} -ContentType 'application/json' -Body '{"ok":true}' -TimeoutSec 5 | Out-Null
+            throw 'A retired client token was accepted.'
+        } catch [Net.WebException] {
+            if ($null -eq $_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 400) { throw }
+            $observations += @{path=$path;status=400}
+        }
+    }
+    return $observations
+}
+
 $owned = New-Object CaptureProcesses
 $desktop = New-Object CaptureDesktop
 $registrations = @{}
@@ -143,6 +195,7 @@ $excel = $null
 $workbook = $null
 $process = $null
 $samples = @()
+$previousClientToken = $null
 $script:probeAddinGuid = [Guid]::NewGuid().ToString()
 $hashes = @((Get-ProbeHash $Original), (Get-ProbeHash $Shrunk))
 try {
@@ -172,13 +225,20 @@ try {
         [void][IO.Directory]::CreateDirectory($directory)
         $name = 'case-' + $index + '.xlsx'
         if ($index -gt 0) {
-            # This readiness-only probe dispatches no data jobs. Existing reset
-            # rules reject this operation after comparison work has started.
-            Invoke-RestMethod -Method Post ($hostInfo.url + '/launcher/reset/one') -Headers $hostInfo.headers -ContentType 'application/json' -Body '{"stage":"prepare"}' -TimeoutSec 5 | Out-Null
-            Write-ProbeJson (Join-Path $hostInfo.session 'clients/one.json') @{
-                client_id='one';workbook=$name;sheets=@(@{index=1;name='Sheet1';bottom_row=1;base_right_column=1})
+            if ($ResidentCommands) {
+                $port = $hostInfo.port
+                $hostInfo.process.Kill()
+                if (-not $hostInfo.process.WaitForExit(10000)) { throw 'Previous probe host exit unconfirmed.' }
+                $hostInfo = Start-WorkbookHost (Join-Path $Output ('host-' + $index)) $name -Port $port
+            } else {
+                # This readiness-only probe dispatches no data jobs. Existing reset
+                # rules reject this operation after comparison work has started.
+                Invoke-RestMethod -Method Post ($hostInfo.url + '/launcher/reset/one') -Headers $hostInfo.headers -ContentType 'application/json' -Body '{"stage":"prepare"}' -TimeoutSec 5 | Out-Null
+                Write-ProbeJson (Join-Path $hostInfo.session 'clients/one.json') @{
+                    client_id='one';workbook=$name;sheets=@(@{index=1;name='Sheet1';bottom_row=1;base_right_column=1})
+                }
+                Invoke-RestMethod -Method Post ($hostInfo.url + '/launcher/reset/one') -Headers $hostInfo.headers -ContentType 'application/json' -Body '{"stage":"ready"}' -TimeoutSec 5 | Out-Null
             }
-            Invoke-RestMethod -Method Post ($hostInfo.url + '/launcher/reset/one') -Headers $hostInfo.headers -ContentType 'application/json' -Body '{"stage":"ready"}' -TimeoutSec 5 | Out-Null
         }
         $book = Join-Path $directory $name
         Prepare-ProbeWorkbook $source $book $hostInfo
@@ -190,6 +250,13 @@ try {
         if ($ownerId -ne $process.Id) { throw 'Workbook switched to another Excel process.' }
         $ready = Wait-ProbeOfficeReady $hostInfo
         $samples += @{index=$index;pid=$process.Id;com_open_seconds=$openSeconds;ready_seconds=$clock.Elapsed.TotalSeconds;observation=$ready}
+        if ($ResidentCommands) {
+            if ($previousClientToken) { $samples[-1].retired_token_checks = @(Test-RetiredToken $hostInfo $previousClientToken) }
+            $identity = $ready.runtime
+            $configUrl = $hostInfo.url + '/config?client=one&document=' + $identity.document_id + '&run=' + $identity.run_id + '&request=' + [Guid]::NewGuid().ToString()
+            $previousClientToken = (Invoke-RestMethod $configUrl -TimeoutSec 5).client_token
+            $samples[-1].resident = Test-ResidentCapture $hostInfo $ready
+        }
         Write-ProbeJson (Join-Path $Output 'samples.json') @{startup_seconds=$startupSeconds;samples=$samples}
         $workbook.Close($false)
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($workbook)
@@ -232,6 +299,16 @@ if ($CaptureRange) {
         $samples[0].observation.startup_diagnostics.pixel_probe.rgba_sha256 -eq
         $samples[1].observation.startup_diagnostics.pixel_probe.rgba_sha256) {
         throw 'The intentionally different workbook rendered the same pixels.'
+    }
+}
+if ($ResidentCommands) {
+    foreach ($pair in @(@(0,2), @(1,3))) {
+        $before = $samples[$pair[0]].resident.capture.tiles | ConvertTo-Json -Depth 8 -Compress
+        $after = $samples[$pair[1]].resident.capture.tiles | ConvertTo-Json -Depth 8 -Compress
+        if ($before -ne $after) { throw 'Resident capture metadata or checksums differed on repeated source visits.' }
+    }
+    if ($samples[0].resident.capture.tiles[0].sha256 -eq $samples[1].resident.capture.tiles[0].sha256) {
+        throw 'The positive resident difference control was not detected.'
     }
 }
 Write-ProbeJson (Join-Path $Output 'result.json') @{samples=$samples;startup_seconds=$startupSeconds;owned_excel_exit_confirmed=$true;source_hashes_unchanged=$true}
