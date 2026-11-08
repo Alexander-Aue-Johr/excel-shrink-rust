@@ -1,5 +1,28 @@
 # SheetShrink and DeltaSieve delivery plan
 
+## Active Enron and web-start checkpoint on 2026-11-09
+
+Enron is running under the explicitly selected v10 warm-worker implementation
+with four comparison groups. A deployment omission initially caused 132 attempts
+to fail before workbook opening. The missing archive-cleanup helpers were restored
+from the matching checkout, and all 132 attempts were queued through the normal
+restart API. Subsequent inspection found zero current records carrying that
+failure and 205 successful comparisons in this run. Historical failed attempts
+remain evidence. This checkpoint does not establish corpus completion.
+
+Commit `fbae9fe1` rejects missing cleanup dependencies before warm-pool admission.
+Commit `3eea71ef` exposes warm workers in the ordinary web-study configuration and
+freezes the choice in the launch receipt. Older configurations retain their
+original lifecycle. The integrated CP comparison path still requires cold workers.
+Independent CP preparation keeps its own pool. Seven configuration tests cover
+the portable/source layouts, legacy configuration, pool limits, path resolution,
+receipt creation and occupied-port behavior. Native acceptance of the updated web
+starter and the remaining distributed-release gates remain required.
+
+The compact chronological capture list and pinned job dialog are deployed, with
+an accessible close icon and backdrop dismissal. The user confirmed the list's
+presentation. Unit checks cover stable row identity and all four backdrop sides.
+
 ## Warm workbook worker checkpoint on 2026-11-08
 
 The Enron control remains explicitly paused at the user's request, with four

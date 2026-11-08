@@ -229,16 +229,17 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
         "Copied study executable checksum differs"
     );
     let capture = crate::validation::capture::capture_directory()?;
-    let repository = capture
-        .parent()
-        .and_then(|path| path.parent())
-        .context("Capture repository root")?;
+    let repository = capture_runtime_root(&capture)?;
     let runtime = configuration.output_root.join("runtime");
     fs::create_dir_all(runtime.join("temp"))?;
     let mut environment = BTreeMap::from([
         (
             "EXCEL_SHRINK_REPOSITORY_ROOT".into(),
             crate::regression::power_shell_path(repository)?,
+        ),
+        (
+            "EXCEL_SHRINK_CAPTURE_DIR".into(),
+            crate::regression::power_shell_path(&capture)?,
         ),
         ("EXCEL_SHRINK_SQLITE_METADATA".into(), "1".into()),
         (
@@ -313,10 +314,50 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
     Ok(receipt_path)
 }
 
+/// Source checkouts and portable releases place capture assets at different depths.
+fn capture_runtime_root(capture: &std::path::Path) -> Result<&std::path::Path> {
+    let parent = capture.parent().context("Capture directory has no parent")?;
+    if parent.join("release-manifest.json").is_file()
+        && parent.join("src/regression/archive_processes.ps1").is_file()
+        && parent.join("src/regression/ArchiveProcesses.cs").is_file()
+    {
+        return Ok(parent);
+    }
+    let repository = parent.parent().context("Capture repository root")?;
+    ensure!(
+        repository.join("Cargo.toml").is_file()
+            && repository.join("excel-shrink-cli/office-capture") == capture,
+        "Capture assets must belong to a source checkout or complete portable runtime"
+    );
+    Ok(repository)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn capture_roots_resolve_checkout_and_portable_layouts() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("study-assets-{}", uuid::Uuid::new_v4()));
+        let checkout = root.join("checkout");
+        let source_assets = checkout.join("excel-shrink-cli/office-capture");
+        fs::create_dir_all(&source_assets)?;
+        fs::write(checkout.join("Cargo.toml"), "fixture")?;
+        assert_eq!(capture_runtime_root(&source_assets)?, checkout);
+        let release = root.join("release");
+        let packaged_assets = release.join("office-capture");
+        fs::create_dir_all(&packaged_assets)?;
+        fs::create_dir_all(release.join("src/regression"))?;
+        fs::write(release.join("release-manifest.json"), "fixture")?;
+        assert!(capture_runtime_root(&packaged_assets).is_err());
+        for name in ["archive_processes.ps1", "ArchiveProcesses.cs"] {
+            fs::write(release.join("src/regression").join(name), "fixture")?;
+        }
+        assert_eq!(capture_runtime_root(&packaged_assets)?, release);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     fn fixture() -> (PathBuf, Configuration) {
         let root = std::env::temp_dir().join(format!("study-config-{}", uuid::Uuid::new_v4()));
@@ -377,6 +418,8 @@ mod tests {
         );
         assert_eq!(receipt.environment["EXCEL_SHRINK_SQLITE_METADATA"], "1");
         assert_eq!(receipt.environment["EXCEL_SHRINK_WARM_WORKERS"], "1");
+        let assets = PathBuf::from(&receipt.environment["EXCEL_SHRINK_CAPTURE_DIR"]);
+        assert!(assets.join("run-targeted-comparison.ps1").is_file());
         assert_eq!(receipt.environment["EXCEL_SHRINK_WEBVIEW_PROFILE_POOL"], "");
         assert_eq!(
             receipt.environment["EXCEL_SHRINK_SYSTEM_RESERVE_MIB"],

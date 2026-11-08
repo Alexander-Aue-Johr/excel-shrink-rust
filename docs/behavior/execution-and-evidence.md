@@ -520,6 +520,12 @@ Warm studies permit at most 32 comparison groups and require the SheetShrink-onl
 comparison workflow. Integrated Check Performance requires disabling warm workers.
 Independent Check Performance preparation retains its separate worker pool.
 
+New study receipts explicitly bind their capture-assets directory. Runtime-root
+resolution recognizes the source-checkout layout and the portable layout with
+its release manifest and both archive-cleanup helpers. It rejects incomplete
+portable layouts before producing a launch receipt. Resuming an existing receipt
+continues using its recorded environment.
+
 Saved record lookup uses an identity-to-position index during initial selection,
 preparation reuse and comparison construction. Duplicate imported identities
 retain the first-record lookup behavior. The index is rebuilt after preparation
