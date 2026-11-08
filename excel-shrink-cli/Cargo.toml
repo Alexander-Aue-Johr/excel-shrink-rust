@@ -12,6 +12,10 @@ path = "src/main.rs"
 name = "excel-shrink-cli"
 path = "src/excel_shrink_main.rs"
 
+[[bin]]
+name = "deltasieve"
+path = "src/deltasieve_main.rs"
+
 [features]
 # Kept so older local commands that pass this feature still work; smoke corpus tests are default tests now.
 corpus-regression-tests = []

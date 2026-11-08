@@ -8,7 +8,7 @@ export function evidenceImageUrl(path) {
 }
 
 /** Preserve the pair and phase: O versus SD differs from O versus rebuilt SD (SDR). */
-export function atelierRegions(report, differencesOnly = true) {
+export function atelierRegions(report, differencesOnly = true, imageUrl = evidenceImageUrl) {
   const regions = [];
   for (const [pairIndex, pair] of (report.comparisons || []).entries()) {
     const entries = ['findings', 'charts'].flatMap(kind =>
@@ -20,8 +20,8 @@ export function atelierRegions(report, differencesOnly = true) {
       regions.push({
         ...finding, key, different, left: pair.left, right: pair.right,
         label: `${finding.sheet} / ${finding.cell || finding.chart} / ${pair.left} / ${pair.right}`,
-        leftUrl: evidenceImageUrl(finding.left_png || finding.left_image),
-        rightUrl: evidenceImageUrl(finding.right_png || finding.right_image),
+        leftUrl: imageUrl(finding.left_png || finding.left_image),
+        rightUrl: imageUrl(finding.right_png || finding.right_image),
       });
     }
   }

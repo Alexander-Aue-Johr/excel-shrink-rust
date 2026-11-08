@@ -218,7 +218,7 @@ impl Hotspot {
 
 /// Compare aligned overlapping RGBA pixels. Exterior pixels stay a separate
 /// measurement: a differently sized capture is not a changed common pixel.
-fn compare_pixels(
+pub(crate) fn compare_pixels(
     left: &RgbaImage,
     right: &RgbaImage,
     details: bool,

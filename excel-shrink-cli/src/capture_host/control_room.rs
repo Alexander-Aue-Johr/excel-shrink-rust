@@ -7,7 +7,7 @@ mod inspection;
 mod inspection_pair;
 mod capture_regions;
 mod manual_capture;
-mod pixel_diagnostics;
+pub(crate) mod pixel_diagnostics;
 mod formula_diagnostics;
 mod platform;
 mod snapshots;

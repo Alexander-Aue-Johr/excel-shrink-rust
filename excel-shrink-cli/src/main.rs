@@ -19,6 +19,22 @@ mod pipeline;
 mod profiling;
 mod regression;
 mod visual_profile;
+#[path = "regression/archive/study/prepared/targeted/bounded_process.rs"]
+mod capture_watchdog;
+mod validation;
+mod validation_sources;
+mod validation_process;
+mod validation_report;
+mod validation_reuse;
+mod validation_room;
+
+/// Open the standalone configuration UI or execute its explicit validation command.
+pub fn run_deltasieve() -> anyhow::Result<()> {
+    if std::env::args_os().nth(1).as_deref() == Some(OsStr::new("regression")) {
+        return run_excel_shrink();
+    }
+    validation::run_cli()
+}
 
 pub(crate) const DEFAULT_PARALLEL_RANGE_CHUNK_SIZE: usize = 16 * 1024 * 1024;
 
