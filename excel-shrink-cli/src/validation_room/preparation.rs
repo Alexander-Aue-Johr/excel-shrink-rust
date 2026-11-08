@@ -99,6 +99,7 @@ mod tests {
             reports: Mutex::new(BTreeMap::new()),
             picker: Mutex::new(()),
             study: Mutex::new(None),
+            preparation_job: Mutex::new(None),
         })
     }
 

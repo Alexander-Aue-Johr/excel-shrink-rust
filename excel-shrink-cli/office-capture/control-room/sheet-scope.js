@@ -5,6 +5,7 @@ import { createTargetedPanel } from '/observatory-assets/targeted-panel.js';
 import { optionValue, setOption } from '/observatory-assets/processor-options.js';
 import { installStudyConfiguration } from '/observatory-assets/study-configuration.js';
 import { installPreparationPackages } from '/observatory-assets/preparation-packages.js';
+import { installPerformancePreparation } from '/observatory-assets/performance-preparation.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -36,6 +37,7 @@ let workbookOffset = 0;
 let workbookRevision = '';
 let workbookRequest = 0;
 let workbookSearchTimer;
+let preparationJobView;
 const targetedPanel = createTargetedPanel(byId('targeted-comparisons'));
 
 function message(text, error = false) {
@@ -61,7 +63,8 @@ function mode() {
 
 function showSections() {
   const selected = mode();
-  byId('configuration').hidden = ['report', 'study', 'new-study', 'prepared'].includes(selected);
+  byId('configuration').hidden = ['report', 'study', 'new-study', 'prepared', 'prepare-performance'].includes(selected);
+  byId('performance-job').hidden = selected !== 'prepare-performance';
   byId('preparation-packages').hidden = selected !== 'prepared';
   byId('new-study').hidden = selected !== 'new-study';
   byId('saved-report').hidden = selected !== 'report';
@@ -377,6 +380,7 @@ function choosePath(path, directory) {
 }
 
 function renderProgress(state) {
+  preparationJobView?.render(state.preparation_job, state.active);
   const progress = state.progress;
   isActive = state.active;
   if (state.report_base && reportBase !== state.report_base) {
@@ -635,6 +639,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     logicalProcessors = session.logical_processors;
     installStudyConfiguration({ api, message, defaults: session.study_defaults, logicalProcessors });
     installPreparationPackages({ api, message, onImported: populate });
+    preparationJobView = installPerformancePreparation({ api, message });
     workingDirectory = session.working_directory;
     browseDirectoryDefault = session.browse_directory || workingDirectory;
     populate(session.config);

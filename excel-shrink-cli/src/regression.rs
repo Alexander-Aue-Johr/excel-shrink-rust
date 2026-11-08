@@ -23,6 +23,23 @@ mod excel_automation;
 pub(crate) use excel_automation::power_shell_path;
 #[cfg(windows)]
 mod legacy_conversion;
+
+/// Start the same native preparation implementation used by the standalone CLI.
+pub(crate) fn prepare_performance_manifest(
+    source_manifest: PathBuf,
+    output: PathBuf,
+    workers: usize,
+) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    {
+        legacy_conversion::performance::run_manifest(source_manifest, output, workers)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (source_manifest, output, workers);
+        anyhow::bail!("Check Performance preparation requires Windows and Excel")
+    }
+}
 mod launcher_journal;
 mod xlsx_value_compare;
 pub(crate) mod artifact_cache;

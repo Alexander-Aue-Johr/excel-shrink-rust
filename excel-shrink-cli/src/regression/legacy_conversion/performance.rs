@@ -55,6 +55,20 @@ pub(crate) struct Args {
 }
 
 /// Run one continuously refilled queue, retaining every input's terminal receipt.
+pub(crate) fn run_manifest(
+    source_manifest: PathBuf,
+    output: PathBuf,
+    workers: usize,
+) -> Result<()> {
+    run(Args {
+        input: Vec::new(),
+        source_manifest: Some(source_manifest),
+        output,
+        workers,
+    })
+}
+
+/// Run one continuously refilled queue, retaining every input's terminal receipt.
 pub(crate) fn run(args: Args) -> Result<()> {
     anyhow::ensure!(
         args.workers > 0,

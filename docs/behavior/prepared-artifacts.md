@@ -5,8 +5,8 @@ acceptance experiment. The explicit-input and source-manifest preparation CLI
 interfaces, package export and read-only package verification are implemented.
 Selection coverage preview and strict paired-folder import are also available
 through the CLI, including explicit baseline adoption and generation selection.
-The local web configurator also exposes package transfer controls. Native
-preparation-job configuration and full visual browser acceptance remain open.
+The local web configurator exposes package transfer and native preparation-job
+controls for source manifests. Full visual browser acceptance remains open.
 
 ## Source identity and selection
 
@@ -187,6 +187,27 @@ needed. Native generation, artifact import and visual verdicts retain separate
 lifecycles and reuse checks.
 
 ## Local web package controls
+
+The separate Prepare Check Performance variants workflow accepts a source
+manifest, a new output directory and an independent positive worker target.
+POST `/api/preparation/start` freezes the source selection with absolute baseline
+paths and retains its hash plus a job receipt under the output parent's
+`.preparation-jobs` directory. The job does not derive its selection from mutable
+form controls after admission. It calls the same continuously refilled pool as
+the CLI and preserves its 512 MiB admission reserve.
+
+Admission and launch run together in a background operation, so disconnecting
+the HTTP caller during selection freezing cannot leave an admitted job without
+an executor. The room's reservation is held until native execution and terminal
+receipt handling finish. `/api/state` includes compact job metadata and reads at
+most 64 KiB of preparation counters. The page displays preparation progress
+outside the configuration dialog and keeps producer failures explicit.
+
+The owner process must remain running. Reloading or closing the browser does not
+stop the job. Automatic recovery after owner-process restart and changing the
+worker target during this job remain integration requirements. Completed native
+outcomes and job receipts are retained even though the room currently exposes
+only its most recent preparation job.
 
 Check Performance preparation publishes a compact `progress.json` after pool
 initialization, at most once per second while running, and after the terminal

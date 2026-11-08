@@ -29,6 +29,7 @@ const JS: &str = include_str!("../office-capture/control-room/sheet-scope.js");
 const CSS: &str = include_str!("../office-capture/control-room/sheet-scope.css");
 
 mod preparation;
+mod preparation_job;
 
 struct Room {
     port: u16,
@@ -40,6 +41,7 @@ struct Room {
     reports: Mutex<BTreeMap<String, PathBuf>>,
     picker: Mutex<()>,
     study: Mutex<Option<(String, PathBuf)>>,
+    preparation_job: Mutex<Option<preparation_job::Job>>,
 }
 
 type ApiResult = std::result::Result<Json<Value>, ApiError>;
@@ -81,6 +83,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         reports: Mutex::new(BTreeMap::new()),
         picker: Mutex::new(()),
         study: Mutex::new(None),
+        preparation_job: Mutex::new(None),
     });
     let web_root = validation::capture::capture_directory()?.join("control-room");
     let routes = Router::new()
@@ -112,6 +115,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool) -> Result<()> {
         .route("/api/preparation/preview", post(preparation::preview))
         .route("/api/preparation/import", post(preparation::import))
         .route("/api/preparation/export", post(preparation::export))
+        .route("/api/preparation/start", post(preparation_job::start))
         .route("/reports/{id}/{*path}", get(report_asset))
         .nest_service(
             "/observatory-assets",
@@ -336,8 +340,9 @@ async fn state(State(room): State<Arc<Room>>) -> ApiResult {
         .map_err(|_| anyhow::anyhow!("Report lock poisoned"))?
         .as_ref()
         .map(|(id, _)| format!("/reports/{id}"));
+    let preparation_job = preparation_job::snapshot(&room).await?;
     Ok(Json(
-        json!({"active":room.active.load(Ordering::Acquire),"progress":progress,"telemetry":telemetry,
+        json!({"active":room.active.load(Ordering::Acquire),"progress":progress,"telemetry":telemetry,"preparation_job":preparation_job,
         "comparisons":comparisons,"report_base":report_base}),
     ))
 }
@@ -714,6 +719,7 @@ mod tests {
             reports: Mutex::new(BTreeMap::new()),
             picker: Mutex::new(()),
             study: Mutex::new(None),
+            preparation_job: Mutex::new(None),
         });
         let page = workbooks(
             State(room.clone()),

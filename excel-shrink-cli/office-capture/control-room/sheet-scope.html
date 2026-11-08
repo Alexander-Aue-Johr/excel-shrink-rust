@@ -27,8 +27,21 @@
         <label><input type="radio" name="mode" value="study"> Resume a corpus study</label>
         <label><input type="radio" name="mode" value="new-study"> Start a corpus study</label>
         <label><input type="radio" name="mode" value="prepared"> Transfer Check Performance preparations</label>
+        <label><input type="radio" name="mode" value="prepare-performance"> Prepare Check Performance variants</label>
       </div>
     </section>
+
+    <form id="performance-job" class="panel" hidden>
+      <h2>Prepare Check Performance variants</h2>
+      <p class="help">Uses a continuously refilled pool of private Excel processes. This prepares files for later comparison and does not start visual validation. Memory admission keeps a 512 MiB reserve.</p>
+      <fieldset id="performance-job-fields" class="grid">
+        <label class="wide">Selected XLSX sources manifest<span class="path"><input id="performance-job-sources" name="source_manifest" required><button type="button" data-browse="performance-job-sources" data-kind="file">Browse…</button></span></label>
+        <label class="wide">New preparation directory<input name="output" required></label>
+        <label>Parallel Check Performance workers<input name="workers" type="number" min="1" step="1" value="2" required></label>
+        <p class="help wide">May exceed logical processors. Each successful worker reuses Excel for successive workbooks. The selected target applies to this job.</p>
+        <button type="submit">Start preparation</button>
+      </fieldset>
+    </form>
 
     <section id="preparation-packages" class="panel" hidden>
       <h2>Check Performance preparation packages</h2>
@@ -180,6 +193,13 @@
     </section>
     <p id="configuration-message" role="status" aria-live="polite"></p>
     </dialog>
+
+    <section id="performance-job-observation" class="panel" hidden>
+      <h2>Check Performance preparation</h2>
+      <p id="performance-job-status" role="status"></p>
+      <progress id="performance-job-progress" max="1" value="0"></progress>
+      <p id="performance-job-detail" class="help"></p>
+    </section>
 
     <section class="panel workbook-kpis" aria-label="Workbook outcomes">
       <div class="section-title"><h2>Workbook outcomes</h2><span id="workbook-scope">No run started</span></div>
