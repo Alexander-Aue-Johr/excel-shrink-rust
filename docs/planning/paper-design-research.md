@@ -44,15 +44,29 @@ accepted. [Author preprint](https://web.iitd.ac.in/~kbeedkar/publication/xdb-icd
 
 ## Further design evidence
 
-Continue examining complete evaluation and Related Work sections and additional
-ICDE examples. Record the difference between observed writing practices and
-recommendations inferred for these manuscripts. The current drafts use editable
+The current drafts use editable
 first-page method figures. SheetShrink illustrates compact font preservation,
 and DeltaSieve illustrates selection, rendering and evidence. Both remain
 legible in the rendered two-column drafts. An Observatory screenshot is reserved
 for explaining evidence exploration if it contributes information beyond the
 method figure. This is a design decision for the working drafts, subject to the
 author's revision.
+
+The SQuaLity full text separates research questions, concrete failed-test
+examples, grouped Related Work and threats to validity. Its threat analysis
+distinguishes manual classification, measurement design and population scope.
+For DeltaSieve, infer an explicit distinction between selector detection,
+native observation and reviewer attribution, with unsupported and timed-out
+cases retained in coverage tables. This is a design recommendation derived
+from the study, independent of its acceptance outcome.
+[SQuaLity full text, Sections 6–9](https://suyang.zone/assets/pdf/sigmod25.pdf)
+
+The XDB full text separates end-to-end runtime, transfer cost and phase
+breakdowns. Its additional Related Work supplements comparisons introduced
+earlier. For both drafts, infer separate totals and phase costs, with
+mechanism-specific baseline discussion near the method. Avoid presenting a
+replay or interface screenshot as detection evidence.
+[XDB full text, Sections VI–VII](https://web.iitd.ac.in/~kbeedkar/publication/xdb-icde-23/GavriilidisBQM23_preprint.pdf)
 
 ## Comparison-tool evidence checked on 2026-11-08
 

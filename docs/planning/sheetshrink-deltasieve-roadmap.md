@@ -78,7 +78,7 @@ Acceptance requires versioned contracts, predefined sampling and timeout policie
 
 ## 03 Research the paper design and create fresh LaTeX projects
 
-- [ ] Research suitable paper designs and create two fresh, independently compilable LaTeX projects in the existing paper repository.
+- [x] Research suitable paper designs and create two fresh, independently compilable LaTeX projects in the existing paper repository.
 
 Create `papers/sheetshrink/` and `papers/deltasieve/` with a main LaTeX source, section sources where useful, bibliography, figure sources, and build instructions. Use the installed TeX Live on D: and place temporary compilation data on V:. Shared bibliography or figure tooling is appropriate where it removes duplicated work.
 
@@ -97,6 +97,15 @@ SheetShrink must cover spreadsheet bloat, its preservation contract, compact ret
 Link every planned claim, table, and figure to an experiment, retained result, or verified publication. Begin the new manuscripts while evaluation continues and update the outlines when the evidence warrants it. Task 14 delivers complete first drafts for the author's thorough review and rewriting.
 
 Acceptance requires both projects to compile, an annotated paper-design study with verified sources, a justified outline and figure plan for each manuscript, a claim-to-evidence map, and clear separation of the papers' contributions.
+
+Completed with `paper-design-research.md`, `paper-evidence-map.md` and the fresh
+`papers/sheetshrink` and `papers/deltasieve` projects. The study distinguishes
+verified publication practices from recommendations, using ICDE, VLDB and PACMMOD
+full texts. Both four-page working drafts and their editable first-page method
+figures compile, and all eight rendered pages were inspected. Paper repository
+commits `6feb8e2`, `e37a90b` and `f9dbf5d` retain figures, verified citations and
+build/review instructions. Task 14 retains the unfinished evaluation-backed
+manuscript and author-review requirements.
 
 ## 04 Integrate the web configuration entry point
 

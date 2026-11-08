@@ -5,10 +5,14 @@ missing experiments. A proposed claim enters the results section only after its
 listed evidence has been inspected and its population and environment recorded.
 The prospective protocol is [evaluation-protocol.md](evaluation-protocol.md).
 
-Both fresh LaTeX projects now contain drafted contract sections, committed in
-the paper repository as `0768f76` on `icde2026`. Both compile with the installed
-TeX Live. These sections establish the intended claims and limits. Full methods,
-Related Work, evaluated results and complete manuscripts remain open.
+Both fresh LaTeX projects now contain working abstracts, contract and method
+sections, editable first-page method figures, verified bibliography entries,
+Related Work and explicit evaluation gaps. The paper repository records the
+expanded drafts in `fa8f8c3`, figures in `6feb8e2`, literature updates in
+`e37a90b` and the author-review/build checklist in `f9dbf5d` on `icde2026`.
+Both four-page working PDFs compiled with TeX Live and all eight rendered pages
+were inspected. Final evaluated results, complete evidence-backed manuscripts
+and author revision remain open under Task 14.
 
 ## SheetShrink
 
