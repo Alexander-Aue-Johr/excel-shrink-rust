@@ -259,7 +259,40 @@ public sealed class ResidentProcesses : IDisposable
         return identities.ToArray();
     }
 
+    // Retain the job handle until all members have exited before reusing browser data.
+    public bool TerminateAndWait(int timeoutMilliseconds)
+    {
+        if (!TerminateJobObject(job, 1)) throw new Win32Exception();
+        var clock = Stopwatch.StartNew();
+        var information = new BasicAccounting();
+        do
+        {
+            if (!QueryInformationJobObject(job, 1, ref information,
+                (uint)Marshal.SizeOf(typeof(BasicAccounting)), IntPtr.Zero))
+                throw new Win32Exception();
+            if (information.ActiveProcesses == 0) return true;
+            System.Threading.Thread.Sleep(25);
+        } while (clock.ElapsedMilliseconds < timeoutMilliseconds);
+        return false;
+    }
+
     public void Dispose() { job.Dispose(); }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool TerminateJobObject(SafeFileHandle job, uint exitCode);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct BasicAccounting
+    {
+        public long TotalUserTime, TotalKernelTime, PeriodUserTime, PeriodKernelTime;
+        public uint TotalPageFaults, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool QueryInformationJobObject(SafeFileHandle job, int informationClass,
+        ref BasicAccounting information, uint length, IntPtr returned);
 
     [StructLayout(LayoutKind.Sequential)]
     struct PerformanceInformation

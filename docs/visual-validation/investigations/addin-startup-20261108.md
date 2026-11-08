@@ -82,3 +82,36 @@ This provides no evidence that the refactor caused the earlier large speedup.
 It is one paired trial, without randomization or a controlled cold system, and
 does not establish performance equivalence. The focused opening tests also pass
 for orchestration order, failures, duplicate clients and add-in readiness.
+
+## Reusing isolated profiles
+
+Attempts 10 and 11 used a separate experimental script copy with one persistent
+profile directory per resident lane. Each native invocation returned before
+the next began, and both Excel exits were confirmed. This first experiment
+preceded the production lease implementation.
+
+| Attempt | Profile use | Original ready, seconds | SheetShrink ready, seconds |
+| --- | --- | ---: | ---: |
+| 10 | First use | 8.926 | 8.560 |
+| 11 | Same isolated directories reused | 8.407 | 9.457 |
+
+Profile reuse worked in this pair but did not consistently improve readiness.
+The observation does not establish a startup speedup or independent peer cleanup
+safety. The subsequent opt-in Rust pool adds exclusive file leases and quarantines
+interrupted owners. Whole-job exit confirmation is required before reuse.
+
+The integrated Rust pool was exercised by attempts 12 and 13. Both used
+`slot-000/private` for Original and `slot-001/private` for SheetShrink. Each
+attempt confirmed whole-job exit for both residents and left no `in-use` marker.
+Both returned successfully with the existing comparison limitations.
+
+| Attempt | Integrated pool use | Original ready, seconds | SheetShrink ready, seconds |
+| --- | --- | ---: | ---: |
+| 12 | First use | 9.968 | 11.815 |
+| 13 | Same slots reused | 8.248 | 9.630 |
+
+Rust tests cover simultaneous exclusive leases, retained cache files, clean
+reuse and quarantine after an unconfirmed drop. A native Windows test covers
+owned-process termination, confirmation of an empty Job and repeated cleanup.
+Six targeted Rust host tests and the resident opening and cleanup scripts pass.
+The pool remains opt-in. No active corpus runner was redeployed in these tests.

@@ -183,6 +183,25 @@ PID liveness or an Add-in heartbeat alone does not prove command progress.
 
 Start native `excel.exe /x` clients with the staged Office.js add-in. Use an owned
 private desktop for the targeted workflow and separate session/WebView staging.
+An optional absolute `EXCEL_SHRINK_WEBVIEW_PROFILE_POOL` enables persistent
+isolated profiles for the targeted runner. Rust assigns an exclusively locked
+slot to each live resident lane. The same slot has separate `private` and
+`interactive` browser directories. Lane transitions retain that lease.
+Without this setting, the existing temporary per-session profile remains in use.
+
+The pool retains at most 128 slot directories. An `in-use` marker survives an
+interrupted lease. Such a slot is quarantined even after its file lock is
+released by process death. Normal close clears the marker only after native
+cleanup terminates the owned Windows Job and confirms zero active members while
+still holding its Job handle. Excel PID exit alone cannot authorize reuse.
+Failure to obtain that confirmation fails the pooled close and retains the
+marker. Automatic recovery or deletion of quarantined profiles is not provided.
+Only inspect or remove them after independently confirming all relevant native
+processes have ended. Pool exhaustion is an explicit error.
+
+Measurements retain `webview_profile_policy` as `fresh-isolated` or
+`pooled-isolated`. Pooled runs can have warm browser caches. They still start a
+new Excel process and must not be presented as cold-cache startup benchmarks.
 Do not resolve ownership from a process name such as “all EXCEL.EXE processes.”
 Bind process observations and termination to PID **and creation time**, retaining
 owned process/job handles where available. A recycled PID must not be killed.

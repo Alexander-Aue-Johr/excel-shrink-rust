@@ -80,6 +80,9 @@ function Start-TargetedWorkbook {
         # would create a second desktop, outside the native adapter's scope.
         EXCEL_SHRINK_HIDE_EXCEL='0'
         EXCEL_SHRINK_CAPTURE_MANUAL_CALCULATION=$(if ($Command.manual_calculation -eq $true) { '1' } else { '0' })
+        EXCEL_SHRINK_RESIDENT_PROFILE_ROOT=$(
+            if ($Command.PSObject.Properties['profile_root']) { [string]$Command.profile_root }
+        )
     }
     $startupSlot = Enter-TargetedStartupSlot $Command.timeout_seconds
     $previous = @{}
@@ -546,7 +549,11 @@ function Close-TargetedWorkbook {
         $script:responseWatcher.Dispose()
         $script:responseWatcher = $null
     }
-    return @{closed=$true}
+    $metrics = Read-TargetedJson (Join-Path $entry.session 'metrics.json')
+    $profileReusable = $metrics -and
+        $metrics.PSObject.Properties['profile_job_exit_confirmed'] -and
+        $metrics.profile_job_exit_confirmed -eq $true
+    return @{closed=$true; profile_reusable=$profileReusable}
 }
 
 function Move-TargetedWorkbookLane {

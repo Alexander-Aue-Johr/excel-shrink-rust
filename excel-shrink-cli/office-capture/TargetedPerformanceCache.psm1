@@ -72,6 +72,9 @@ function Get-TargetedWorkbookMeasurements {
         'working_set_bytes','private_bytes','peak_private_bytes','peak_working_set_bytes')) {
         $sample[$name] = $client.$name
     }
+    if ($client.PSObject.Properties['webview_profile_policy']) {
+        $sample.webview_profile_policy = $client.webview_profile_policy
+    }
     return $sample
 }
 

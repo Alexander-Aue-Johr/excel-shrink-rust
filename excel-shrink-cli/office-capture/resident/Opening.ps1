@@ -102,6 +102,11 @@ function Start-ResidentClientExcel {
     # Browser processes may be shared within a desktop, but a visible reset
     # must not attach to a browser running on this group's private desktop.
     $profileRoot = Join-Path $stage 'webview2-profile'
+    $metrics.clients[$id].webview_profile_policy = 'fresh-isolated'
+    if ($env:EXCEL_SHRINK_RESIDENT_PROFILE_ROOT) {
+        $profileRoot = [IO.Path]::GetFullPath($env:EXCEL_SHRINK_RESIDENT_PROFILE_ROOT)
+        $metrics.clients[$id].webview_profile_policy = 'pooled-isolated'
+    }
     $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $profileRoot $(if ($desktopName) { 'private' } else { 'interactive' })
     $metrics.clients[$id].webview2_user_data_folder = $env:WEBVIEW2_USER_DATA_FOLDER
     $openClock = [Diagnostics.Stopwatch]::StartNew()

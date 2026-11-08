@@ -849,6 +849,11 @@ try {
                 finally { $entry.error_checking_scope = $null }
             }
         }
+        if ($env:EXCEL_SHRINK_RESIDENT_PROFILE_ROOT) {
+            $metrics.profile_job_exit_confirmed = $false
+            try { $metrics.profile_job_exit_confirmed = $owned.TerminateAndWait(10000) }
+            catch { $metrics.profile_cleanup_warning = $_.Exception.Message }
+        }
         $owned.Dispose()
         $metrics.cleanup_job_released_unix_ms = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
         $unconfirmedClients = @(Confirm-ResidentClientExit $clients $metrics.clients)

@@ -3,7 +3,7 @@ use super::telemetry::{LaneId, Lifecycle, Telemetry};
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     io::{BufRead, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
@@ -16,12 +16,17 @@ use std::{
 // Use this shorter budget only for continuously responsive Pending with external links.
 const LINKED_PENDING_TIMEOUT_MS: u64 = 15_000;
 
+#[path = "profile_pool.rs"]
+mod profile_pool;
+use profile_pool::ProfileLease;
+
 pub(super) struct ExcelHost {
     child: Child,
     input: BufWriter<ChildStdin>,
     responses: mpsc::Receiver<Result<Value>>,
     timeout: Duration,
     residents: BTreeSet<PathBuf>,
+    profiles: BTreeMap<String, ProfileLease>,
     pub(super) operation_measurements: Vec<Value>,
 }
 
@@ -76,17 +81,30 @@ impl ExcelHost {
     }
 
     /// Keep single and parallel starts on the same workbook planning path.
-    fn open_command(&self, lane: LaneId, path: &Path) -> Result<Value> {
+    fn open_command(&mut self, lane: LaneId, path: &Path) -> Result<Value> {
         let plan = crate::regression::office_plan::build_workbook_visual_plan(path)?;
         let sheets: Vec<_> = plan.sheets.iter().map(|sheet| json!({
             "index":sheet.sheet_index, "name":sheet.sheet, "bottom_row":sheet.bottom_row,
             "base_right_column":sheet.base_right_column, "right_column":sheet.base_right_column,
             "horizontal_overflow_required":false, "drawing_fallback_required":false,
         })).collect();
+        let profile_root = if let Some(root) = std::env::var_os("EXCEL_SHRINK_WEBVIEW_PROFILE_POOL") {
+            ensure!(
+                !self.profiles.contains_key(lane.key()),
+                "Lane already owns a profile"
+            );
+            let lease = ProfileLease::acquire(Path::new(&root))?;
+            let directory = lease.directory.clone();
+            self.profiles.insert(lane.key().to_owned(), lease);
+            Some(directory)
+        } else {
+            None
+        };
         Ok(
             json!({"kind":"open", "lane":lane.key(), "path":path, "sheets":sheets,
                 "host_executable":std::env::current_exe()?, "timeout_seconds":self.timeout.as_secs(),
-                "manual_calculation":true, "external_link_parts":external_workbook_link_parts(path)?}),
+                "manual_calculation":true, "profile_root":profile_root,
+                "external_link_parts":external_workbook_link_parts(path)?}),
         )
     }
 
@@ -153,6 +171,9 @@ impl ExcelHost {
             result["reopened"] == false,
             "In-place transition reopened the workbook"
         );
+        if let Some(profile) = self.profiles.remove(source.key()) {
+            self.profiles.insert(target.key().to_owned(), profile);
+        }
         confirmed_pid(&result)
     }
     /// Request the same full rebuild used by the existing comparison protocol.
@@ -174,6 +195,13 @@ impl ExcelHost {
             "Excel exit was not confirmed: {}",
             lane.key()
         );
+        if let Some(profile) = self.profiles.remove(lane.key()) {
+            ensure!(
+                result["profile_reusable"] == true,
+                "Whole-job exit unconfirmed; profile quarantined"
+            );
+            profile.release_after_job_exit()?;
+        }
         Ok(())
     }
 
@@ -382,6 +410,7 @@ impl ExcelHost {
             timeout,
             operation_measurements: Vec::new(),
             residents: BTreeSet::new(),
+            profiles: BTreeMap::new(),
         })
     }
 
@@ -463,7 +492,7 @@ fn normalize_windows_paths(command: &mut Value) -> Result<()> {
             normalize_windows_paths(job)?;
         }
     }
-    for field in ["path", "output", "host_executable"] {
+    for field in ["path", "output", "host_executable", "profile_root"] {
         if let Some(path) = command[field].as_str() {
             command[field] = json!(crate::regression::excel_automation::power_shell_path(
                 Path::new(path)
