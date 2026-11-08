@@ -6,9 +6,13 @@ not a claim that every workbook is visually preserved or every source line has
 been independently verified. The legacy comparison system still exists; its
 behavior is deliberately distinguished from the current targeted workflow.
 
-Current targeted execution policy is `targeted-content-grid-v6`; its conditional
-state exclusions and version-two result reuse are documented below. The source
-review baseline above remains historical, not an attribution of newer behavior.
+The current targeted capture policy is `targeted-content-grid-v9`, with execution
+strategy `paired-inplace-rebuild-v1`. Both comparison partners are rebuilt in
+their existing Excel processes. The exact states, candidate rules, optional
+Check Performance lane and reuse requirements are specified in
+[targeted validation](targeted-validation.md). The source review baseline above
+remains historical. Current experiments and claim boundaries are recorded in the
+[evaluation protocol](../planning/evaluation-protocol.md).
 
 ## Product objective and acceptance
 
