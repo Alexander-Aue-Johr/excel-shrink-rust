@@ -31,8 +31,13 @@ mod validation_study;
 
 /// Open the standalone configuration UI or execute its explicit validation command.
 pub fn run_deltasieve() -> anyhow::Result<()> {
-    if std::env::args_os().nth(1).as_deref() == Some(OsStr::new("regression")) {
-        return run_excel_shrink();
+    match std::env::args_os().nth(1).as_deref() {
+        Some(command) if command == OsStr::new("regression") => return run_excel_shrink(),
+        Some(command) if command == OsStr::new("shrink") => {
+            let arguments = std::env::args_os().take(1).chain(std::env::args_os().skip(2));
+            return run_cleanup_command(Cli::parse_from(arguments));
+        }
+        _ => {}
     }
     validation::run_cli()
 }

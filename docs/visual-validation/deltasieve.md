@@ -46,6 +46,16 @@ studies retain their respective on-disk formats.
 
 The cleanup executable exposes `excel-shrink-cli --describe-cli` for typed option fields. Its JSON describes the same Clap options used by the cleanup command.
 
+`Add SheetShrink` uses the running DeltaSieve executable and its `shrink` entry
+point, which dispatches to the shared Rust cleanup implementation. Its program
+path is prefilled. `deltasieve shrink INPUT OUTPUT [cleanup options]` invokes
+that entry point directly. The separate cleanup executable remains available.
+
+A one-workbook test submitted the session's unchanged SheetShrink preset through
+`/api/run`. Processing and native visual comparison completed with one processed
+pair and zero failures. The portable report retained no equal PNG images.
+Receipts are under `validation-temp/deltasieve-web-preset-smoke-20261108`.
+
 `capture.retain_equal_images` controls equal-image storage and defaults to false.
 The configuration form exposes the same setting. Completed comparisons retain
 hashes and geometry receipts for discarded equal images. Images required by

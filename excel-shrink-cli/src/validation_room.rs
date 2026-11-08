@@ -183,11 +183,15 @@ async fn session(State(room): State<Arc<Room>>) -> ApiResult {
         .map(PathBuf::from)
         .filter(|path| path.is_dir())
         .unwrap_or_else(|| working_directory.clone());
+    let mut shrink_preset = validation::excel_shrink_preset(1);
+    shrink_preset.name = "SheetShrink".to_owned();
+    shrink_preset.program = std::env::current_exe().map_err(anyhow::Error::from)?;
+    shrink_preset.arguments.insert(0, "shrink".to_owned());
     Ok(Json(
         json!({"token":room.token,"config":config,"working_directory":working_directory,
         "browse_directory":browse_directory,"native_picker":cfg!(windows),
         "logical_processors":std::thread::available_parallelism().map_or(1, usize::from),
-        "processor_schema":crate::cli_metadata::describe(),"shrink_preset":validation::excel_shrink_preset(1)}),
+        "processor_schema":crate::cli_metadata::describe(),"shrink_preset":shrink_preset}),
     ))
 }
 
