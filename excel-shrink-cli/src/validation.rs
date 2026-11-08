@@ -221,6 +221,33 @@ pub(crate) struct RunConfig {
     /// An explicit declaration when reusing observations made with the same renderer setup.
     pub environment_key: String,
     pub capture: CaptureOptions,
+    /// Select a stable subset of the paired workbooks for visual validation.
+    pub partition: Option<ValidationPartition>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ValidationPartition {
+    pub count: u32,
+    /// One-based partition number.
+    pub index: u32,
+}
+
+impl ValidationPartition {
+    fn validate(&self) -> Result<()> {
+        ensure!(self.count > 0 && (1..=self.count).contains(&self.index),
+            "Partition index must be between 1 and the partition count");
+        Ok(())
+    }
+
+    /// Hash portable relative names so adding another workbook does not move
+    /// existing names between partitions. The versioned rule is SHA-256/u64-be-v1.
+    pub(crate) fn contains(&self, name: &str) -> bool {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(name.as_bytes());
+        let bucket = u64::from_be_bytes(digest[..8].try_into().unwrap());
+        bucket % u64::from(self.count) == u64::from(self.index - 1)
+    }
 }
 
 /// Select the shared root for standalone reports and persistent download data.
@@ -250,6 +277,7 @@ impl Default for RunConfig {
             reuse_parts: PartSelection::default(),
             environment_key: String::new(),
             capture: CaptureOptions::default(),
+            partition: None,
         }
     }
 }
@@ -307,6 +335,9 @@ impl RunConfig {
     }
 
     pub fn validate(&self) -> Result<()> {
+        if let Some(partition) = &self.partition {
+            partition.validate()?;
+        }
         ensure!(!self.source_a.trim().is_empty(), "Select source A");
         ensure!(
             !self.report_dir.as_os_str().is_empty(),
@@ -544,6 +575,30 @@ pub(crate) fn open_browser(target: &OsStr) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validation_partitions_are_disjoint_complete_and_stable() {
+        use sha2::Digest;
+        let names = ["a/book.xlsx", "b/book.xlsx", "ümlaut.xlsx", "nested/other.xlsx"];
+        for count in [1, 2, 7] {
+            for name in names {
+                let assigned: Vec<_> = (1..=count)
+                    .filter(|index| ValidationPartition { count, index: *index }.contains(name))
+                    .collect();
+                assert_eq!(assigned.len(), 1);
+                let digest = sha2::Sha256::digest(name.as_bytes());
+                let expected = u64::from_be_bytes(digest[..8].try_into().unwrap()) % u64::from(count) + 1;
+                assert_eq!(u64::from(assigned[0]), expected);
+            }
+        }
+        for (count, index) in [(0, 1), (2, 0), (2, 3)] {
+            assert!(ValidationPartition { count, index }.validate().is_err());
+        }
+        let old: RunConfig = serde_json::from_str("{}").unwrap();
+        assert!(old.partition.is_none());
+        let config: RunConfig = serde_json::from_str(r#"{"partition":{"count":3,"index":2}}"#).unwrap();
+        assert_eq!(serde_json::to_value(config).unwrap()["partition"]["index"], 2);
+    }
 
     #[test]
     fn observatory_arguments_prefill_processing_without_creating_output_directories() {

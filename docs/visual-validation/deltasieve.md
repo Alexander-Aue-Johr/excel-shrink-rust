@@ -22,6 +22,24 @@ Reports and the download cache default beneath `DELTASIEVE_DATA_DIR/DeltaSieve`.
 
 ## Command entry points
 
+### Validation partitions
+
+The web configurator saves an optional `partition` object with `count` and
+one-based `index`. For example, `{"count":4,"index":2}` selects partition two.
+Names are assigned by the first eight SHA-256 bytes interpreted as a big-endian
+unsigned integer, modulo the count. Adding other workbook names leaves the
+assignment of existing names unchanged. Keep the same count when resuming a
+partitioned experiment.
+
+Selection happens after complete filename matching, preserving ambiguity
+checks. The saved `selection` records available, selected and excluded pairs,
+including empty partitions. Processing stages cover the complete source.
+Persistent stage reuse can avoid repeating that preparation. The static report
+includes the selection counts. A partition's result covers its selected pairs.
+
+The current pinned Enron study continues with its original launch contract.
+This standalone configuration does not alter its partition or admission settings.
+
 The VS Code task `DeltaSieve: Configure validation` invokes
 `tools/start-deltasieve.ps1`. Its default working root is
 `V:\deltasieve-data`. Pass `-DataRoot` or set `DELTASIEVE_DATA_DIR` to use

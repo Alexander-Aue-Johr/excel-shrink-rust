@@ -89,6 +89,7 @@ function showRunReport(content, data) {
   }
   if (data.error) content.append(reportElement('p', 'report-warning', `Recorded run failure: ${data.error}`));
   if (data.summary) content.append(reportDetails('Recorded run summary', data.summary));
+  if (data.selection) content.append(reportDetails('Validation partition and coverage', data.selection));
   const controls = reportElement('div', 'report-controls');
   const search = reportElement('input');
   search.type = 'search';

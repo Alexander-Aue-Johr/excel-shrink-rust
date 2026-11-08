@@ -408,12 +408,24 @@ impl Run {
         candidate: &MaterializedSource,
     ) -> Result<Vec<WorkbookPair>> {
         self.transition(RunState::Pairing)?;
-        let paired = pairing::pair_files(&baseline.files, &candidate.files);
+        let mut paired = pairing::pair_files(&baseline.files, &candidate.files);
         ensure!(
             !paired.pairs.is_empty(),
             "Source A contains no supported workbook files"
         );
         self.header["unmatched_candidates"] = json!(paired.unmatched_candidates);
+        let available = paired.pairs.len();
+        if let Some(partition) = &self.config.partition {
+            paired.pairs.retain(|pair| partition.contains(&pair.name));
+        }
+        self.header["selection"] = json!({
+            "policy": "sha256-u64-be-v1",
+            "partition": self.config.partition,
+            "available_pairs": available,
+            "selected_pairs": paired.pairs.len(),
+            "excluded_by_partition": available - paired.pairs.len(),
+            "processing_scope": "complete_source"
+        });
         self.update_progress(|progress| {
             progress.total = paired.pairs.len();
             progress.workbooks = paired

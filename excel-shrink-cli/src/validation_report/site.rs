@@ -47,6 +47,7 @@ pub(crate) fn write_site(report_root: &Path, run: &Value) -> Result<PathBuf> {
         "created_at": run.get("created_at").filter(|value| !value.is_null()).unwrap_or(&run["started_at"]),
         "finished_at": run["finished_at"],
         "summary": run["summary"],
+        "selection": run["selection"],
         "error": run["error"],
         "interrupted_index": run["interrupted_index"],
         "pairs": rows

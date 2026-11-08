@@ -80,6 +80,9 @@ function populate(config) {
   set('source-b', config.source_b);
   set('report-dir', config.report_dir);
   set('parallel', config.max_processes ?? 1);
+  set('partition-count', config.partition?.count ?? 1);
+  set('partition-index', config.partition?.index ?? 1);
+  byId('partition-index').max = byId('partition-count').value;
   set('baseline-step', config.baseline_after_step);
   set('output-kind', config.output?.kind || 'temporary');
   set('output-path', config.output?.path);
@@ -115,6 +118,9 @@ function readConfiguration() {
   config.baseline_after_step = mode() === 'process' && value('baseline-step') ? Number(value('baseline-step')) : null;
   config.report_dir = value('report-dir');
   config.max_processes = Number(value('parallel'));
+  config.partition = Number(value('partition-count')) > 1
+    ? { count: Number(value('partition-count')), index: Number(value('partition-index')) }
+    : null;
   config.output = mode() === 'process' && byId('output-kind').value !== 'temporary'
     ? { kind: byId('output-kind').value, path: value('output-path') }
     : { kind: 'temporary' };
@@ -617,6 +623,14 @@ byId('apply-json').addEventListener('click', () => {
   catch (error) { message(error.message, true); }
 });
 byId('close-json').addEventListener('click', () => byId('json-editor').close());
+byId('partition-count').addEventListener('input', () => {
+  const count = Number(byId('partition-count').value);
+  byId('partition-index').max = String(count);
+  if (Number(byId('partition-index').value) > count) {
+    byId('partition-index').value = String(count);
+  }
+});
+
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 
 (async function initialise() {

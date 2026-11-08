@@ -39,6 +39,9 @@
             <span class="path"><input id="source-b" placeholder="Independent folder, workbook, ZIP file or archive URL"><button type="button" data-browse="source-b" data-kind="folder">Folder…</button><button type="button" data-browse="source-b" data-kind="file">File…</button></span>
           </label>
           <p class="help wide">Names are matched by relative path, then by unique filename. Ambiguous matches remain explicit failures. Visual comparison currently requires XLSX on both sides.</p>
+          <label>Validation partitions<input id="partition-count" type="number" min="1" max="1024" value="1"></label>
+          <label>Selected partition<input id="partition-index" type="number" min="1" max="1" value="1"></label>
+          <p class="help wide">Stable filename hashing selects paired workbooks after matching. Processing steps still cover the complete source. Use processing-stage reuse to avoid repeating preparation.</p>
         </section>
 
         <section id="processing" class="panel" hidden>
