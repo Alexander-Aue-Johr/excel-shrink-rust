@@ -6,6 +6,15 @@ outcomes, scheduling, diagnostic telemetry and disposable working files.
 
 ## Runtime Office assets
 
+The resident opening sequence is orchestrated by `Open-ResidentClient` in
+`office-capture/resident.ps1`. Its cohesive implementation steps live in
+`office-capture/resident/Opening.ps1`: initialize the request and capacity,
+prepare the copied workbook and add-in, start the owned Excel process, then wait
+for add-in readiness. The orchestration retains its opening-time accounting in
+`finally`, including start and readiness failures. The readiness metric still
+covers process launch through add-in readiness. The structural refactor does not
+establish a workbook-load-only duration or a performance improvement.
+
 The standalone renderer, preparation helpers and configurator web assets share
 the capture-directory resolver. An explicit `EXCEL_SHRINK_CAPTURE_DIR` takes
 precedence and must contain `run-targeted-comparison.ps1`. An invalid explicit
