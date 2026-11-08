@@ -6,7 +6,7 @@ Git are required by the packaging tool. The resulting runtime requires Windows
 and installed Excel for native comparisons.
 
 ```powershell
-cargo build -p excel-shrink-cli --bins --release -j 2
+cargo build -p excel-shrink-cli -p sheetshrink --bins --release -j 2
 python tools/package-validation.py `
   --binary-directory "$env:CARGO_TARGET_DIR\release" `
   --output 'V:\releases\deltasieve-candidate'
@@ -23,6 +23,11 @@ It excludes test directories, local corpora, generated dependencies and ordinary
 source files. `release-manifest.json` records every packaged member's byte size
 and SHA-256. Verification checks required members, hashes, unexpected files and
 path confinement after relocation.
+
+When `sheetshrink.exe` is present in the supplied binary directory, it is included
+and verified under the same manifest. Historical two-binary packages remain
+verifiable. Build both packages with the command above for a two-application
+release.
 
 The asset checkout commit and dirty state are recorded separately from supplied
 binary hashes. The packager does not infer which source revision produced an

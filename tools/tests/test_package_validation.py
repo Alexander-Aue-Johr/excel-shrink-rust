@@ -11,6 +11,16 @@ spec.loader.exec_module(package)
 
 
 class RuntimePackageTests(unittest.TestCase):
+    def test_cleanup_application_is_included_when_built(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository, binaries, tracked = self.fixture(root)
+            (binaries / "sheetshrink.exe").write_bytes(b"cleanup application fixture")
+            output = root / "release"
+            manifest = package.package(repository, binaries, output, tracked, {})
+            self.assertIn("sheetshrink.exe", manifest["files"])
+            self.assertEqual(package.verify(output), manifest)
+
     def fixture(self, root):
         repository = root / "repository"
         binaries = root / "binaries"

@@ -78,6 +78,10 @@ def package(repository, binary_directory, output, tracked, checkout):
     sources = {target: repository / source for target, source in members.items()}
     for name in ("deltasieve.exe", "excel-shrink-cli.exe"):
         sources[Path(name)] = binary_directory / name
+    # Older two-binary packages remain valid; new workspace builds include the cleanup app.
+    sheetshrink = binary_directory / "sheetshrink.exe"
+    if sheetshrink.exists():
+        sources[Path("sheetshrink.exe")] = sheetshrink
     for target, source in sources.items():
         if source.is_symlink() or not source.is_file():
             raise ValueError(f"Missing or linked runtime input: {target}")
