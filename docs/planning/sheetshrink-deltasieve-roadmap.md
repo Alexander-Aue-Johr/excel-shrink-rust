@@ -49,17 +49,25 @@ Specify evidence needed to distinguish a real regression, a capture-extent diffe
 
 Acceptance requires versioned contracts, predefined sampling and timeout policies, and explicit limits for the paper claims.
 
-## 03 Create the two paper outlines and evidence map
+## 03 Research the paper design and create fresh LaTeX projects
 
-- [ ] Inspect the existing paper repository and create or adapt separate SheetShrink and DeltaSieve manuscripts with shared resources where appropriate.
+- [ ] Research suitable paper designs and create two fresh, independently compilable LaTeX projects in the existing paper repository.
 
-Use the existing paper repository for both manuscripts, with distinct paper directories. Link every planned claim, table, and figure to an experiment or retained result. Begin drafting the problem, contributions, method outline, and limitations while evaluation continues.
+Create `papers/sheetshrink/` and `papers/deltasieve/` with a main LaTeX source, section sources where useful, bibliography, figure sources, and build instructions. Use the installed TeX Live on D: and place temporary compilation data on V:. Shared bibliography or figure tooling is appropriate where it removes duplicated work.
 
-For SheetShrink, organize the argument around spreadsheet bloat, the preservation contract, compact retention mechanisms, byte-oriented processing, parallel execution, and measured end-to-end benefit.
+Treat historical manuscripts and reviews as sources of observations, experiments, requirements, and development history. Develop the new papers' argument, organization, wording, and figure choices independently from those earlier manuscripts.
 
-For DeltaSieve, organize it around candidate selection, dependency reasoning, native Excel verification, coverage, conservative fallback, and the measured cost and detection effectiveness of the method.
+Before selecting the structures, conduct a documented full-text study of accepted ICDE papers and relevant papers from comparable venues such as SIGMOD and VLDB. Verify publication and track from primary sources. Select examples for methodological relevance, including systems, optimization, data preparation, validation, and experimental evaluation. Record the selection rationale and evidence supporting each recommendation. Distinguish observed practices from official requirements and from hypotheses about what contributed to acceptance.
 
-Acceptance requires compiling manuscript skeletons, an evidence checklist, and clear separation of the two papers' contributions. Use the installed TeX Live on D: and place temporary compilation data on V:.
+Analyze problem and contribution framing, narrative and section order, space allocation, scientific English, terminology, claim strength, evaluation design, limitations, and reproducibility. Examine how Related Work is grouped, how finely methods are compared, where the discussion appears, and how citations support the introduction, method, and evaluation as well as a dedicated section. Derive a justified design for each paper from that analysis and the actual evidence available.
+
+Study figures as part of the argument, including motivating examples, method diagrams, performance plots, and interface screenshots. Evaluate a compact first-page Observatory figure for its ability to explain DeltaSieve's contribution, its readability at publication size, and its use of the page budget. Compare a screenshot, an annotated detail, and a conceptual overview where relevant. Record the inclusion and placement decision under the current venue template. Select images for their explanatory contribution to each paper.
+
+SheetShrink must cover spreadsheet bloat, its preservation contract, compact retention mechanisms, byte-oriented processing, parallel execution, and measured end-to-end benefit. DeltaSieve must cover candidate selection, dependency reasoning, native Excel verification, coverage, conservative fallback, and measured detection effectiveness and cost. Let the research and evidence determine how these topics form each paper's argument.
+
+Link every planned claim, table, and figure to an experiment, retained result, or verified publication. Begin the new manuscripts while evaluation continues and update the outlines when the evidence warrants it. Task 14 delivers complete first drafts for the author's thorough review and rewriting.
+
+Acceptance requires both projects to compile, an annotated paper-design study with verified sources, a justified outline and figure plan for each manuscript, a claim-to-evidence map, and clear separation of the papers' contributions.
 
 ## 04 Integrate the web configuration entry point
 
@@ -173,21 +181,29 @@ Estimate full-capture cost from actual visible geometry, object extent, image li
 
 Acceptance requires reproducible mutation fixtures, independent reference comparisons, ablations of major selection mechanisms, and a precise statement of the supported model and remaining limits.
 
-## 14 Review related work and finalize the papers
+## 14 Write and review complete first manuscript drafts
 
-- [ ] Verify comparison tools and research claims, then complete the two manuscripts and artifact descriptions.
+- [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.
+
+Write substantive scientific English for every planned section, including the abstract, introduction, problem and scope, contributions, method, evaluation, Related Work, limitations, and conclusion as appropriate to each design. Include the planned figures, captions, tables, bibliography, and artifact descriptions. Adjust the structures when deeper research or results justify a change. Mark missing measurements and unresolved claims explicitly in the working drafts and their evidence checklist.
+
+These drafts serve as editable starting points for the author's comprehensive review, rewriting, restructuring, and replacement of text or figures. Preserve a clear draft status and record substantive author decisions. Prepare the complete drafts and accompanying review notes for that human revision.
 
 Examine Microsoft Spreadsheet Compare and Inquire, Check Performance, Synkronizer, DiffEngineX, efficient spreadsheet readers, and relevant dependency-based and visual regression-testing research. Verify whole-workbook reports, property coverage, chart handling, automation, scalability, and licensing constraints where they affect experiments.
 
-Prepare one Deep Research prompt per paper after its claims and scope are fixed. Ask for primary sources, competing methods, and evidence that challenges novelty. Verify returned sources before incorporating them.
+Build Related Work around the closest methods and the specific dimensions on which they differ. Explain their assumptions, guarantees, scope, dependencies, cost, and evaluation where supported by the sources. Integrate this positioning into the argument wherever it motivates a design or comparison. Verify citations against the full publications and use precise, evidence-qualified language.
+
+Prepare one Deep Research prompt per paper as a follow-up to Task 03's initial study. Ask for primary sources, competing methods, and evidence that challenges novelty. Incorporate and verify the returned research when available. The drafts' literature foundation must also rest on the completed primary-source research.
 
 Select the preservation and selection mechanisms that carry the papers' central arguments. Keep comprehensive rule inventories in versioned documentation. Report corpus and method versions, sampling, hardware, Excel build, limitations, artifact availability, and required AI-use disclosure under the applicable venue rules.
+
+Apply the current IEEE template and ICDE submission requirements, including figure placement and the page budget. Record substantive AI assistance in drafting, figures, code, data processing, and experiments so the final disclosure can reflect the actual use and subsequent human revisions. ICDE 2027 requires disclosure of AI-generated content and relevant experimental assistance, with an exception generally intended for editing and grammar enhancement. [ICDE 2027 submission guidelines](https://icde2027.github.io/submission-guidelines.html)
 
 Preserve useful historical unpublished manuscripts as clearly dated artifacts. Summarize prior feedback as requirements and research motivation. Check applicable confidentiality conditions before distributing full review text.
 
 The historical Excel Shrink papers and reviews are available in the local archive `V:\excel_shrink_papers_and_reviews.7z`. The user reports favorable reviews and attributes the unsuccessful submission outcome in substantial part to an overlooked instruction concerning a review letter. If this history becomes relevant, inspect the archived documents to establish the exact sequence, requirements, and decision. Include any required review or response letter in the submission checklist for the new papers.
 
-Acceptance requires compiling manuscripts, claim-to-evidence checks, reproducible figures and tables, and venue-specific submission checks against current official guidance.
+Acceptance requires two complete, compilable first-draft PDFs and their fresh LaTeX projects, verified citations, claim-to-evidence checks, reproducible figures and tables, the first-page figure decision, a list of unresolved evidence gaps, and an author-review checklist. Recheck current venue requirements and disclosure when preparing a later submission version.
 
 ## 15 Add bounded event history and replay
 
