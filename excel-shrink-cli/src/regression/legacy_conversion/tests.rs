@@ -1,5 +1,63 @@
 use super::*;
 
+/// Measure workbook switching separately from process and Office.js readiness.
+#[test]
+#[ignore = "requires desktop Excel and NATIVE_REUSE_ORIGINAL/NATIVE_REUSE_SHRUNK; run serially"]
+fn native_xlsx_pair_opens_in_the_same_owned_excel_process() -> Result<()> {
+    let inputs = [
+        PathBuf::from(std::env::var("NATIVE_REUSE_ORIGINAL")?),
+        PathBuf::from(std::env::var("NATIVE_REUSE_SHRUNK")?),
+    ];
+    let source_hashes = inputs
+        .iter()
+        .map(|path| deltasieve_engine::reuse::file_sha256(path))
+        .collect::<Result<Vec<_>>>()?;
+    let root = std::env::temp_dir().join(format!("native-workbook-switch-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&root)?;
+    let startup = Instant::now();
+    let mut pool = Pool::new(root.join("pool"))?;
+    pump_until(&mut pool, 1, |pool| {
+        pool.workers.len() == 1 && pool.workers[0].ready()
+    })?;
+    let startup_seconds = startup.elapsed().as_secs_f64();
+    let identity = read_json(&pool.workers[0].directory.join("identity.json"))
+        .context("Missing owned Excel identity")?;
+    let mut samples = Vec::new();
+    for round in 0..2 {
+        for (index, input) in inputs.iter().enumerate() {
+            let output = root.join(format!("round-{round}-{index}.xlsx"));
+            let work = root.join(format!("request-{round}-{index}"));
+            let metrics = std::thread::scope(|scope| -> Result<_> {
+                let pool_root = pool.root.clone();
+                let request = scope.spawn(move || client::convert(&pool_root, input, &output, &work));
+                pump_until(&mut pool, 1, |_| request.is_finished())?;
+                request.join().unwrap()
+            })?;
+            assert_eq!(metrics.excel_pid.map(u64::from), identity["pid"].as_u64());
+            samples.push(serde_json::to_value(metrics)?);
+        }
+    }
+    drop(pool);
+    assert_eq!(
+        crate::native_process::process_alive(
+            identity["pid"].as_i64().context("Excel PID")?,
+            identity["started_ms"].as_i64().context("Excel birth time")?
+        ),
+        Some(false)
+    );
+    for (input, hash) in inputs.iter().zip(source_hashes) {
+        assert_eq!(deltasieve_engine::reuse::file_sha256(input)?, hash);
+    }
+    write_json(
+        &root.join("test-results.json"),
+        &json!({"scope":"COM workbook open in reused conversion worker; excludes Office.js",
+            "worker_startup_seconds":startup_seconds,"identity":identity,"samples":samples,
+            "source_hashes_unchanged":true,"owned_excel_exit_confirmed":true}),
+    )?;
+    println!("Workbook switch measurements: {}", root.display());
+    Ok(())
+}
+
 #[test]
 fn ram_reserve_has_a_512_mib_floor() {
     assert!(!has_startup_reserve(512 * 1_048_576 - 1, 0));

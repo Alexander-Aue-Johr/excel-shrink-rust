@@ -509,6 +509,24 @@ Acceptance requires reconciled corpus totals, completed or explicitly justified 
 
 ## Progress record
 
+### Startup and profile reuse checkpoint on 2026-11-08
+
+- Enron remains paused under the user's later explicit pause instruction.
+  Native probes have not resumed or replaced that corpus run.
+- Startup milestones are instrumented and the investigation is retained in
+  `docs/visual-validation/investigations/addin-startup-20261108.md`. Registry
+  cleanup and the SLA extraction did not explain the large observed variation.
+- `0306436c` adds opt-in Rust profile leases with quarantine after interrupted
+  ownership and native whole-job exit confirmation before reuse. Sequential
+  and two-group native checks passed. `2018a154` binds the choice to the ordinary
+  study configurator and saved resume receipt. It remains disabled by default.
+- A COM-only native probe opened the small Original/SheetShrink pair four times
+  in one owned Excel identity, with unchanged source hashes and confirmed final
+  exit. See `docs/visual-validation/experiments/workbook-switching/README.md`.
+  Persistent capture-worker orchestration, Office.js context switching, state
+  reset validation and matched rendered comparisons remain implementation and
+  acceptance work. The existing conversion-worker probe does not complete them.
+
 Approval was received on 2026-11-08. Task 01 is in progress. The live runner PID 17640 was verified against its launch receipt, using producer commit `abc9e79` and Observatory port 18777. Initial free capacity was approximately 85 GiB on C:, 317 GiB on V:, and 1,374 GiB on G:. G: is a candidate for overflow working data subject to suitability checks.
 
 ### Integration and draft checkpoints
