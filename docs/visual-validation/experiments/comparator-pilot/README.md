@@ -2,8 +2,8 @@
 
 ## Status on 2026-11-08
 
-The five-pair xlCompare and DiffEngineX CLI pilot has completed. Larger-input
-measurements, independent rendered reference captures and option/edition coverage
+The five-pair and two-large-pair xlCompare and DiffEngineX CLI trials have
+completed. Controlled cost measurements, independent rendered reference captures and option/edition coverage
 remain open. Before acquiring the trials, a bounded local inventory found no
 matching Synkronizer, xlCompare, DiffEngineX
 or Spreadsheet Compare uninstall entries. The standard Office16 DCF executable
@@ -200,4 +200,44 @@ concurrent-load trial. Shrinking and comparing workbooks are separate tasks.
 Structural comparison costs are compared with DeltaSieve only where output
 semantics and tested options are stated. Check Performance remains the cleaning
 baseline. A trial/export limit must never become a whole-workbook equality claim.
-Large-input comparator execution and reference validation remain pending.
+## Executed large-input observations
+
+Each large pair was compared once per product with a 600-second external
+deadline. Every invocation completed with exit code zero and a readable report.
+All trial input copies retained their exact frozen bytes. Enron continued at
+three admitted groups during each large comparison window and returned to four
+afterward. These concurrent-load observations remain exploratory.
+
+| Input | xlCompare seconds | DiffEngineX seconds | xlCompare report bytes | DiffEngineX report bytes |
+| --- | --- | --- | --- | --- |
+| Kernhaushalt Gemeinden | 53.748 | 131.692 | 4,889 | 233,639 |
+| Verkehrsunfälle Zeitreihen | 21.711 | 161.221 | 4,890 | 460,198 |
+
+The xlCompare reports are empty single-sheet workbooks, its documented output
+for no differences with this command. Its observed direct-process peak working
+sets were 6.908 and 2.808 GiB. These cannot be compared with DiffEngineX's
+direct-process memory counters because the latter separately automates Excel.
+The pilot did not measure that companion Excel process's full lifetime resources.
+
+The DiffEngineX reports contain 108 and 216 worksheets respectively, comprising
+one report per source sheet and a comparison summary. Independent package-name
+matching confirms every source worksheet is represented. Each summary has the
+expected 107 or 215 rows and reports zero cell differences for the tested
+formula-comparison configuration. This provides a structural report outcome,
+without certifying rendered equivalence or dependent presentation coverage.
+
+The first analysis draft erroneously omitted 21 numeric-typed summary names in
+the Verkehrsunfälle report. Inspection showed that labels such as `1.1` and `11`
+were stored numerically by the report writer. The corrected analysis counts all
+summary rows and independently matches actual report worksheet names to source
+names. It verifies all 215 sheets. Both analysis versions are retained; the
+final receipt is `large-input-acceptance-v2.json` in the private experiment root.
+
+The experiment has issued eight comparisons per product, including small smoke
+tests and both large cases. It does not assume how many trial uses may have
+preceded this experiment on the machine. No further small repeated invocations
+are planned ahead of large-input work. Native input acceptance, full reports,
+process receipts and hashes remain under `xlcompare-large-pairs` and
+`diffenginex-large-pairs`. The subsequent Enron snapshot confirmed 7,442 completed
+comparisons, four active groups, 9,347 remaining and ten skips. Independent native
+visual reference checks and a matched DeltaSieve cost evaluation remain open.
