@@ -406,3 +406,5 @@ command exit without discarding other completed inputs.
 
 See `../visual-validation/experiments/performance-preparation/README.md` for
 the bounded native tests, retained evidence and current integration scope.
+`prepared-artifacts.md` specifies the pending stable source-manifest and portable
+package contracts, including baseline mismatches and producer/local measurements.
