@@ -1,5 +1,60 @@
 # Implementation baseline for the approved delivery plan
 
+## Current verified checkpoint
+
+The initial observations below are historical checkpoints. After the selective
+font-sentinel refresh, production uses immutable runner commit `317200b`, binary
+SHA-256 `cb881f88de082046a315476d98b743d4acecd7bb2f438b3911af6b08a0bd10e6`,
+and PID 50844. Its saved `launch.json` contains the executable, checksum, complete
+arguments, environment and output root. At the later check, 5,175 visual
+comparisons were complete, five were skipped, four were active and 11,619 remained.
+Preparation still accounts for all 20,872 inputs and 20,503 prepared packages.
+
+The independently deployed Observatory host uses commit `5df6cbc` and PID 37524.
+Its deployment receipt is under
+`G:\deltasieve-work\host-reconcile-20261108`. The current address is
+`http://observatory.deltasieve.localhost:18777/`. The host's source assets are
+served from this checkout. Changing a browser module does not replace the pinned
+scientific runner. Static exporter and manuscript changes likewise do not upgrade
+that runner.
+
+Both repositories were fetched again after the integration work. The reusable
+remote branches remain `origin/codex/sheetscope-validation` at `a7445eb` and the
+paper repository's `origin/codex/corpus-preparation-snapshot` at `98c4e9d`.
+The current software and paper branches are `codex/datagov-validation-watch`
+and `icde2026`. Unrelated paper-repository changes remain outside our commits.
+
+### Recover this exact study
+
+1. Read the study's `launch.json` and verify its recorded executable checksum.
+   Inspect the running PID and its executable before deciding it has stopped.
+   The authoritative `.run.lock` must be available. Never launch a second writer
+   against an active study.
+2. The web configurator's Resume existing study action accepts this launch
+   receipt. It validates the recorded paths, checksum and lock before spawning
+   the recorded argument array and environment. The runner reacquires its lock.
+   The ordinary completed-study resume smoke test preserved its capture-attempt
+   directories and reused the existing result.
+3. The independently upgraded host is newer than this pinned runner. If it
+   remains after the runner stops, an exact-build resume will reject that host
+   explicitly. Confirm its port, study root, executable, PID and creation time,
+   then stop only that owned host before resuming. The pinned runner can then
+   start its matching host on the same port. Preserve `control-room/control.json`.
+4. Check `/health` and `/api/summary`, confirm `runner_alive`, the intended study
+   root, four-group target, retained preparation counts and new comparison
+   progress. A ready webpage alone does not establish that scheduling resumed.
+
+The 1,234 refreshed preparation records and ZIPs have a separate hash-verified
+backup under `G:\deltasieve-work\enron-font-fix-refresh-20261108`. Independent
+verification found all other 19,269 preparation ZIPs unchanged. Ordinary recovery
+does not use `--refresh-preparation` or a subset workbook list.
+
+Open investigations retain their evidence. Group `cade66d204a8e1b3760d` needs a
+bounded-drawing planning resolution and retry. Group `08d63692cee7c0416461` timed
+out during rebuild and contains XLL function calls without external-link parts.
+Repair-required inputs retain their explicit skip reasons. The difference ledger
+continues separately from these baseline and recovery checks.
+
 The active Enron runner was verified through process PID 17640, its launch receipt, and the live `/api/summary` endpoint on port 18777. Its executable is pinned to commit `abc9e79` and binary SHA-256 `11158836206f7bb9d0898d7851e79190c50f9ef58d67b8d974505bf7d93e09f3`.
 
 The run root is `V:\excel-shrink-paper\external\excel-shrink-rust\.tmp\enron-20261107`. Its launch receipt retains the complete argument list and request path. Recovery must use that receipt, the same output root, and the recorded compatibility settings. Verify the process identity and terminal state before recovery.

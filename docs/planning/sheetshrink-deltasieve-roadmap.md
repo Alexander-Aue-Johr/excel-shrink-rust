@@ -41,7 +41,7 @@ Scheduling experiments and new corpus acquisition have bounded initial acceptanc
 
 ## 01 Establish the implementation and run baseline
 
-- [ ] Inspect the active checkout, relevant remote branches, current run configuration, saved evidence, and outstanding investigations.
+- [x] Inspect the active checkout, relevant remote branches, current run configuration, saved evidence, and outstanding investigations.
 
 Compare the current implementation with `origin/codex/sheetscope-validation` and the corpus preparation branch in the paper repository. Identify completed features, reusable changes, incompatible assumptions, and remaining tests before integrating anything.
 
@@ -50,6 +50,13 @@ Preserve the active run's launch receipt, producer identity, selected corpus, pa
 Known starting points for verification are the `xlExclusive` conversion change in `135f7d1`, process costs and per-sheet timings in `2e100c2`, manual inspection in `ed8754d`, inspection cleanup in `61defff`, and inherited-border preservation in `abc9e79`.
 
 Acceptance requires a concise implementation inventory, a reproducible baseline, and a recovery procedure that can resume compatible results. Existing open boundary and chart findings retain their evidence and unresolved status.
+
+Completed through the inventory and checkpoints in
+`implementation-baseline-20261108.md`, including a fresh fetch of both
+repositories, pinned producer and separate host identities, selective-refresh
+verification, the tested study-resume entry point, and the current host-build
+recovery caveat. Subsequent implementation and corpus findings remain in their
+respective tasks.
 
 ## 02 Freeze the behavioral contracts and evaluation protocols
 
