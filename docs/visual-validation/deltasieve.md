@@ -139,3 +139,21 @@ Enron receipt displayed the expected held-lock error. This check exposed missing
 implemented, and a focused frontend test covers the initial empty update and
 report reset. Reloading the page cleared the observed startup error. Broader
 browser checks for processing and portable-report exploration remain pending.
+
+The ordinary `deltasieve run --config` entry point was exercised again on
+2026-11-08 using the frozen Enron sample member `0966d3e126908018b94a`. Both
+sources were copied to independent folders with matching workbook names.
+The coordinator completed one pair with five selected regions and five captures
+per rebuilt state. It reported `completed_with_limitations` and no differences.
+Its `Capital Structure` finding retained `blank_margin_ignored=true`, matching
+the independent reference's verified one-pixel white exterior observation.
+Verified-equal images were discarded with their integrity receipts retained.
+The run used the actual `deltasieve.exe` entry point and resident services,
+restored Enron admission to four groups, and retained its working report under
+`G:\deltasieve-work\deltasieve-native-entry-20261108`.
+
+The app-name integration test initially exposed missing `metadata-store`
+dispatch in `deltasieve.exe`; `95c2006` centralizes shared native service dispatch.
+Both app names now pass the same internal-service test. Study receipt validation
+also accepts the explicit `observatory.deltasieve.localhost` alias while rejecting
+foreign suffixes, unlisted names, missing ports and unsupported schemes.

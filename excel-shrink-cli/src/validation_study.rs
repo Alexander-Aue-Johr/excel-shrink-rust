@@ -87,7 +87,7 @@ impl Receipt {
             uri.scheme_str() == Some("http")
                 && matches!(
                     uri.host(),
-                    Some("127.0.0.1" | "localhost" | "deltasieve.localhost")
+                    Some("127.0.0.1" | "localhost" | "deltasieve.localhost" | "observatory.deltasieve.localhost")
                 )
                 && uri.port_u16().is_some(),
             "Study Observatory must use a local HTTP address"
@@ -162,6 +162,45 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("absolute"));
+    }
+
+    #[test]
+    fn named_study_address_remains_local_and_explicitly_ported() {
+        let root = std::env::temp_dir().join(format!("study-address-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let request = root.join("request.json");
+        fs::write(&request, b"{}").unwrap();
+        let mut value = receipt();
+        value.executable = std::env::current_exe().unwrap();
+        value.output_root = root.clone();
+        value.request_file = request.clone();
+        value.arguments = vec![
+            "regression".into(),
+            "study".into(),
+            "--output-root".into(),
+            root.to_string_lossy().into_owned(),
+            "--request-file".into(),
+            request.to_string_lossy().into_owned(),
+        ];
+        for address in [
+            "http://127.0.0.1:18777/",
+            "http://localhost:18777/",
+            "http://deltasieve.localhost:18777/",
+            "http://observatory.deltasieve.localhost:18777/",
+        ] {
+            value.control_room = address.into();
+            value.validate().unwrap();
+        }
+        for address in [
+            "http://observatory.deltasieve.localhost.example.com:18777/",
+            "http://unlisted.localhost:18777/",
+            "http://observatory.deltasieve.localhost/",
+            "https://observatory.deltasieve.localhost:18777/",
+        ] {
+            value.control_room = address.into();
+            assert!(value.validate().is_err(), "Unexpected allowed address {address}");
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
