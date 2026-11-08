@@ -20,6 +20,14 @@ The branch comparison spans 176 files. Its tree predates current SQLite document
 
 The standalone workflow supports external processing commands, which require review against the requested native SheetShrink integration. Its bounded monitoring and static report components are candidates for reuse.
 
+The standalone capture adapter passes `-SheetScope` to `run-targeted-comparison.ps1`, while the current script dispatches `regression targeted-compare` and has no such parameter. Adapt that boundary explicitly. Its validator source fingerprint also lists comparison files directly, so reconcile the source inventory with current modules and runtime assets. The current launcher accepts deterministic chart selection and distinguishes validated geometry progress from heartbeat activity.
+
+The shared application entry point was extracted and compiled with all targets in `9dd1f1f`. Machine-readable cleanup metadata is available through `--describe-cli` in `d3329dd`. The focused metadata test and normal CLI execution passed, exposing 35 named options. These changes provide initial integration prerequisites.
+
+Fresh paper projects were created under `papers/sheetshrink` and `papers/deltasieve` in the paper repository and pushed on its `icde2026` branch as `d29ea94`. Both initial compilation scaffolds produced PDFs using TeX Live with build output on V:. Their full research-based manuscripts are pending.
+
+An isolated Enron opening failure in group `ee6c5aa544fd08d1d31d` was retried through the regular restart API. The initial attempt timed out after 180 seconds while the Default add-in had no readiness confirmation. Retry attempt `6e380811-7883-4ae9-9e93-fd900ade0a86` completed with status `unchanged`. The initial failure's cause remains unresolved.
+
 ## Capacity and continuity
 
 Initial free capacity was approximately 85 GiB on C:, 317 GiB on V:, and 1,374 GiB on G:. Prefer V: for working data and evaluate G: for overflow if needed. Preserve the system-drive reserve and record each owned working directory.
