@@ -63,4 +63,20 @@ const environment = createRetainedFormulaInspector({ left: 'OR', right: 'SDR' },
 assert.equal(descendants(environment).find(node => node.className === 'formula-volatile-call').textContent,
   'CELL("filename")');
 assert.ok(descendants(environment).some(node => node.textContent.includes('1 filename/environment dependency paths')));
+const enriched = createRetainedFormulaInspector({ left: 'OR', right: 'SDR' }, {
+  evidence: 'saved_compared_states', changed_value_cells: 1, examined_cells: 1,
+  volatile_paths: 0, examples: [],
+  source_supplement: {
+    evidence: 'prepared_source_cached_values', environment_paths: 1,
+    note: 'Source values only.', examples: [{ status: 'path_found', path: [{
+      sheet: 'Data', cell: 'A13', formula: 'CELL("filename")', environment_span: [0, 16],
+      left_value: 'source path', right_value: 'source path',
+    }] }],
+  },
+});
+const enrichedNodes = descendants(enriched);
+assert.ok(enrichedNodes.some(node => node.textContent === 'Additional source evidence'));
+assert.ok(enrichedNodes.some(node => node.textContent === 'Source cached value: source path'));
+assert.ok(enrichedNodes.some(node => node.textContent.startsWith('1 changed saved cell values')));
+assert.ok(!enrichedNodes.some(node => node.textContent === 'OR: source path → SDR: source path'));
 console.log('PASS offline formula paths, exact call highlight, text safety and pulse control');

@@ -28,7 +28,7 @@ pub(super) async fn inspect(
         .get(pair)
         .and_then(|pair| pair[kind].get(finding))
         .ok_or_else(|| ApiError::not_found("Unknown comparison region"))?;
-    if let Some(retained) = report["formula_diagnostics"]["regions"]
+    let retained = report["formula_diagnostics"]["regions"]
         .as_array()
         .and_then(|regions| {
             regions.iter().find(|region| {
@@ -37,9 +37,13 @@ pub(super) async fn inspect(
                     && region["finding_index"] == finding
             })
         })
+        .map(|region| region["diagnosis"].clone());
+    if let Some(diagnosis) = retained
+        .as_ref()
+        .filter(|diagnosis| diagnosis.get("environment_paths").is_some() || kind != "findings")
     {
         return Ok(Json(
-            json!({"report_id":report["_evidence_id"],"diagnosis":retained["diagnosis"]}),
+            json!({"report_id":report["_evidence_id"],"diagnosis":diagnosis}),
         ));
     }
     if kind != "findings" {
@@ -70,27 +74,33 @@ pub(super) async fn inspect(
         .root
         .parent()
         .unwrap()
-        .join(".diagnostics/formula-v2")
+        .join(".diagnostics/formula-v3")
         .join(format!("{hash}.json"));
     if cache.is_file() {
         return Ok(Json(read_object(&cache, SNAPSHOT_LIMIT).await?));
     }
     let result = tokio::task::spawn_blocking(move || -> Result<Value> {
-        let directory = std::env::temp_dir()
-            .join("excel-shrink-formula-inspection")
+        let directory = cache
+            .parent()
+            .context("Missing formula cache parent")?
+            .join("scratch")
             .join(uuid::Uuid::new_v4().to_string());
-        let source = inspection::copy_workbook(&room.root, &id, "original", &directory)?;
-        let diagnosis = formula_trace::read(&source)
-            .and_then(|book| formula_trace::source_examples(&book, &sheet, &range));
-        // Remove only the exact owned copy and its now-empty directory.
-        if let Err(error) =
-            std::fs::remove_file(&source).and_then(|_| std::fs::remove_dir(&directory))
-        {
-            tracing::warn!(path=%source.display(),%error,"Cannot remove formula inspection copy");
-        }
+        let diagnosis = (|| -> Result<Value> {
+            let source = inspection::copy_workbook(&room.root, &id, "original", &directory)?;
+            let diagnosis = formula_trace::read(&source)
+                .and_then(|book| formula_trace::source_examples(&book, &sheet, &range));
+            // Remove only the exact owned copy and its now-empty directory.
+            if let Err(error) =
+                std::fs::remove_file(&source).and_then(|_| std::fs::remove_dir(&directory))
+            {
+                tracing::warn!(path=%source.display(),%error,"Cannot remove formula inspection copy");
+            }
+            diagnosis
+        })();
         let diagnosis = diagnosis.unwrap_or_else(
             |error| json!({"evidence":"unavailable","reason":format!("{error:#}")}),
         );
+        let diagnosis = supplement(retained.as_ref(), diagnosis)?;
         let result = json!({"report_id":report["_evidence_id"],"diagnosis":diagnosis});
         let bytes = serde_json::to_vec(&result)?;
         anyhow::ensure!(
@@ -104,6 +114,20 @@ pub(super) async fn inspect(
     .await
     .context("Formula inspection task failed")??;
     Ok(Json(result))
+}
+
+/// Keep historical captured-state evidence intact and label the newer source check separately.
+fn supplement(retained: Option<&Value>, source: Value) -> Result<Value> {
+    let Some(retained) = retained else {
+        return Ok(source);
+    };
+    let mut diagnosis = retained.clone();
+    anyhow::ensure!(
+        diagnosis.is_object(),
+        "Retained formula diagnosis is not an object"
+    );
+    diagnosis["source_supplement"] = source;
+    Ok(diagnosis)
 }
 
 fn selection(value: &str) -> Result<(usize, &str, usize)> {
@@ -124,5 +148,31 @@ mod tests {
         for invalid in ["../file", "0:unknown:1", "0:findings:-1", "0:findings:0:1"] {
             assert!(selection(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn source_enrichment_preserves_historical_values_counts_and_identity() {
+        let retained = json!({
+            "evidence":"saved_compared_states","changed_value_cells":1,"volatile_paths":0,
+            "examples":[{"cell":"A13","left_value":"old left","right_value":"old right"}],
+            "exclusive_cause_proven":false,
+        });
+        let original = retained.clone();
+        let source = json!({"evidence":"prepared_source_cached_values","environment_paths":1});
+        let enriched = supplement(Some(&retained), source.clone()).unwrap();
+        assert_eq!(retained, original);
+        assert_eq!(enriched["evidence"], retained["evidence"]);
+        assert_eq!(enriched["examples"], retained["examples"]);
+        assert_eq!(enriched["changed_value_cells"], 1);
+        assert_eq!(enriched["volatile_paths"], 0);
+        assert_eq!(enriched["exclusive_cause_proven"], false);
+        assert_eq!(enriched["source_supplement"], source);
+        assert_eq!(supplement(None, source.clone()).unwrap(), source);
+        let unavailable = json!({"evidence":"unavailable","reason":"Source is missing"});
+        assert_eq!(
+            supplement(Some(&retained), unavailable).unwrap()["examples"],
+            retained["examples"]
+        );
+        assert!(supplement(Some(&Value::Null), source).is_err());
     }
 }

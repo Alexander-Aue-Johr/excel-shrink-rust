@@ -8,6 +8,11 @@ const formulaElement = (tag, className, text) => {
 
 /** A dependency observation is not an assertion that all differences are volatile. */
 export function formulaSummary(diagnosis) {
+  return [formulaEvidenceSummary(diagnosis), formulaEvidenceSummary(diagnosis?.source_supplement)]
+    .filter(Boolean).join(' · ');
+}
+
+function formulaEvidenceSummary(diagnosis) {
   const randomPaths = diagnosis?.volatile_paths || 0;
   const environmentPaths = diagnosis?.environment_paths || 0;
   if (!randomPaths && !environmentPaths) return '';
@@ -49,6 +54,18 @@ export function retainedFormulaDiagnosis(report, regionKey) {
 
 /** Render retained paths without API requests or changes to workbook cells. */
 export function renderFormulaDiagnosis(root, region, diagnosis) {
+  renderFormulaEvidence(root, region, diagnosis);
+  if (diagnosis.source_supplement) {
+    const supplement = formulaElement('section', 'formula-source-supplement');
+    const evidence = formulaElement('div', '');
+    supplement.append(formulaElement('h4', '', 'Additional source evidence'));
+    renderFormulaEvidence(evidence, region, diagnosis.source_supplement);
+    supplement.append(evidence);
+    root.append(supplement);
+  }
+}
+
+function renderFormulaEvidence(root, region, diagnosis) {
   root.replaceChildren();
   const source = diagnosis.evidence === 'prepared_source_cached_values';
   const note = formulaElement('p', 'formula-evidence-note', diagnosis.reason || diagnosis.note || 'No formula evidence retained.');
