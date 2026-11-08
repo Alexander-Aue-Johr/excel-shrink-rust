@@ -1043,3 +1043,17 @@ and AutoRecover. It does not bypass access or repair prompts. A timed-out helper
 and its owned Excel applications are terminated. Host exit also closes them.
 Copies and helper files use the configured TEMP directory, which is on V: for
 the Enron launch, and are removed when the inspector is disposed.
+
+### Uniform backgrounds with drawing anchors
+
+A solid, uniform whole-sheet background has no finite lower or right edge.
+Supported DrawingML objects with fully bounded anchors contribute their finite
+extent to the content envelope and allow the existing uniform-background proof.
+They remain rebuild blockers. Unknown worksheet markup, unbounded drawings,
+rotated objects and unsupported drawing effects retain the conservative extent.
+The proof does not authorize dropping drawing comparisons or treating a failed
+attempt as equality.
+
+The Enron investigation of group `cade66d204a8e1b3760d` found 69 objects,
+including rotated shapes and lines. Its full-sheet planning remains unresolved
+by this bounded-anchor improvement. The interrupted attempt requires a retry.

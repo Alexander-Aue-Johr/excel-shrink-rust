@@ -127,6 +127,7 @@ impl Snapshot {
                 &styles,
                 &style_identity,
                 &solid_fills,
+                !sheet.drawing_fallback_required,
             )?;
             sheets.insert(sheet.sheet, model);
         }
@@ -392,6 +393,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     styles: &[excel_shrink_core::models::Xf],
     style_identity: &super::style_identity::StyleIdentity,
     solid_fills: &BTreeSet<u32>,
+    drawings_bounded: bool,
 ) -> Result<Sheet> {
     let mut visual = super::visual_bounds::VisualBounds::new(styles);
     let mut model = Sheet::default();
@@ -416,9 +418,15 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     let mut data_depth = None;
     let mut columns_depth = None;
     let mut layout = Sha256::new();
+    let mut uniform_background_supported = true;
     streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
         if let Event::Tag(tag) = &event {
             if let Some(reason) = super::execution_plan::worksheet_blocker(*tag) {
+                // Known drawing anchors already contribute to bottom/right. Their
+                // presence does not give a uniform background a finite sheet edge.
+                if reason != "worksheet formula" && !(tag.name == b"drawing" && drawings_bounded) {
+                    uniform_background_supported = false;
+                }
                 if !model.rebuild_blockers.contains(reason) {
                     model.rebuild_blockers.insert(reason.into());
                 }
@@ -658,7 +666,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
         },
         model.value_namespace_supported
             && model.cf_columns.is_resolved()
-            && model.rebuild_blockers.iter().all(|reason| reason == "worksheet formula"),
+            && uniform_background_supported,
     );
     model.visual_bounds = visual.bounds;
     if let Some(bounds) = model.visual_bounds {
@@ -674,7 +682,7 @@ pub(super) fn conditional_catalogue_for_audit(
     archive: &mut ZipArchive<File>,
     part: &str,
 ) -> Result<Arc<xml::Catalogue>> {
-    Ok(read_sheet::<false>(archive, part, 0, 0, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new())?.conditional)
+    Ok(read_sheet::<false>(archive, part, 0, 0, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new(), false)?.conditional)
 }
 
 impl Sheet {
@@ -780,7 +788,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="2" width="12"/></cols><sheetData><row r="1" ht="25" customHeight="1"><c r="A1"><v>7</v></c></row></sheetData><extLst><xdr:from><xdr:row>5</xdr:row><xdr:col>2</xdr:col></xdr:from><row r="0"/><col min="99" max="100"/><sheetFormatPr defaultRowHeight="99"/></extLst></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new())?;
+        let sheet = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 2, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new(), false)?;
         assert_eq!(sheet.rows.len(), 1);
         assert_eq!(sheet.fixed_height(1), Some(("25", false)));
         assert_eq!(
@@ -807,7 +815,7 @@ mod tests {
         zip.write_all(br#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><conditionalFormatting sqref="A1:A10"><cfRule type="cellIs" operator="greaterThan" priority="1"><formula>5</formula></cfRule></conditionalFormatting></worksheet>"#)?;
         zip.finish()?;
         let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new())?;
+        let full = read_sheet::<true>(&mut archive, "xl/worksheets/sheet.xml", 10, 1, None, &[], &crate::regression::targeted_comparison::style_identity::StyleIdentity::default(), &BTreeSet::new(), false)?;
         let audit = conditional_catalogue_for_audit(&mut archive, "xl/worksheets/sheet.xml")?;
         assert_eq!(audit.fingerprints, full.conditional.fingerprints);
         assert_eq!(
@@ -901,7 +909,7 @@ mod tests {
             let mut archive = ZipArchive::new(File::open(&path)?)?;
             let model = read_sheet::<true>(
                 &mut archive, "sheet.xml", 1, 1, None,
-                &[Default::default(), Default::default()], identity, &BTreeSet::new(),
+                &[Default::default(), Default::default()], identity, &BTreeSet::new(), false,
             )?;
             drop(archive);
             std::fs::remove_file(path)?;
@@ -924,6 +932,36 @@ mod tests {
         let changed = model(changed_xml.as_bytes(), &right_styles)?;
         left.cells.changes(&changed.cells, |_| { differences += 1; Ok(()) })?;
         assert_eq!(differences, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_drawings_preserve_uniform_background_proof_and_unknown_markup_fallback() -> Result<()> {
+        use std::io::Write;
+        let styles_xml = br#"<styleSheet><fills><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill></fills><cellXfs><xf fontId="0" fillId="0" borderId="0"/><xf fontId="0" fillId="1" borderId="0" applyFill="1"/></cellXfs></styleSheet>"#;
+        let styles = excel_shrink_core::styles::parse_xfs(styles_xml)?;
+        let identity = super::super::style_identity::StyleIdentity::read(styles_xml)?;
+        let fills = super::super::style_identity::solid_fill_ids(styles_xml)?;
+        for (bounded, extra, expected_bottom) in [
+            (true, "", 80),
+            (false, "", 1_048_576),
+            (true, "<tableParts count=\"0\"/>", 1_048_576),
+        ] {
+            let xml = format!(r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><cols><col min="1" max="16384" style="1"/></cols><sheetData><row r="60"><c r="B60"><v>1</v></c></row></sheetData><drawing r:id="one"/>{extra}</worksheet>"#);
+            let path = std::env::temp_dir().join(format!("bounded-background-{}.zip", uuid::Uuid::new_v4()));
+            let mut writer = zip::ZipWriter::new(File::create(&path)?);
+            writer.start_file("sheet.xml", zip::write::FileOptions::default())?;
+            writer.write_all(xml.as_bytes())?;
+            writer.finish()?;
+            let mut archive = ZipArchive::new(File::open(&path)?)?;
+            let model = read_sheet::<true>(
+                &mut archive, "sheet.xml", 80, 20, None, &styles, &identity, &fills, bounded,
+            )?;
+            assert_eq!(model.visual_bounds.unwrap().bottom, expected_bottom);
+            assert!(!model.rebuild_blockers.is_empty());
+            drop(archive);
+            std::fs::remove_file(path)?;
+        }
         Ok(())
     }
 
