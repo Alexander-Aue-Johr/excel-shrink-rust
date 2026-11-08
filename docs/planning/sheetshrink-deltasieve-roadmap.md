@@ -167,6 +167,22 @@ Provide corpus profiles, immutable resolved run settings, configurable partition
 
 Separate conversion concurrency, shrink processes and threads, visual groups, geometry batch size, capture batch size, and image retention. Preserve independent API adjustment where already supported. Keep memory admission and ownership checks explicit.
 
+Keep two independent application entry points and navigation shells. DeltaSieve
+compares supplied source and comparison corpora without requiring or preselecting
+SheetShrink. SheetShrink offers its own cleaning workflow and optional validation.
+Share the engine, worker ownership, result exploration and replay implementation.
+Conversion and Check Performance preparation are independently usable utility
+views. A shared technical implementation must not make the DeltaSieve reviewer
+workflow depend on understanding SheetShrink.
+
+Prioritize the Original-rebuild versus SheetShrink-rebuild corpus evaluation.
+Prepare Check Performance artifacts independently and run its visual evaluation
+separately when capacity permits. Preserve saved-Original controls for attribution
+of Excel-save versus optimization effects. Join separate reports by source
+identity while preserving their comparison partners, environments and coverage.
+Use SheetShrink as the visible producer label instead of Default. Preserve stable
+internal lane identifiers and existing result compatibility.
+
 Acceptance requires tests for restart, interrupted attempts, duplicate requests, changed methods, changed inputs, changed partitions, and missing evidence. The ordinary Enron configuration must reproduce the intended current settings without a hidden launcher.
 
 Before the distributed release, provide explicit Check Performance modes for
