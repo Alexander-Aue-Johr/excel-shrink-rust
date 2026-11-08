@@ -1,4 +1,4 @@
-import { atelierRegions } from './atelier-model.js';
+import { atelierRegions, shouldInspectFormulas } from './atelier-model.js';
 import { requestPixelDiagnostics } from './pixel-diagnostics.js';
 import { createPixelInspector } from './atelier-pixels.js';
 import { createClipboardButton } from './inspection-clipboard.js';
@@ -162,8 +162,7 @@ export function createAtelier() {
     images.scrollLeft = 0;
     if (views.length === 2 && region.different) {
       const measuring = node('p', 'Measuring retained pixels…');
-      const formulas = createFormulaInspector(groupId, region, report?._evidence_id);
-      images.append(measuring, formulas);
+      images.append(measuring);
       Promise.all(views.map(view => view.image.decode())).then(async () => {
         if (rendered !== renderGeneration || !dialog.open) return;
         const diagnostic = await requestPixelDiagnostics(groupId, { priority: true, region: region.key });
@@ -175,7 +174,10 @@ export function createAtelier() {
           `${item.pair_index}:${item.kind}:${item.finding_index}` === region.key);
         if (!entry) throw new Error('No rendered image pair is available for this diagnostic.');
         measuring.remove();
-        images.insertBefore(createPixelInspector(views, entry.metrics, region), formulas);
+        images.append(createPixelInspector(views, entry.metrics, region));
+        if (shouldInspectFormulas(entry.metrics)) {
+          images.append(createFormulaInspector(groupId, region, report?._evidence_id));
+        }
       }).catch(error => {
         if (rendered === renderGeneration) measuring.textContent = `Pixel inspection unavailable: ${error.message}`;
       });

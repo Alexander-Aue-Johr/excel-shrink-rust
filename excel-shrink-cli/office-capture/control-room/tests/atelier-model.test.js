@@ -4,7 +4,18 @@ const assert = {
   },
 };
 const test = (name, run) => { run(); console.log(`PASS ${name}`); };
-import { atelierRegions, evidenceImageUrl } from '../atelier-model.js';
+import { atelierRegions, evidenceImageUrl, shouldInspectFormulas } from '../atelier-model.js';
+
+test('formula explanations require changed pixels in this capture', () => {
+  assert.equal(shouldInspectFormulas({ changed_pixels: 1 }), true);
+  for (const metrics of [undefined, {}, { changed_pixels: 0 },
+    { changed_pixels: 0, unmatched_nonwhite_pixels: 30 }, { changed_pixels: NaN }]) {
+    assert.equal(shouldInspectFormulas(metrics), false);
+  }
+  const report = { comparisons: [{ findings: [{ sheet: 'A', cell: 'A1',
+    pixels_differ: false, formula_diagnostics: { volatile_paths: 1 } }] }] };
+  assert.equal(atelierRegions(report).length, 0);
+});
 
 test('atelier retains phase-specific differences and chart evidence', () => {
   const report = {comparisons: [{left:'O', right:'SD', findings:[

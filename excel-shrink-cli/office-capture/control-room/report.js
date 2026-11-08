@@ -1,4 +1,4 @@
-import { atelierRegions } from './atelier-model.js';
+import { atelierRegions, shouldInspectFormulas } from './atelier-model.js';
 import { createPixelInspector } from './atelier-pixels.js';
 import { createRetainedFormulaInspector, retainedFormulaDiagnosis } from './formula-inspector.js';
 import { installReportReplay } from './report-replay.js';
@@ -247,7 +247,6 @@ function showComparisonReport(content, report) {
         : 'No rendered comparison regions are recorded. Consult the state decisions and coverage; omitted images are not evidence of pixel equality.';
       return;
     }
-    formulas.append(createRetainedFormulaInspector(region, retainedFormulaDiagnosis(report, region.key)));
     const observations = [
       region.pixels_differ && 'pixel difference', region.geometry_differs && 'geometry difference',
       region.rendering_differs && 'rendering change', region.presence_differs && 'chart presence change',
@@ -284,6 +283,9 @@ function showComparisonReport(content, report) {
     imageScroll.scrollTop = imageScroll.scrollLeft = 0;
     fitImages();
     const retained = report.portable_report?.diagnostics?.[region.key];
+    if (shouldInspectFormulas(retained?.metrics)) {
+      formulas.append(createRetainedFormulaInspector(region, retainedFormulaDiagnosis(report, region.key)));
+    }
     if (views.length === 2 && retained?.metrics) {
       diagnostic.append(reportElement('p', 'report-note', 'Loading retained pixel details…'));
       Promise.all(views.map(view => view.image.decode())).then(() => {

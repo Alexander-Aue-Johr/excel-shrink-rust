@@ -1,5 +1,16 @@
 # Targeted visual validation behavior
 
+## Formula explanations in the comparison viewer
+
+Live and exported viewers show formula dependency explanations only when retained
+pixel measurements for the selected capture report `changed_pixels > 0`.
+An equal image, a geometry-only difference, or unavailable pixel measurements
+does not open the formula inspector or request its live diagnostic endpoint.
+Formula dependencies never independently select an entry for the differences
+view. Retained diagnostic evidence remains available in the report artifacts.
+One changed pixel is sufficient to offer an explanation. The explanation is a
+possible dependency path and does not establish the cause of every changed pixel.
+
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
 `targeted-content-grid-v9`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance

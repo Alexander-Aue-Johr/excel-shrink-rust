@@ -1,3 +1,8 @@
+/** Formula paths explain measured pixel changes in the selected capture. */
+export function shouldInspectFormulas(metrics) {
+  return Number.isFinite(metrics?.changed_pixels) && metrics.changed_pixels > 0;
+}
+
 /** Only retained PNGs inside the study evidence tree are addressable by the atelier. */
 export function evidenceImageUrl(path) {
   if (typeof path !== 'string' || !path.startsWith('evidence/')) return null;
