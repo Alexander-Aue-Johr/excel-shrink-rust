@@ -235,17 +235,26 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
   heading.append(title, summary, fullscreen);
   const notice = node('p', 'targeted-error');
   notice.hidden = true; notice.setAttribute('role', 'status');
-  const activeTitle = node('h3', '', 'Active workbooks');
-  const active = node('div', 'targeted-active');
-  const completedTitle = node('h3', '', 'Completed workbooks');
-  const completed = node('div', 'targeted-completed');
-  const more = node('button', 'targeted-more', '…');
-  more.type = 'button';
-  root.replaceChildren(heading, notice, activeTitle, active, completedTitle, completed, more);
+  const jobs = node('div', 'targeted-job-list');
+  jobs.setAttribute('aria-label', 'Capture jobs in start order');
+  const dialog = node('dialog', 'targeted-job-dialog');
+  const close = node('button', '', 'Close job details');
+  close.type = 'button';
+  const details = node('div', 'targeted-job-details');
+  dialog.append(close, details);
+  root.replaceChildren(heading, notice, jobs, dialog);
+  let selectedId = null;
+  const rows = new Map();
+  close.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => {
+    selectedId = null;
+    for (const view of views.values()) view.destroy();
+    views.clear();
+    render();
+  });
   const records = new Map();
   const views = new Map();
   const retired = new Set();
-  let completedLimit = 3;
   let connected = true;
   let nextRefresh = 0;
   let refreshing = false;
@@ -254,39 +263,42 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
   function render() {
     root.hidden = records.size === 0;
     const all = [...records.values()];
-    const running = all.filter(item => !comparisonFinished(item)).sort((a, b) => a.started_at - b.started_at);
-    const ended = all.filter(comparisonFinished).sort((a, b) => b.finished_at - a.finished_at);
-    const visible = document.fullscreenElement === root ? ended : ended.slice(0, completedLimit);
-    const displayed = new Set([...running, ...visible].map(item => item.run_id));
-    const before = new Map([...views].map(([id, view]) => [id, view.element.getBoundingClientRect()]));
-    // Hidden history retains report records, not canvas and observer trees.
-    for (const [id, view] of views) {
-      if (displayed.has(id)) continue;
-      view.destroy();
-      views.delete(id);
+    const running = all.filter(item => !comparisonFinished(item));
+    const ended = all.filter(comparisonFinished);
+    for (const [id, row] of rows) {
+      if (records.has(id)) continue;
+      row.remove();
+      rows.delete(id);
     }
-    for (const item of [...running, ...visible]) {
-      if (!views.has(item.run_id)) views.set(item.run_id, createComparisonCard());
-      views.get(item.run_id).update(comparisonPresentation(item, candidateLabel()), connected);
+    // Completion updates the same row in place. New attempts append at the bottom.
+    for (const item of all) {
+      let row = rows.get(item.run_id);
+      if (!row) {
+        row = node('button', 'targeted-job-row');
+        row.type = 'button';
+        row.addEventListener('click', () => {
+          selectedId = item.run_id;
+          render();
+          dialog.showModal();
+        });
+        rows.set(item.run_id, row);
+        jobs.append(row);
+      }
+      const finished = comparisonFinished(item);
+      row.dataset.active = String(!finished);
+      row.textContent = `${finished ? item.status : 'Active'} · ${item.workbook || 'Workbook'}`;
+      row.setAttribute('aria-haspopup', 'dialog');
     }
-    for (const [parent, items] of [[active, running], [completed, visible]]) {
-      items.filter(item => views.has(item.run_id)).forEach((item, index) => {
-        const element = views.get(item.run_id).element;
-        if (parent.children[index] !== element) parent.insertBefore(element, parent.children[index] || null);
-        const previous = before.get(item.run_id);
-        if (previous?.width && !element.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          const after = element.getBoundingClientRect();
-          const x = previous.left - after.left, y = previous.top - after.top;
-          if (x || y) element.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: 'none' }], { duration: 450, easing: 'ease-out' });
-        }
-      });
+    const selected = records.get(selectedId);
+    if (selected) {
+      if (!views.has(selectedId)) {
+        const view = createComparisonCard();
+        views.set(selectedId, view);
+        details.replaceChildren(view.element);
+      }
+      views.get(selectedId).update(comparisonPresentation(selected, candidateLabel()), connected);
     }
-    activeTitle.hidden = running.length === 0;
-    completedTitle.hidden = ended.length === 0;
     summary.textContent = `${running.length} active · ${ended.length} completed · latest 100 retained`;
-    more.hidden = visible.length >= ended.length;
-    more.setAttribute('aria-label', `Show more completed comparisons (${ended.length - visible.length} hidden)`);
-    more.title = more.getAttribute('aria-label');
   }
 
   function accept(comparison) {
@@ -296,12 +308,11 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
     records.set(next.run_id, next);
     // Only ended history is evicted; an active comparison never disappears due to a limit.
     const ended = [...records.values()].filter(comparisonFinished).sort((a, b) => b.finished_at - a.finished_at);
-    for (const item of ended.slice(100)) {
+    for (const item of ended.filter(item => item.run_id !== selectedId).slice(100)) {
       records.delete(item.run_id); views.get(item.run_id)?.destroy(); views.delete(item.run_id);
     }
   }
 
-  more.addEventListener('click', () => { completedLimit += 6; render(); });
   fullscreen.addEventListener('click', async () => {
     try {
       if (document.fullscreenElement === root) await document.exitFullscreen();
@@ -316,7 +327,7 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
     get supported() { return supported; },
     update(comparison) { if (comparison?.run_id) { accept(comparison); render(); } },
     updateMany(comparisons) {
-      for (const comparison of comparisons) {
+      for (const comparison of [...comparisons].sort((a, b) => (a?.started_at || 0) - (b?.started_at || 0))) {
         if (comparison?.run_id) accept(comparison);
       }
       render();
@@ -326,7 +337,8 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
       views.clear();
       records.clear();
       retired.clear();
-      completedLimit = 3;
+      if (dialog.open) dialog.close();
+      selectedId = null;
       connected = true;
       notice.hidden = true;
       render();
@@ -347,11 +359,12 @@ export function createTargetedPanel(root, { candidateLabel = () => null } = {}) 
         for (const id of snapshot.retired_run_ids || []) {
           retired.add(id);
           while (retired.size > 512) retired.delete(retired.values().next().value);
+          if (id === selectedId) continue;
           records.delete(id);
           views.get(id)?.destroy();
           views.delete(id);
         }
-        for (const comparison of snapshot.comparisons || []) accept(comparison);
+        for (const comparison of [...(snapshot.comparisons || [])].sort((a, b) => (a.started_at || 0) - (b.started_at || 0))) accept(comparison);
         connected = true; notice.hidden = true;
         render();
       } catch (error) {

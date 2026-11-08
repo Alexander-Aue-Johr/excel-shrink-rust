@@ -1236,3 +1236,17 @@ for these tiny fixtures. Initial attempts failed before comparing because extend
 Windows prefixes reached Join-Path in the Excel resolver and capture script. Those
 boundary conversions were fixed before the successful run. Eight focused manual
 scheduler tests passed, including fixed-capacity admission and prefetch handling.
+## Capture job list and pinned details
+
+The Observatory retains a compact, vertically scrollable capture-job list.
+Initial history is ordered by start time. Newly observed attempts append below
+existing entries. Completion updates the entry in place without moving it.
+Active entries have an explicit label and colored marker.
+
+Selecting an entry opens its existing detailed workbook card in a modal dialog.
+Telemetry continues updating that card through completion. A selected attempt
+remains retained when the server retires its registry entry or the ordinary
+100-completed-attempt history limit is reached. It then shows its last received
+snapshot. Closing the dialog releases its detailed views and signal canvases.
+Worker Overview remains available independently.
+

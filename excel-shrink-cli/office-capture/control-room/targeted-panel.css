@@ -118,3 +118,37 @@
   .targeted-workbook { scroll-behavior: auto; }
   .targeted-flow td[data-step="running"] { animation: none; }
 }
+.targeted-job-list {
+  display: grid;
+  gap: 6px;
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-anchor: none;
+}
+.targeted-job-row {
+  text-align: left;
+  overflow-wrap: anywhere;
+  padding: 10px 14px;
+}
+.targeted-job-row[data-active="true"] {
+  border-left: 4px solid #61e4ba;
+}
+.targeted-job-dialog {
+  width: min(1400px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #102633;
+  color: #d9e8ef;
+  border: 1px solid #547989;
+  border-radius: 12px;
+  padding: 16px;
+}
+.targeted-job-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+.targeted-job-dialog > button {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin-bottom: 12px;
+}
