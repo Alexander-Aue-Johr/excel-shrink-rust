@@ -580,7 +580,7 @@ fn run_side(
 }
 
 fn run_power_shell(workbook: &Path, config: &Path, output: &Path) -> Result<()> {
-    let script = super::repo_root().join("excel-shrink-cli/office-capture/run.ps1");
+    let script = crate::validation::capture::capture_directory()?.join("run.ps1");
     ensure!(
         script.is_file(),
         "worksheet capture launcher missing: {}",

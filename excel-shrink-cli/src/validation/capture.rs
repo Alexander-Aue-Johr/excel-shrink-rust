@@ -29,9 +29,11 @@ pub(super) fn compare(
     fs::create_dir_all(logs)?;
     let group = logs.join("group");
     fs::create_dir(&group)?;
-    let script = capture_directory()?.join("run-targeted-comparison.ps1");
+    let assets = capture_directory()?;
+    let script = assets.join("run-targeted-comparison.ps1");
     let mut command = Command::new("powershell.exe");
     command
+        .env("EXCEL_SHRINK_CAPTURE_DIR", &assets)
         .args([
             "-NoLogo",
             "-NoProfile",

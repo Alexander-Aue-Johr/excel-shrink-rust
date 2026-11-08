@@ -87,8 +87,10 @@ fn execute(job: &MemberJob, record: &mut Value) -> Result<()> {
         Some("staged Excel comparison"),
         json!({"report_directory":directory}),
     );
-    let script = repo_root().join("excel-shrink-cli/office-capture/run-targeted-comparison.ps1");
+    let assets = crate::validation::capture::capture_directory()?;
+    let script = assets.join("run-targeted-comparison.ps1");
     let mut command = Command::new("powershell.exe");
+    command.env("EXCEL_SHRINK_CAPTURE_DIR", &assets);
     command
         .args([
             "-NoLogo",

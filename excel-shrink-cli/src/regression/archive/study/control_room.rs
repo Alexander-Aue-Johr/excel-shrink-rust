@@ -506,7 +506,7 @@ impl Room {
             let settings = root.join("host-settings.json");
             write(
                 &settings,
-                &json!({"root":root,"web_root":repo_root().join("excel-shrink-cli/office-capture/control-room"),
+                &json!({"root":root,"web_root":crate::validation::capture::capture_directory()?.join("control-room"),
                 "port":args.control_room_port,"host_version":version,"initial_controls":controls}),
             )?;
             let mut command = Command::new(&host_executable);

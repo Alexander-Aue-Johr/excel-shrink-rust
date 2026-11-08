@@ -15,6 +15,10 @@ Without that override, `office-capture` beside the running executable is searche
 before the existing working-directory and build-checkout fallbacks. Release
 packaging must retain the complete Office asset tree. Runtime recipe hashes
 continue to bind the selected scientific assets into comparison reuse identity.
+Targeted, resident, paired and classic renderer launchers use this resolver.
+The study Observatory receives its resolved web root explicitly. Targeted
+comparison subprocesses inherit the selected absolute capture directory so
+copying the executable into a run-owned host directory does not change assets.
 This resolver change is one release prerequisite. Relocation of the complete
 study runner, regression repository-root assumptions and packaged dependency
 verification still need end-to-end acceptance.

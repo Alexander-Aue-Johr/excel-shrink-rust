@@ -692,8 +692,7 @@ impl ResidentCapture {
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(1800);
-        let script =
-            crate::regression::repo_root().join("excel-shrink-cli/office-capture/resident.ps1");
+        let script = crate::validation::capture::capture_directory()?.join("resident.ps1");
         let mut command = Command::new("powershell.exe");
         let startup =
             std::env::var("EXCEL_SHRINK_CAPTURE_STARTUP_SECONDS").unwrap_or_else(|_| "300".into());

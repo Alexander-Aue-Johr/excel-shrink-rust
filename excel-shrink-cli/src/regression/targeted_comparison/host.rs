@@ -349,20 +349,14 @@ impl ExcelHost {
 
     /// Start one host and read its event/response stream independently of Excel.
     pub fn start(host_script: Option<&Path>, timeout: Duration) -> Result<Self> {
-        let repository_script =
-            Path::new("excel-shrink-cli/office-capture/targeted-comparison-host.ps1");
-        let package_script = Path::new("office-capture/targeted-comparison-host.ps1");
-        let default_script = if repository_script.exists() {
-            repository_script.to_owned()
-        } else if package_script.exists() {
-            package_script.to_owned()
-        } else {
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("office-capture/targeted-comparison-host.ps1")
+        let script = match host_script {
+            Some(path) => path.to_owned(),
+            None => crate::validation::capture::capture_directory()?
+                .join("targeted-comparison-host.ps1"),
         };
         let mut child = Command::new("powershell.exe")
             .args(["-STA", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(host_script.unwrap_or(&default_script))
+            .arg(&script)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

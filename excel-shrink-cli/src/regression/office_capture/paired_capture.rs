@@ -77,7 +77,7 @@ fn run_pair(
     )?;
     let transfer = CaptureTransfer::new(original, &config)?;
     fs::copy(shrunk, transfer.0.join("comparison.xlsx"))?;
-    let script = super::super::repo_root().join("excel-shrink-cli/office-capture/run.ps1");
+    let script = crate::validation::capture::capture_directory()?.join("run.ps1");
     let pipe = format!(
         "es-pair-{}-{}",
         std::process::id(),
