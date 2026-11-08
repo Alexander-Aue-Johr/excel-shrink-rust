@@ -184,6 +184,7 @@ function Update-ClientReadySamples($health) {
         $item.startup_sampled_unix_ms = $observedAt.ToUnixTimeMilliseconds()
         $item.ready_at = [string]$sample.ready_at
         $item.startup_measurement_method = 'launch-to-addin-ready-v1'
+        $item.startup_diagnostics = $sample.startup_diagnostics
         $item.status = 'ready'
         $item.stage = 'waiting_for_job'
         $entry.seen = $true

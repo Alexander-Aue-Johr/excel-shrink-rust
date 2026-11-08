@@ -4,8 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Excel Shrink Capture</title>
+  <script>
+    window.__captureStartup = {
+      time_origin_ms: performance.timeOrigin,
+      marks: { document_started_ms: performance.now() }
+    };
+  </script>
   <link rel="stylesheet" href="/taskpane.css?run=__CAPTURE_RUN_ID__">
-  <script src="https://officeapis.public.onecdn.static.microsoft/1/office.js"></script>
+  <script src="https://officeapis.public.onecdn.static.microsoft/1/office.js"
+    onload="window.__captureStartup.marks.office_script_loaded_ms = performance.now()"></script>
   <script defer src="/capture-geometry.js?run=__CAPTURE_RUN_ID__"></script>
   <script defer src="/capture-overflow.js?run=__CAPTURE_RUN_ID__"></script>
   <script defer src="/app.js?run=__CAPTURE_RUN_ID__"></script>

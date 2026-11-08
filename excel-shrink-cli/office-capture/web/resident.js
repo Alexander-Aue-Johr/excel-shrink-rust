@@ -740,8 +740,11 @@
     const clientPath = encodeURIComponent(client);
     const runtime = root.__excelShrinkPaneRuntime ||= {documentId: crypto.randomUUID(), evaluations: 0};
     const runId = crypto.randomUUID(), requestId = crypto.randomUUID();
+    const startup = root.__captureStartup;
+    if (startup) startup.marks.config_request_started_ms = performance.now();
     const config = await request(`/config?client=${clientPath}&document=${runtime.documentId}&run=${runId}&request=${requestId}`);
     token = config.client_token;
+    if (startup) startup.marks.config_received_ms = performance.now();
     if (typeof token !== 'string' || !token.length) throw new Error('Missing resident session token');
     helpers.show('workbook', config.workbook);
     helpers.connection(true, 'Resident worker connected');
@@ -765,8 +768,18 @@
     try {
       helpers.phase('Verifying workbook identity');
       try {
+        if (startup) startup.marks.workbook_verification_started_ms = performance.now();
         const workbook = await worker.verifyWorkbook();
-        await request(`/ready?client=${clientPath}`, JSON.stringify({workbook}), {'Content-Type': 'application/json'});
+        if (startup) {
+          startup.marks.workbook_verified_ms = performance.now();
+          startup.resources = performance.getEntriesByType('resource').slice(0, 24).map(entry => ({
+            path: new URL(entry.name).pathname,
+            start_ms: entry.startTime,
+            duration_ms: entry.duration,
+            response_end_ms: entry.responseEnd
+          }));
+        }
+        await request(`/ready?client=${clientPath}`, JSON.stringify({workbook, startup}), {'Content-Type': 'application/json'});
       } catch (error) {
         try {await request(`/ready?client=${clientPath}`, JSON.stringify({ok: false,
           error: {code: error.code || 'ADDIN_INITIALIZATION_FAILED', message: error.message || String(error)}}),

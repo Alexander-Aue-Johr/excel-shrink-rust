@@ -58,6 +58,7 @@ struct Client {
     expected_workbook: Option<String>,
     ready_at: Option<String>,
     startup_sampled: bool,
+    startup_diagnostics: Value,
     seen_at: String,
     last_activity_at: String,
     last_heartbeat_at: Option<String>,
@@ -81,6 +82,7 @@ impl Client {
             expected_workbook: None,
             ready_at: None,
             startup_sampled: false,
+            startup_diagnostics: Value::Null,
             seen_at: now_iso(),
             last_activity_at: now_iso(),
             last_heartbeat_at: None,
@@ -107,6 +109,7 @@ impl Client {
             "heartbeat_count": self.heartbeat_count,
             "ready_at": self.ready_at,
             "startup_sampled": self.startup_sampled,
+            "startup_diagnostics": self.startup_diagnostics,
             "runtime": {"document_id": self.document_id, "run_id": self.run_id},
             "error": self.error,
             "monitor": self.telemetry.snapshot(),
@@ -410,6 +413,7 @@ async fn configure(State(host): State<Arc<Host>>, Query(query): Parameters) -> J
     client.run_id = run.to_owned();
     client.expected_workbook = config["workbook"].as_str().map(str::to_owned);
     client.ready_at = None;
+    client.startup_diagnostics = Value::Null;
     client.startup_sampled = false;
     client.configured_at = Instant::now();
     client.last_activity_at = now_iso();
@@ -458,6 +462,11 @@ async fn ready(
         ));
     }
     if client.ready_at.is_none() {
+        if let Some(startup) = observation.get("startup").filter(|value| value.is_object()) {
+            if serde_json::to_vec(startup).is_ok_and(|bytes| bytes.len() <= 16 * 1024) {
+                client.startup_diagnostics = startup.clone();
+            }
+        }
         let stamp = now_iso();
         client.ready_at = Some(stamp.clone());
         client.last_activity_at = stamp;

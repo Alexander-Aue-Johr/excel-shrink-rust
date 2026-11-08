@@ -1,6 +1,9 @@
 /* global Office, Excel, CaptureGeometry, CaptureOverflow */
 (function () {
   'use strict';
+  if (window.__captureStartup) {
+    window.__captureStartup.marks.app_script_started_ms = performance.now();
+  }
 
   // A repeated script evaluation in the same document must not start a second
   // polling loop. A genuinely new taskpane document receives a fresh identity.
@@ -257,6 +260,9 @@
           script.onerror = () => reject(new Error(`Cannot load resident capture script: ${source}`));
           document.head.appendChild(script);
         });
+        if (window.__captureStartup) {
+          window.__captureStartup.marks[source] = performance.now();
+        }
       }
       return window.ResidentCapture.run(residentClient, {
         office, bounds, checkedWorksheet, rowHeights, hideGridlines, verifyDrawingBounds,
@@ -338,6 +344,9 @@
   }
 
   Office.onReady(info => {
+    if (window.__captureStartup) {
+      window.__captureStartup.marks.office_ready_ms = performance.now();
+    }
     if (runtime.runStarted) return;
     if (!info || info.host !== Office.HostType.Excel) {
       connection(false, 'Excel unavailable');
