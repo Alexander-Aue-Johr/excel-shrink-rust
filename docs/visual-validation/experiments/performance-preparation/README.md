@@ -110,6 +110,27 @@ experiment artifacts. Ten package tests passed after adding full-selection
 accounting with paged details, missing and failed sources, source/baseline
 mismatches, changed or missing local inputs and ambiguous compatible generations.
 
+Strict import subsequently passed twelve package tests, including exact paired
+bytes, collision-safe source-derived names, preserved producer measurements,
+ordinary configuration/source discovery, immutable destinations and preflight
+rejection of incomplete selections. Commit `a868510` was secured before the
+native comparison acceptance run.
+
+The ordinary CLI imported attempt `06-manifest` into `import-native-06`. Its
+generated two-source configuration completed through the normal DeltaSieve run
+entry point, with local optimization reported as not requested. Five regions
+were captured in each rebuilt state. One region on `Wind LLC #259` retained a
+geometry/pixel difference and remains unclassified; this acceptance run proves
+the imported execution path, not visual equivalence or CP causation. The native
+report and images remain under that import's private report directory.
+The bounded window took approximately 46.26 seconds including admission wait,
+and the harness restored Enron's four-group target in its finally block.
+
+The generated import index retains the original source identity and producer
+measurements. The standard comparison currently uses the safe paired filename
+as its display name. Direct identity-index presentation, explicit alternative
+baseline adoption and generation selection remain integration requirements.
+
 ## Repeatable native tests
 
 Set TEMP, TMP, EXCEL_SHRINK_LOG_DIR and EXCEL_SHRINK_VISUAL_LOG_DIR to a working
