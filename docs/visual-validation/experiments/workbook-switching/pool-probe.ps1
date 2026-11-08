@@ -111,6 +111,8 @@ try {
     Pool-Command $first 'save_copy' (Join-Path $Output 'first-before.xlsx')
     Pool-Command $first 'rebuild' ''
     Pool-Command $first 'save_copy' (Join-Path $Output 'first-after.xlsx')
+    Pool-Command $first 'save_as' (Join-Path $Output 'first-save-as.xlsx')
+    Pool-Command $first 'save_copy' (Join-Path $Output 'first-after-save-as.xlsx')
     Expect-PoolStatus { Pool-Request ('/release/' + $first.slot) @{} $first } 409
     Pool-Command $first 'close' ''
     $origin = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, [int]$first.capture_port)
@@ -155,6 +157,7 @@ try {
         replacement_pid=$replacement.process.pid;exclusive_leases=$true;stale_token_rejected=$true
         capture_origin_guard=$true;warm_reuse=$true;owner_death_retired=$true;peer_survived=$true
         acquire_retry_reused=$true;release_retry_safe=$true
+        save_as_identity_verified=$true
     }
 } finally {
     $http.Dispose()

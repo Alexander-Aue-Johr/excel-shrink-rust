@@ -330,11 +330,11 @@ async fn command(
         let kind = request["kind"]
             .as_str()
             .ok_or_else(|| ApiError::bad_request("Missing workbook command kind"))?;
-        if !matches!(kind, "open" | "close" | "save_copy" | "rebuild") {
+        if !matches!(kind, "open" | "close" | "save_copy" | "save_as" | "rebuild") {
             return Err(ApiError::bad_request("Unsupported leased workbook command"));
         }
         if (kind == "open" && lease.opened)
-            || (matches!(kind, "save_copy" | "rebuild") && !lease.opened)
+            || (matches!(kind, "save_copy" | "save_as" | "rebuild") && !lease.opened)
         {
             return Err(ApiError::conflict(
                 "Workbook command does not match the lease state",

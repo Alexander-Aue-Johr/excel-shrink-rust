@@ -693,3 +693,17 @@ This acceptance does not cover the archive corpus-study adapter, collection-awar
 reuse or a real multi-machine rehearsal. Inspection identified incomplete
 automatic hardware/Excel-version metadata in the standalone run header. Complete
 that environment record before freezing the distributed evaluation release.
+
+### Restart checkpoint
+
+The user requested a machine reboot before further native tests. Enron's
+verified runner PID 50844 was stopped through the host's terminate endpoint.
+The resulting queue reported running=false, working_groups=0, open_groups=0
+and phase=stopped. Admission is zero. Preserve this stopped state until the
+reboot and subsequent explicit continuation. The warm pool remains experimental.
+
+The prepared next pool probe adds real Save As, verifies the live workbook
+identity inside the retained C# session, then saves a further snapshot. Its
+independent verifier requires cache 6 in both outputs and the unaffected peer's
+stale cache 1111. Native execution of this extension is still pending. No-Excel
+session guards, C# framing checks and four Rust worker tests passed.

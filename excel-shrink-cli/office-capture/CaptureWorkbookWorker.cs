@@ -52,6 +52,7 @@ public static class CaptureWorkbookWorker
                         else if (kind == "close") session.CloseCurrent();
                         else if (kind == "rebuild") session.Rebuild();
                         else if (kind == "save_copy") session.SaveCopy(RequiredString(request, "path"));
+                        else if (kind == "save_as") session.SaveAs(RequiredString(request, "path"));
                         else if (kind == "stop")
                         {
                             session.CloseCurrent();

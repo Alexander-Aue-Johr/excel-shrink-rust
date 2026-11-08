@@ -145,6 +145,31 @@ public sealed class CaptureWorkbookSession : IDisposable
         }
     }
 
+    /// <summary>Save the live XLSX under a new name and verify Excel adopted that identity.</summary>
+    public void SaveAs(string output)
+    {
+        RequireCurrentWorkbook();
+        string destination = Path.GetFullPath(output);
+        if (!String.Equals(Path.GetExtension(destination), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Save As requires an .xlsx destination.", "output");
+        if (File.Exists(destination)) throw new IOException("Save As destination already exists.");
+        try
+        {
+            VerifyProcess();
+            if (Convert.ToInt32(Get(currentWorkbook, "FileFormat")) != 51)
+                throw new InvalidOperationException("Save As source must be an XLSX workbook.");
+            // xlExclusive avoids converting the comparison into a shared workbook.
+            Invoke(currentWorkbook, "SaveAs", new object[] {
+                destination, 51, "", "", false, false, 3
+            });
+            VerifyProcess();
+            if (!SamePath(Get(currentWorkbook, "FullName"), destination) ||
+                new FileInfo(destination).Length == 0)
+                throw new InvalidOperationException("Save As did not establish the requested workbook identity.");
+        }
+        catch { faulted = true; throw; }
+    }
+
     void RequireCurrentWorkbook()
     {
         EnsureUsable();

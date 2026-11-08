@@ -1173,3 +1173,17 @@ Confirmed owner exit retires only its worker. Unknown cleanup quarantines it.
 Health readiness requires native process liveness and confirmed cleanup. A busy
 slot is reported as busy rather than probed through its active command lock.
 This service is experimental and is not yet the corpus scheduler execution path.
+
+The experimental worker also exposes `save_as` through its retained application
+reference. It requires an open format-51 workbook, an XLSX target and a target
+that does not already exist. Excel receives explicit exclusive access mode and
+the worker verifies the resulting FullName and nonempty output. A native failure
+retires the worker and retains any partial output for diagnosis. This operation
+changes the live workbook identity, unlike `save_copy`. Callers must supply a
+comparison-owned destination and serialize access to it.
+
+The Save As path passes the no-Excel guards and command transport compilation.
+Native acceptance is pending the user's requested reboot. It remains outside
+the production corpus path until the pool probe and independent serialized-cache
+checks pass. No CELL(filename), volatile-formula or chart equivalence is inferred
+from guard tests.

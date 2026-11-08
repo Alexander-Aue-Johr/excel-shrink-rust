@@ -19,12 +19,15 @@ function Assert-Guard([scriptblock]$Action, [Type]$Expected) {
 
 try {
     Assert-Guard { $session.SaveCopy((Join-Path $root 'copy.xlsx')) } ([InvalidOperationException])
+    Assert-Guard { $session.SaveAs((Join-Path $root 'saved.xlsx')) } ([InvalidOperationException])
     Assert-Guard { $session.Rebuild() } ([InvalidOperationException])
     Assert-Guard { $session.OpenReadOnly($source) } ([ArgumentException])
     $current = [CaptureWorkbookSession].GetField('currentWorkbook', [Reflection.BindingFlags]'NonPublic,Instance')
     $current.SetValue($session, [object]::new())
     Assert-Guard { $session.SaveCopy($source) } ([IO.IOException])
     Assert-Guard { $session.SaveCopy((Join-Path $root 'copy.xls')) } ([ArgumentException])
+    Assert-Guard { $session.SaveAs($source) } ([IO.IOException])
+    Assert-Guard { $session.SaveAs((Join-Path $root 'saved.xls')) } ([ArgumentException])
     if ([IO.File]::ReadAllText($source) -ne 'existing source bytes') { throw 'Existing snapshot destination changed.' }
     if ([IO.File]::Exists((Join-Path $root 'copy.xlsx'))) { throw 'Guard published a snapshot.' }
     $session.Dispose()
@@ -37,4 +40,4 @@ try {
     if ($parent -ne [IO.Path]::GetTempPath().TrimEnd('\')) { throw 'Unexpected cleanup directory.' }
     [IO.Directory]::Delete($root, $true)
 }
-Write-Output 'Workbook snapshot and rebuild guards passed without Excel.'
+Write-Output 'Workbook snapshot, Save As and rebuild guards passed without Excel.'
