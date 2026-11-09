@@ -39,7 +39,8 @@ impl PoolOwner {
             serde_json::to_vec_pretty(&json!({
                 "worker":{"seed":seed,"excel_executable":excel,"capture_root":assets,
                     "profile_root":root.join("workers"),"timeout_seconds":timeout_seconds},
-                "workers":groups*2,"token":token,"port":0,"ready_path":ready,"owned_startup":true
+                "workers":groups*2,"token":token,"port":0,"ready_path":ready,"owned_startup":true,
+                "control_path":output.join("control-room/control.json")
             }))?,
         )?;
         let mut command = Command::new(std::env::current_exe()?);
@@ -62,7 +63,7 @@ impl PoolOwner {
             child,
             job: Some(job),
             connection: root.join("connection.json"),
-            groups,
+            groups: 32,
         };
         owner
             .child

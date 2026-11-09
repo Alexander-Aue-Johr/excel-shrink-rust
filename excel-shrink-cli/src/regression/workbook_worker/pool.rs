@@ -10,6 +10,7 @@ use axum::{
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,6 +22,8 @@ struct PoolSettings {
     port: u16,
     #[serde(default)]
     owned_startup: bool,
+    #[serde(default)]
+    control_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Deserialize, PartialEq, Eq)]
@@ -53,6 +56,7 @@ struct Pool {
     token: String,
     slots: Vec<Mutex<Slot>>,
     admissions: Mutex<HashMap<String, usize>>,
+    target_workers: AtomicUsize,
 }
 
 type Reply = HttpResult<Json<Value>>;
@@ -150,6 +154,8 @@ async fn acquire(
             return Ok(lease_reply(*index, &slot));
         }
         // Prefer already warm slots before attempting replacement of a retired worker.
+        // The scheduler owns group admission. A reduced idle-worker target must
+        // still let already admitted pairs acquire their second worker.
         for (index, shared) in pool.slots.iter().enumerate() {
             if let Ok(mut slot) = shared.try_lock() {
                 if slot.lease.is_none() && slot.worker.is_some() && slot.cleanup_error.is_none() {
@@ -172,10 +178,21 @@ async fn acquire(
         for (index, shared) in pool.slots.iter().enumerate() {
             if let Ok(mut slot) = shared.try_lock() {
                 if slot.lease.is_none() && slot.worker.is_none() && slot.cleanup_error.is_none() {
-                    let (worker, identity) = start_slot(&pool.settings)?;
+                    // Reserve the identity before dropping the global gate. Other slots
+                    // can then initialize concurrently, while duplicate requests wait here.
+                    admissions.insert(owner.comparison_id.clone(), index);
+                    drop(admissions);
+                    let (worker, identity) = match start_slot(&pool.settings) {
+                        Ok(started) => started,
+                        Err(error) => {
+                            pool.admissions.lock()
+                                .map_err(|_| ApiError::conflict("Pool admission state is poisoned"))?
+                                .remove(&owner.comparison_id);
+                            return Err(error.into());
+                        }
+                    };
                     slot.worker = Some(worker);
                     slot.identity = identity;
-                    admissions.insert(owner.comparison_id.clone(), index);
                     return Ok(assign(index, &mut slot, owner));
                 }
             }
@@ -192,6 +209,19 @@ async fn acquire(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_worker_target_supports_pause_growth_and_capacity_limit() -> Result<()> {
+        let path = std::env::temp_dir().join(format!("pool-target-{}.json", uuid::Uuid::new_v4()));
+        for (groups, expected) in [(0, 0), (1, 2), (10, 20), (40, 64)] {
+            fs::write(&path, json!({"target_groups":groups}).to_string())?;
+            assert_eq!(read_worker_target(&path)?, expected);
+        }
+        fs::write(&path, r#"{"target_groups":-1}"#)?;
+        assert!(read_worker_target(&path).is_err());
+        fs::remove_file(path)?;
+        Ok(())
+    }
 
     #[test]
     fn lease_authorization_requires_current_token_and_live_birth_identity() -> Result<()> {
@@ -247,6 +277,7 @@ mod tests {
             },
             token: "pool-token".into(),
             admissions: Mutex::new(HashMap::from([(owner.comparison_id.clone(), 0)])),
+            target_workers: AtomicUsize::new(1),
             slots: vec![Mutex::new(Slot {
                 worker: None,
                 identity: Value::Null,
@@ -435,7 +466,8 @@ async fn health(State(pool): State<Arc<Pool>>, headers: HeaderMap) -> Reply {
             Err(_) => json!({"slot":index,"busy":true}),
         })
         .collect();
-    Ok(Json(json!({"workers":workers})))
+    Ok(Json(json!({"workers":workers,
+        "target_workers":pool.target_workers.load(Ordering::Acquire),"capacity":pool.slots.len()})))
 }
 
 /// Start a run-owned loopback service. The corpus coordinator owns this process.
@@ -455,6 +487,9 @@ pub(crate) async fn run(path: &Path) -> Result<()> {
         settings.ready_path.is_absolute() && settings.worker.profile_root.is_absolute(),
         "Pool paths must be absolute"
     );
+    if let Some(path) = &settings.control_path {
+        ensure!(path.is_absolute() && path.is_file(), "Pool control path must be an existing absolute file");
+    }
     fs::create_dir(&settings.worker.profile_root)?;
     let mut starts = Vec::new();
     for _ in 0..settings.workers {
@@ -481,11 +516,17 @@ pub(crate) async fn run(path: &Path) -> Result<()> {
         return Err(error);
     }
     let mut slots = Vec::new();
-    for (worker, identity) in ready_workers {
+    let capacity = if settings.control_path.is_some() { 64 } else { settings.workers };
+    let mut ready_workers = ready_workers.into_iter();
+    for _ in 0..capacity {
+        let (worker, identity) = match ready_workers.next() {
+            Some((worker, identity)) => (Some(worker), identity),
+            None => (None, Value::Null),
+        };
         let probe = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
         let capture_port = probe.local_addr()?.port();
         slots.push(Mutex::new(Slot {
-            worker: Some(worker),
+            worker,
             identity,
             lease: None,
             cleanup_error: None,
@@ -500,6 +541,7 @@ pub(crate) async fn run(path: &Path) -> Result<()> {
         token: settings.token,
         slots,
         admissions: Mutex::new(HashMap::new()),
+        target_workers: AtomicUsize::new(settings.workers),
     });
     let listener =
         tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, settings.port)).await?;
@@ -509,13 +551,24 @@ pub(crate) async fn run(path: &Path) -> Result<()> {
         "owner_pid":std::process::id(),"owner_started_ms":crate::native_process::current_started_unix_ms()
     }), false).await?;
     let maintenance = pool.clone();
+    let control_path = settings.control_path;
     let maintenance_task = tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
             let pool = maintenance.clone();
+            let control_path = control_path.clone();
             let _ = tokio::task::spawn_blocking(move || {
-                for shared in &pool.slots {
+                if let Some(path) = control_path.as_deref() {
+                    if let Ok(target) = read_worker_target(path) {
+                        pool.target_workers.store(target, Ordering::Release);
+                    }
+                }
+                let target = pool.target_workers.load(Ordering::Acquire);
+                for (index, shared) in pool.slots.iter().enumerate() {
                     if let Ok(mut slot) = shared.try_lock() {
+                        if index >= target && slot.lease.is_none() {
+                            retire(&mut slot);
+                        }
                         if slot.lease.as_ref().is_some_and(|lease| {
                             crate::native_process::process_alive(
                                 lease.owner.pid,
@@ -559,4 +612,10 @@ pub(crate) async fn run(path: &Path) -> Result<()> {
     maintenance_task.abort();
     result?;
     Ok(())
+}
+
+fn read_worker_target(path: &Path) -> Result<usize> {
+    let controls: Value = serde_json::from_slice(&fs::read(path)?)?;
+    let groups = controls["target_groups"].as_u64().context("Invalid pool group target")?;
+    Ok(groups.min(32) as usize * 2)
 }

@@ -425,3 +425,27 @@ abandoned lease's exact process. Finally ChartObjects.Item required method dispa
 as well as property access. Isolated trials 06–08 localized and corrected that
 binding before the final combined trial passed. These results do not establish
 optional Check Performance or corpus scheduler ownership.
+# Dynamic group capacity on 2026-11-09
+
+The optional `pool-probe.ps1 -DynamicScaling` test exercises live worker growth
+and retirement through a private control file. Trial 01 completed in 17.01 s.
+Review then identified a pause edge case. Pool-side admission must permit an
+already admitted pair to acquire its second worker after the scheduler target
+falls to zero. Restricting both scheduler admission and pool lease availability
+could otherwise strand partially allocated pairs.
+
+Trial 02 covers that case, growth from two to four workers, continued saves on
+all four leased workers after target reduction, retirement of the two excess
+workers after release and preservation of the retained workers. It completed in
+20.19 s with a 1.87 s pool startup. Independent ZIP/XML verification confirmed
+nine additional snapshots with unchanged `A1*3` formula and rebuilt value 6,
+besides the five original pool controls. Process exits and unchanged source
+hashes were confirmed. The fixture directory is
+`validation-temp/workbook-pool-scaling-20261109-02`.
+
+The ordinary archive scheduler also completed four tiny workbooks in
+`warm-scheduler-20261109-01/output-dynamic-01`. Its pool initially started two
+workers. The public control endpoint changed the target from one to two groups,
+and four worker lifetimes were recorded. All four results were complete and
+unchanged. The isolated Observatory host was stopped after the run.
+

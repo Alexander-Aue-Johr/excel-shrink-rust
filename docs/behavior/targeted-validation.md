@@ -1217,9 +1217,20 @@ protocol test. Corpus scheduler ownership remains a separate gate.
 
 EXCEL_SHRINK_WARM_WORKERS=1 enables the pool for manual targeted SheetShrink-only
 corpus comparisons. The scheduler starts two native workers per configured group,
-passes its private connection explicitly to comparison jobs and limits admission
-to that fixed group capacity. Increasing the UI target beyond this capacity needs
-a runner restart to enlarge the pool. Decreasing or pausing admission remains live.
+passes its private connection explicitly to comparison jobs and supports live
+admission changes up to 32 groups. Uninitialized slots reserve their capture
+origins without starting Excel. Admitted jobs initialize extra workers on demand.
+The pool observes the run's control file once per second and retires idle workers
+outside twice the requested group count. A leased or initializing worker remains
+protected until its work completes. A zero target drains the already admitted
+jobs, then retires their idle workers.
+
+Group admission belongs to the scheduler. Reducing the idle-worker target must
+still let an already admitted pair acquire its second lease, including after a
+pause request. Initialization reserves its request identity before releasing the
+global admission gate, allowing other slots to initialize concurrently. Retried
+HTTP admission timeouts retain that identity. Legacy pool settings without a
+control-file path preserve their fixed slot count.
 Optional Check Performance cannot select this pool path yet.
 
 The pool process waits for a startup gate. Its coordinator assigns a kill-on-close

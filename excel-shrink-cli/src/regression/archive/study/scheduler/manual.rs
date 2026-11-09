@@ -182,7 +182,8 @@ pub(super) fn compare(
     queue["phase"] = json!("comparing");
     queue["running"] = json!(true);
     if pool_group_limit != usize::MAX {
-        queue["warm_worker_pool"] = json!({"groups":pool_group_limit,"workers":pool_group_limit*2});
+        queue["warm_worker_pool"] = json!({"groups":pool_group_limit,
+            "worker_capacity":pool_group_limit*2,"dynamic":true});
     }
     let groups = queue["groups"]
         .as_array_mut()

@@ -526,8 +526,8 @@ deadline. Missed sampling ticks are skipped. The server samples every three
 seconds and uses the existing bounded comparison registry.
 
 The group controls distinguish requested concurrency, effective concurrency and
-the running warm pool's fixed group capacity. A target above that capacity is
-saved and visibly reports the requirement to restart for expansion.
+the running warm pool's supported group capacity. Older fixed pools disclose
+when an increase requires restarting. Dynamic pools disclose on-demand growth.
 
 New web-study configurations default to `warm_workers=true`. The configurator
 exposes this choice and freezes `EXCEL_SHRINK_WARM_WORKERS` as `1` or `0` in the

@@ -48,7 +48,11 @@ function Get-WorkbookPoolLease {
             }
             return $lease
         } catch [Net.WebException] {
-            if ($null -eq $_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 409) { throw }
+            # Cold expansion can outlive one HTTP wait. The retained request identity
+            # makes retrying that admission safe while the same slot initializes.
+            if ($null -eq $_.Exception.Response) {
+                if ($_.Exception.Status -ne [Net.WebExceptionStatus]::Timeout) { throw }
+            } elseif ([int]$_.Exception.Response.StatusCode -ne 409) { throw }
             Start-Sleep -Milliseconds 100
         }
     }

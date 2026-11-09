@@ -1422,9 +1422,10 @@ function updateControlInputs() {
     : values.paused ? 'Jobs already in progress will finish. New captures wait.'
       : 'Pausing captures keeps Excel open. A group target of 0 lets preparation finish, then pauses comparisons.';
   const capacity = state.queue?.warm_worker_pool?.groups;
+  const dynamicPool = state.queue?.warm_worker_pool?.dynamic === true;
   const effective = Number.isInteger(capacity) ? Math.min(capacity, values.target_groups ?? 0) : values.target_groups;
   $('activeGroups').textContent = `${active} admitted · ${effective ?? '—'} effective · ${values.target_groups ?? '—'} requested · ${state.queue?.prefetch_groups ?? 0} preparing`
-    + (Number.isInteger(capacity) ? ` · pool capacity ${capacity}${values.target_groups > capacity ? ' (restart required to expand)' : ''}` : '');
+    + (Number.isInteger(capacity) ? ` · pool capacity ${capacity}${dynamicPool ? ' (grows on demand)' : values.target_groups > capacity ? ' (restart required to expand)' : ''}` : '');
   const demand = state.queue?.excel_opening_demand;
   $('excelProcessDemand').textContent = demand?.observed_sessions
     ? `${demand.waiting_workbooks} capture workbooks waiting to open in ${demand.waiting_sessions} sessions · ${demand.opening_workbooks} opening now. Sweep groups: ${values.sweep_processes ?? 1}; comparison groups: ${values.target_groups ?? '—'}. No separate Excel instance limit.`

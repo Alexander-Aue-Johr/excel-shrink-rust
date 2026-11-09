@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Candidate,
     [Parameter(Mandatory=$true)][string]$Output,
     [switch]$ResidentComparisons,
-    [switch]$NativeChartControls
+    [switch]$NativeChartControls,
+    [switch]$DynamicScaling
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path -LiteralPath $Output) { throw 'Choose a new pool probe directory.' }
@@ -67,11 +68,17 @@ function Remember-Excel($Lease) {
 try {
     $settings = Join-Path $Output 'settings.json'
     $readyPath = Join-Path $Output 'ready.json'
-    Write-PoolProbeJson $settings @{
+    $poolSettings = @{
         worker=@{seed=$Seed;excel_executable=(Find-ExcelExecutable);capture_root=$CaptureRoot;
             profile_root=(Join-Path $Output 'workers');timeout_seconds=60}
         workers=2;token=$token;port=0;ready_path=$readyPath
     }
+    $controlPath = Join-Path $Output 'control.json'
+    if ($DynamicScaling) {
+        Write-PoolProbeJson $controlPath @{target_groups=1}
+        $poolSettings.control_path = $controlPath
+    }
+    Write-PoolProbeJson $settings $poolSettings
     $poolProcess = $desktop.Start($Binary, ('capture-host workbook-pool ' + (Quote-Argument $settings)), $owned)
     $startup = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Path -LiteralPath $readyPath)) {
@@ -131,7 +138,9 @@ try {
     Remember-Excel $second
     if ($first.slot -eq $second.slot -or $first.capture_port -eq $second.capture_port -or
         $first.process.pid -eq $second.process.pid) { throw 'Pool workers were not independent.' }
-    Expect-PoolStatus { Pool-Request '/acquire' (Owner-Request $owner) $null } 409
+    if (-not $DynamicScaling) {
+        Expect-PoolStatus { Pool-Request '/acquire' (Owner-Request $owner) $null } 409
+    }
 
     # Submit both opens before waiting for either response.
     $pending = @()
@@ -194,7 +203,9 @@ try {
     if ($reused.process.pid -ne $first.process.pid -or $reused.process.started_utc -ne $first.process.started_utc) { throw 'Warm process was not reused.' }
     Expect-PoolStatus { Pool-Command $first 'close' '' } 403
     Pool-Request ('/release/' + $first.slot) @{} $first | Out-Null
-    Expect-PoolStatus { Pool-Request '/acquire' (Owner-Request $owner) $null } 409
+    if (-not $DynamicScaling) {
+        Expect-PoolStatus { Pool-Request '/acquire' (Owner-Request $owner) $null } 409
+    }
     Pool-Request ('/release/' + $reused.slot) @{} $reused | Out-Null
 
     $helper = $desktop.Start((Join-Path $PSHOME 'powershell.exe'), '-NoProfile -Command "Start-Sleep -Seconds 60"', $owned)
@@ -222,6 +233,47 @@ try {
     Pool-Request ('/release/' + $replacement.slot) @{} $replacement | Out-Null
     Pool-Command $second 'close' ''
     Pool-Request ('/release/' + $second.slot) @{} $second | Out-Null
+    if ($DynamicScaling) {
+        $inflight = Pool-Request '/acquire' (Owner-Request $owner) $null
+        Remember-Excel $inflight
+        Pool-Command $inflight 'open' $Original
+        Write-PoolProbeJson $controlPath @{target_groups=0}
+        Start-Sleep -Seconds 2
+        $peer = Pool-Request '/acquire' (Owner-Request $owner) $null
+        Remember-Excel $peer
+        Pool-Command $inflight 'rebuild' ''
+        Pool-Command $inflight 'save_copy' (Join-Path $Output 'paused-inflight.xlsx')
+        Pool-Command $inflight 'close' ''
+        Pool-Request ('/release/' + $inflight.slot) @{} $inflight | Out-Null
+        Pool-Request ('/release/' + $peer.slot) @{} $peer | Out-Null
+        Write-PoolProbeJson $controlPath @{target_groups=2}
+        Start-Sleep -Seconds 2
+        $expanded = @()
+        for ($index = 0; $index -lt 4; $index++) {
+            $lease = Pool-Request '/acquire' (Owner-Request $owner) $null
+            Remember-Excel $lease
+            $expanded += $lease
+            Pool-Command $lease 'open' $Original
+            Pool-Command $lease 'rebuild' ''
+            Pool-Command $lease 'save_copy' (Join-Path $Output ("scaled-$index.xlsx"))
+        }
+        if (@($expanded.process.pid | Select-Object -Unique).Count -ne 4) { throw 'Expansion did not provide four exclusive workers.' }
+        Write-PoolProbeJson $controlPath @{target_groups=1}
+        Start-Sleep -Seconds 2
+        foreach ($lease in $expanded) {
+            Pool-Command $lease 'save_copy' (Join-Path $Output ("draining-$($lease.slot).xlsx"))
+            Pool-Command $lease 'close' ''
+            Pool-Request ('/release/' + $lease.slot) @{} $lease | Out-Null
+        }
+        foreach ($lease in @($expanded | Where-Object { $_.slot -ge 2 })) {
+            $process = $excelProcesses | Where-Object { $_.Id -eq $lease.process.pid } | Select-Object -Last 1
+            if (-not $process.WaitForExit(10000)) { throw 'Excess worker did not retire after release.' }
+        }
+        foreach ($lease in @($expanded | Where-Object { $_.slot -lt 2 })) {
+            $process = $excelProcesses | Where-Object { $_.Id -eq $lease.process.pid } | Select-Object -Last 1
+            if ($process.HasExited) { throw 'Reduction stopped a retained worker.' }
+        }
+    }
     Write-PoolProbeJson (Join-Path $Output 'result.json') @{
         startup_seconds=$startupSeconds;probe_seconds=$startup.Elapsed.TotalSeconds
         initial_excel_pids=@($first.process.pid,$second.process.pid)
@@ -231,6 +283,7 @@ try {
         save_as_identity_verified=$true
         writable_staged_copy=$true
         native_chart_controls=[bool]$NativeChartControls
+        dynamic_scaling=[bool]$DynamicScaling
     }
 } finally {
     $http.Dispose()
