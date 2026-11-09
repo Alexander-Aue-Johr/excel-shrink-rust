@@ -1,5 +1,39 @@
 # SheetShrink and DeltaSieve delivery plan
 
+## Latest deployment direction on 2026-11-09
+
+The user requested an immediate offline package for six external machines.
+This machine is reserved for Check Performance preparation and implementation.
+The private package contains the already compiled, verified runtime and the two
+pinned original archives. Each corpus has six independent contiguous size-ranked
+partitions, assigning smaller inputs to lower-memory hosts. Separate starters
+run Destatis, Data.gov, or those two studies sequentially. Their shared launcher
+uses ordinary profile acquisition and study configuration, disables Check
+Performance and equal-image retention, and resumes existing launch receipts.
+All 111 runtime files and both archive hashes were checked. PowerShell 5 parsing
+and configuration-only checks passed. Six-machine native acceptance is still
+outstanding. Personal machine starters remain private and untracked.
+
+The earlier Destatis development preparation finished without intervention at
+1,182 attempted inputs, with 744 prepared receipts and 438 failures. Its warm
+results remain unverified and excluded from final conclusions. A separate
+corrected 16-slot preparation started through the ordinary local web API on
+port 18836, retaining fresh Excel processes per input and the same source profile.
+The first 150 outcomes were prepared with zero failures. Continue supervising
+the whole selection. The user also requested native Check Performance preparation
+for Data.gov and the new Enron inputs, independently of the distributed
+SheetShrink-only comparisons. Enron candidates require conversion acceptance first.
+
+The complete external Enron handover was copied locally, including its original
+ledger and recipe. The copy operation reported 34,236 files and zero failed
+copies. Receiving-side verification now runs exclusively against the local copy.
+A new import command streams and hashes candidates into a deterministic archive
+accepted by the ordinary custom-archive runner, and preserves external provenance
+separately. Three focused tests cover unchanged bytes and review evidence,
+deterministic output, corruption, source mismatch and existing-output rejection.
+Full local import acceptance and ordinary Enron web-profile integration remain
+open. The source-profile downloader still intentionally rejects premature use.
+
 ## User-directed Enron stop and replacement on 2026-11-09
 
 The user explicitly stopped the previous Enron run after the warm-pool speed
