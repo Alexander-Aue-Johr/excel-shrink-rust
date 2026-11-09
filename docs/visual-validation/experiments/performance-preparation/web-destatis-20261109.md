@@ -114,3 +114,26 @@ retained under `portable-starter-acceptance-20261109` in private evidence.
 The corpus remains an incomplete acceptance attempt until the defect and its
 affected outcomes have been resolved. Later attempts must retain the prior
 generation, failures and attribution rather than rewriting their receipts.
+
+## Visible-window countercheck
+
+The receiving-machine follow-up opened two byte-identical original copies of
+`01011970_Auszug_GV.xlsx` through the visible Excel interface. The first copy was
+opened in a new instance. The second was opened with Excel's Open dialog while
+the first remained open. Review > Check Performance and Optimize all were clicked
+in each workbook window. Both initially reported 63 optimizable cells and then
+71 optimized cells. After saving, both had 315,733 worksheet cell records and the
+same concatenated worksheet XML SHA-256,
+`d7fb666135aa4bfc22b425f827e80f729bdacb8213668b4cac3e569b4f84caa6`.
+The input copies had identical SHA-256
+`9875a864482bba19e1b480452158b42283239931bd7d48d688308fd93894622c`.
+
+This countercheck demonstrates successful reuse in the visible-window workflow.
+The earlier automated failure does not establish that Excel process reuse itself
+causes stale results. A third unchanged copy was opened after closing the saved
+second workbook, keeping the first workbook open in the same instance. It again
+reported 63 optimizable cells and 71 optimized cells. This narrows the diagnosis
+further, although the retained workbook was an optimized original instead of the
+worker's blank settings workbook. The private desktop, visibility transitions,
+SaveAs controls, command routing and pane observation still differ.
+Fresh-per-input retirement remains a verified workaround pending diagnosis.

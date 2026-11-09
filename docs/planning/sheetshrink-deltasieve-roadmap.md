@@ -50,12 +50,21 @@ sheet members. Legacy conversion keeps its existing persistent workers. A later
 pane-query optimization also passed positive and genuinely already-optimized
 three-input tests. Its corrected full-corpus deployment is still pending.
 
-The running development host is on port 18832. Automatic approval review rejected
-stopping it without current-run permission, and the user has been asked whether
-it may be stopped and restarted with the correction. Do not bypass that pending
-question or alter its frozen runtime assets. The paper sources were updated and
+The running development host is on port 18832. The user subsequently directed
+that this attempt remain unchanged. Do not stop it or alter its frozen runtime
+assets. A visible-window countercheck successfully optimized repeated identical
+originals in one Excel instance, including after closing the second workbook.
+Process reuse alone therefore does not explain the adapter failure. See the
+performance-preparation experiment for the remaining lifecycle differences.
+The paper sources were updated and
 pushed separately as `2bba218` and `c28f9b0`, with rebuilt and rendered drafts.
-The Enron v2 extraction package is still awaited from the user.
+The user supplied the Enron v2 extraction handover on 2026-11-09. It declares
+34,065 unique candidate payloads, 8,469,579,995 bytes and 156,753 direct candidate
+locations. Full receiving-side hash verification has started. Candidate records
+include unresolved OLE content and retain review states. They are not all proven
+openable Excel workbooks. Initial receiving-side extraction tests hit a missing
+`olefile` dependency. Their reported source-machine success remains distinct
+from local acceptance until the dependencies and rerun are verified.
 
 ## Earlier Enron and web-start checkpoint on 2026-11-09
 
