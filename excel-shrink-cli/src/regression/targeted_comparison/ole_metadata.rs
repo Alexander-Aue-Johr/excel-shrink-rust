@@ -41,6 +41,7 @@ struct Object {
     properties: Option<BTreeMap<String, String>>,
     anchor: BTreeMap<String, i64>,
     child_elements: BTreeSet<String>,
+    child_attributes: BTreeMap<String, Vec<BTreeMap<String, String>>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -123,6 +124,11 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
                     object
                         .child_elements
                         .insert(std::str::from_utf8(tag.name)?.to_owned());
+                    object
+                        .child_attributes
+                        .entry(std::str::from_utf8(tag.name)?.to_owned())
+                        .or_default()
+                        .push(attributes(tag.attrs)?);
                 }
                 match tag.local() {
                     b"objectPr" if tag.kind != Kind::End => {
@@ -391,6 +397,7 @@ mod tests {
         assert_eq!(data.objects.len(), 2);
         assert_eq!(data.objects[0].anchor["to.row"], 50);
         assert_eq!(data.objects[0].anchor["to.colOff"], 295275);
+        assert_eq!(data.objects[0].child_attributes["anchor"][0]["moveWithCells"], "1");
         assert!(data.objects[1].properties.is_none());
         assert_eq!(data.relationships.len(), 2);
         assert_eq!(
@@ -423,6 +430,20 @@ mod tests {
             .to_string()
             .contains("missing relationship"));
         std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn retains_repeated_child_properties_and_unknown_attributes() -> Result<()> {
+        let xml = br#"<worksheet><oleObject autoLoad="1"><anchor moveWithCells="1" sizeWithCells="0"/><anchor unknown="value"/></oleObject></worksheet>"#;
+        let (records, _) = objects(&xml[..])?;
+        assert_eq!(records[0].attributes["autoLoad"], "1");
+        let anchors = &records[0].child_attributes["anchor"];
+        assert_eq!(anchors.len(), 2);
+        assert_eq!(anchors[0]["sizeWithCells"], "0");
+        assert_eq!(anchors[1]["unknown"], "value");
+        let serialized = serde_json::to_value(&records[0])?;
+        assert_eq!(serialized["child_attributes"]["anchor"][1]["unknown"], "value");
         Ok(())
     }
 

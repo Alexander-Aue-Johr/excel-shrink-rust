@@ -1310,6 +1310,12 @@ boundary conversions were fixed before the successful run. Eight focused manual
 scheduler tests passed, including fixed-capacity admission and prefetch handling.
 ## Independent reference OLE observations
 
+Worksheet OLE observations retain each child element's attribute map in document
+order, including repeated children and unknown attributes. Anchor movement and
+size flags therefore remain available alongside coordinates. A child-name set
+alone cannot establish that an anchor has supported behavior. These observations
+do not authorize bounded capture coverage.
+
 The explicit native-reference workflow retains OLE metadata even when object
 qualification fails. Worksheet, DrawingML identity and VML shape namespaces are
 resolved in their lexical scopes. External relationships are recorded without
