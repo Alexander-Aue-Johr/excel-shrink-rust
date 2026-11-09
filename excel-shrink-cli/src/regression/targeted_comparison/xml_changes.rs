@@ -26,6 +26,7 @@ pub(super) struct Sheet {
     pub value_namespace_supported: bool,
     pub visual_bounds: Option<super::content_bounds::Rectangle>,
     pub background_tail_sampling: bool,
+    pub cf_blank_tail_excluded: bool,
     pub rebuild_blockers: BTreeSet<String>,
     pub cells: Cells,
     pub rows: Arc<BTreeMap<u32, BTreeMap<String, String>>>,
@@ -427,7 +428,10 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             if let Some(reason) = super::execution_plan::worksheet_blocker(*tag) {
                 // Known drawing anchors already contribute to bottom/right. Their
                 // presence does not give a uniform background a finite sheet edge.
-                if reason != "worksheet formula" && !(tag.name == b"drawing" && drawings_bounded) {
+                if reason != "worksheet formula"
+                    && !(tag.name == b"drawing" && drawings_bounded)
+                    && !(tag.name == b"conditionalFormatting" && tag.depth == 1)
+                {
                     uniform_background_supported = false;
                 }
                 if !model.rebuild_blockers.contains(reason) {
@@ -659,10 +663,17 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     }
     model.cf_layout = format!("{:x}", layout.finalize());
     model.conditional = Arc::new(xml::catalogue(archive, part, &spans)?);
-    for block in &model.conditional.blocks {
-        if let Some(areas) = super::conditional_formatting::application_areas(&block.sqref) {
-            for area in areas {
-                visual.include_rectangle(area.top, area.left, area.bottom, area.right);
+    let cf_blank_tail_inactive = model.value_namespace_supported
+        && model.cf_columns.is_resolved()
+        && uniform_background_supported
+        && super::conditional_formatting::blank_tail_inactive(&model.conditional);
+    model.cf_blank_tail_excluded = cf_blank_tail_inactive && !model.conditional.blocks.is_empty();
+    if !cf_blank_tail_inactive {
+        for block in &model.conditional.blocks {
+            if let Some(areas) = super::conditional_formatting::application_areas(&block.sqref) {
+                for area in areas {
+                    visual.include_rectangle(area.top, area.left, area.bottom, area.right);
+                }
             }
         }
     }
@@ -672,19 +683,13 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
         bottom: bottom.max(1),
         right: right.max(1),
     };
-    let background_supported = model.value_namespace_supported
-        && model.cf_columns.is_resolved()
-        && uniform_background_supported;
     model.background_tail_sampling = visual.finish_background_bands(
         solid_fills,
         finite,
-        background_supported
-            && sheet_views > 0
-            && gridlines_hidden
-            && model.conditional.blocks.is_empty(),
+        cf_blank_tail_inactive && sheet_views > 0 && gridlines_hidden,
     );
     if !model.background_tail_sampling {
-        visual.finish_columns(solid_fills, finite, background_supported);
+        visual.finish_columns(solid_fills, finite, cf_blank_tail_inactive);
     }
     model.visual_bounds = visual.bounds;
     if let Some(bounds) = model.visual_bounds {
@@ -984,7 +989,7 @@ mod tests {
     }
 
     #[test]
-    fn background_band_sampling_requires_hidden_gridlines_and_no_cf() -> Result<()> {
+    fn background_band_sampling_requires_hidden_gridlines_and_blank_inactive_cf() -> Result<()> {
         use std::io::Write;
         let styles_xml = br#"<styleSheet><fills><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill></fills><cellXfs><xf fillId="0" borderId="0"/><xf fillId="1" borderId="0" applyFill="1"/></cellXfs></styleSheet>"#;
         let styles = excel_shrink_core::styles::parse_xfs(styles_xml)?;
@@ -1011,6 +1016,16 @@ mod tests {
                 r#"<conditionalFormatting sqref="A1:XFD1048576"><cfRule type="cellIs" operator="equal" priority="1"><formula>1</formula></cfRule></conditionalFormatting>"#,
                 false,
             ),
+            (
+                r#"<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>"#,
+                r#"<conditionalFormatting sqref="A1:XFD1048576"><cfRule type="cellIs" operator="equal" priority="1"><formula>"."</formula></cfRule></conditionalFormatting>"#,
+                true,
+            ),
+            (
+                r#"<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>"#,
+                r#"<conditionalFormatting sqref="A1:XFD1048576"><cfRule type="cellIs" operator="equal" priority="1"><formula>"."</formula></cfRule></conditionalFormatting><tableParts count="0"/>"#,
+                false,
+            ),
         ] {
             let xml = format!(
                 r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">{views}<cols><col min="1" max="3" style="1"/><col min="5" max="16384" style="1"/></cols><sheetData><row r="20" s="1" customFormat="1"><c r="T20"><v>7</v></c></row></sheetData>{cf}</worksheet>"#
@@ -1034,6 +1049,7 @@ mod tests {
                 true,
             )?;
             assert_eq!(model.background_tail_sampling, sampled);
+            assert_eq!(model.cf_blank_tail_excluded, sampled && cf.contains("cfRule"));
             assert_eq!(
                 model.visual_bounds.unwrap().address(),
                 if sampled { "A1:T21" } else { "A1:XFD1048576" }
@@ -1041,6 +1057,29 @@ mod tests {
             drop(archive);
             std::fs::remove_file(path)?;
         }
+        Ok(())
+    }
+
+    /// Inspect retained states without opening Excel or changing corpus results.
+    #[test]
+    #[ignore = "Requires XML_DIAG_LEFT and XML_DIAG_OUTPUT retained snapshot paths"]
+    fn inspect_retained_background_extents() -> Result<()> {
+        let snapshot = Snapshot::read(Path::new(&std::env::var("XML_DIAG_LEFT")?))?;
+        let report: Vec<_> = snapshot.sheets.iter().map(|(name, sheet)| {
+            serde_json::json!({
+                "sheet": name,
+                "visual_bounds": sheet.visual_bounds.map(|area| area.address()),
+                "content_bounds": sheet.cells.content_bounds().map(|area| area.address()),
+                "background_tail_sampling": sheet.background_tail_sampling,
+                    "cf_blank_tail_excluded": sheet.cf_blank_tail_excluded,
+                "cf_blocks": sheet.conditional.blocks.len(),
+                "cf_blank_tail_inactive": super::super::conditional_formatting::blank_tail_inactive(&sheet.conditional),
+            })
+        }).collect();
+        std::fs::write(
+            std::env::var("XML_DIAG_OUTPUT")?,
+            serde_json::to_vec_pretty(&report)?,
+        )?;
         Ok(())
     }
 

@@ -23,6 +23,41 @@ pub(super) use ranges::Rect;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A nonempty literal string cannot equal an unserialized blank cell. This is
+/// an extent proof only; serialized values and formulas still need selection.
+pub(super) fn blank_tail_inactive(catalogue: &xml::Catalogue) -> bool {
+    catalogue.namespace_supported.len() == catalogue.blocks.len()
+        && catalogue
+            .namespace_supported
+            .iter()
+            .all(|supported| *supported)
+        && catalogue.blocks.iter().all(|block| {
+            block.qualified_name == "conditionalFormatting"
+                && block.attributes.keys().all(|key| key == "sqref")
+                && block
+                    .child_elements
+                    .iter()
+                    .all(|name| matches!(name.as_str(), "cfRule" | "formula"))
+                && !block.rules.is_empty()
+                && block.rules.iter().all(|rule| {
+                    if !formulas::literal_rule(rule)
+                        || rule.attributes.get("operator").map(String::as_str) != Some("equal")
+                    {
+                        return false;
+                    }
+                    let text = if rule.formula_cdata {
+                        Some(rule.formulas[0].clone())
+                    } else {
+                        formulas::decode_entities(&rule.formulas[0])
+                    };
+                    text.is_some_and(|text| {
+                        let text = text.trim_ascii();
+                        text.starts_with('"') && text.ends_with('"') && text.len() > 2
+                    })
+                })
+        })
+}
+
 #[derive(Serialize)]
 pub(super) struct Decision {
     pub sheet: String,

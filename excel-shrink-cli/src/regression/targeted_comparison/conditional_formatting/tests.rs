@@ -8,6 +8,49 @@ use std::{
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 #[test]
+fn blank_tail_extent_proof_accepts_only_nonempty_literal_equality() -> Result<()> {
+    for (formula, operator, expected) in [
+        (r#"".""#, "equal", true),
+        ("&quot;.&quot;", "equal", true),
+        (r#""0""#, "equal", true),
+        (r#""*""#, "equal", true),
+        (r#""?""#, "equal", true),
+        (r#"" ""#, "equal", true),
+        (r#""~*""#, "equal", true),
+        (r#""a""b""#, "equal", true),
+        (r#""""#, "equal", false),
+        ("0", "equal", false),
+        (r#"".""#, "notEqual", false),
+        (r#""."&amp;A1"#, "equal", false),
+        ("NOW()", "equal", false),
+    ] {
+        let input = format!(
+            r#"<worksheet><conditionalFormatting sqref="A1:XFD1048576"><cfRule type="cellIs" operator="{operator}" priority="1"><formula>{formula}</formula></cfRule></conditionalFormatting></worksheet>"#
+        );
+        let mut blocks = Vec::new();
+        crate::regression::cf_inventory::scan::scan(input.as_bytes(), &mut blocks, 128, 16)?;
+        let mut catalogue = xml::Catalogue {
+            blocks,
+            namespace_supported: vec![true],
+            ..Default::default()
+        };
+        assert_eq!(
+            blank_tail_inactive(&catalogue),
+            expected,
+            "{formula}, {operator}"
+        );
+        catalogue.namespace_supported[0] = false;
+        assert!(!blank_tail_inactive(&catalogue));
+        catalogue.namespace_supported[0] = true;
+        catalogue.blocks[0].rules[0]
+            .attributes
+            .insert("future".into(), "1".into());
+        assert!(!blank_tail_inactive(&catalogue));
+    }
+    Ok(())
+}
+
+#[test]
 fn later_columns_do_not_expand_an_unchanged_conditional_area() -> Result<()> {
     let root = crate::regression::artifact_cache::unique_path(&std::env::temp_dir(), "cf-column-prefix")?;
     fs::create_dir_all(&root)?;

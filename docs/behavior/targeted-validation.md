@@ -334,7 +334,7 @@ blank/no-fill overrides, the content and merge extent, and an A1 background samp
 Row styles with the same solid fill and no visible borders preserve this proof,
 including font and alignment differences on those rows. Explicit cells still
 remain in the envelope. Other row-style overrides, unknown/overlapping column definitions, patterned fills,
-conditional formatting, objects and unsupported worksheet features disable this
+unresolved conditional formatting, objects and unsupported worksheet features disable this
 proof and retain the conservative extent. Changed column formats and effective
 row heights inside the retained envelope still produce capture candidates.
 
@@ -342,7 +342,7 @@ An additional inherited-background rule applies when every worksheet view
 explicitly hides gridlines, inherited row/column formats and the default style
 have no visible borders, and each visible inherited fill is a supported solid
 fill. It requires resolved column definitions, supported worksheet markup and
-no conditional-format blocks. The envelope retains every serialized cell,
+no conditional-format effect on unserialized blank tails. The envelope retains every serialized cell,
 content/merge/bounded-drawing extent, row transition and finite column interval
 edge. It includes a following row and a column in the final interval as background
 samples. A column interval ending at XFD has no additional finite right edge.
@@ -353,8 +353,21 @@ retained extent, without assuming that the colors are equal.
 Coverage records expose `background_tail_sampling=true` when any included state
 uses this rule. Pixels outside that extent were not captured. This records
 representative background coverage and must not be presented as exhaustive
-whole-grid pixel coverage. CF, visible gridlines, inherited borders, patterned
+whole-grid pixel coverage. Unresolved CF, visible gridlines, inherited borders, patterned
 fills, unknown styles or unsupported markup retain the previous fallback.
+
+A standard CF catalogue consisting entirely of `cellIs equal` rules with
+nonempty literal text operands cannot format unserialized blank cells. Such a
+catalogue does not extend the content envelope to its whole application area.
+Every serialized cell and formula remains covered by ordinary selection. The
+proof requires supported namespaces and rule content, resolved column metadata
+and supported worksheet features. Coverage records expose
+`cf_blank_tail_excluded=true` when at least one included state used this proof.
+Another state's fallback can still extend the union. Numeric operands, empty text, other operators,
+dynamic expressions, extensions and unknown objects retain the extent fallback.
+This also permits the existing inherited-background proofs when CF is inactive
+on blank tails. It does not assert equality between the rule outcomes on actual
+cell contents.
 
 Intersect candidate neighborhoods with that envelope and put them on the shared
 internal grid of **128 rows by 16 columns**. Deduplicate grid regions and clip

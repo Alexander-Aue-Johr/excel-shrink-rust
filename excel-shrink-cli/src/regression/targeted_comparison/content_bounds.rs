@@ -116,12 +116,14 @@ pub(super) struct Coverage {
     selected_capture_regions: usize,
     selected_grid_tiles: usize,
     background_tail_sampling: bool,
+    cf_blank_tail_excluded: bool,
 }
 
 #[derive(Default)]
 pub(super) struct ContentBounds {
     bounds: BTreeMap<String, Rectangle>,
     background_tail_sampling: BTreeSet<String>,
+    cf_blank_tail_excluded: BTreeSet<String>,
 }
 
 impl ContentBounds {
@@ -148,6 +150,9 @@ impl ContentBounds {
         for (name, sheet) in &snapshot.sheets {
             if sheet.background_tail_sampling {
                 self.background_tail_sampling.insert(name.clone());
+            }
+            if sheet.cf_blank_tail_excluded {
+                self.cf_blank_tail_excluded.insert(name.clone());
             }
             for bounds in [sheet.cells.content_bounds(), sheet.visual_bounds]
                 .into_iter()
@@ -209,6 +214,7 @@ impl ContentBounds {
                     background_tail_sampling: self
                         .background_tail_sampling
                         .contains(&candidate.sheet),
+                    cf_blank_tail_excluded: self.cf_blank_tail_excluded.contains(&candidate.sheet),
                 });
             entry.requested_candidates += 1;
             let region = Rectangle::parse(&padded_range(&candidate.cell)?)?;
