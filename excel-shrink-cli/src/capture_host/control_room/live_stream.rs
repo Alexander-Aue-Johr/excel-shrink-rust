@@ -92,6 +92,11 @@ async fn serve_connection(mut socket: WebSocket, room: Arc<Room>) -> Result<()> 
             incoming = socket.recv() => {
                 match incoming {
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
+                    Some(Ok(Message::Close(_))) => {
+                        // Receiving Close queues the protocol reply. Flush it before dropping the socket.
+                        futures_util::SinkExt::close(&mut socket).await?;
+                        return Ok(());
+                    }
                     _ => return Ok(()),
                 }
             }
