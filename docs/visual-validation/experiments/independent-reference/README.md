@@ -25,6 +25,15 @@ targets remain recorded without fetching them. Missing relationships, missing
 local parts and malformed coordinates fail explicitly. These observations do
 not qualify OLE frames or change the supported Image/Chart coverage rule.
 
+Worksheet OLE observations additionally retain the resolved namespace URI for
+each observed object/child element and each literal `r:id` attribute. Bindings
+follow lexical scopes, including declarations inherited from wrappers, local
+rebinding and restoration after empty elements. An undeclared prefix is recorded
+as unknown. Duplicate declarations on a single element fail explicitly. This
+distinguishes a familiar qualified spelling from an element actually bound to
+its expected namespace. It does not yet qualify OLE rendering or establish
+DrawingML/VML namespace support.
+
 The same observation includes referenced DrawingML and VML parts, each bounded
 to one MiB before reading. It retains their hashes, namespace declarations,
 DrawingML identity/name and compatibility IDs, VML shape attributes, legacy

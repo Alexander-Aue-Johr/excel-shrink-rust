@@ -142,6 +142,36 @@ This checks these two observations only. Namespace resolution, supported-propert
 validation, DrawingML anchor agreement, native-frame agreement and all-object
 accounting remain required for the bounded reference qualification rule.
 
+## Worksheet OLE namespace observations
+
+The worksheet-byte scanner now records the actual lexical namespace URI for
+each object and child element, and for each literal `r:id` attribute. A sparse
+scope stack tracks declaration changes and restores parent bindings. Worksheet
+cell data is still streamed and does not become a DOM. Unknown prefixes remain
+explicit unknown observations. Duplicate declarations on one element fail.
+
+Focused tests cover inherited foreign default namespaces, local relationship
+prefix rebinding, restoration after empty and nested elements, unknown prefixes
+and duplicate declarations. These checks prevent a later qualifier from using
+only spelling or a global namespace-declaration inventory as evidence. They
+leave the existing unsupported-object rule in place. DrawingML/VML scope
+resolution, anchor/native-frame agreement and all-object accounting remain
+separate prerequisites.
+
+Nine focused OLE tests passed. The explicitly enabled retained-file diagnostic
+then inspected the real Word and PDF fixtures without opening Excel, taking
+0.03 and 0.07 seconds respectively after compilation. Both resolved the object,
+property and anchor-container elements to SpreadsheetML, the coordinate elements
+to spreadsheet DrawingML, and `r:id` to the Office relationship namespace.
+Both Choice and Fallback records retained their own observations.
+
+The diagnostic receipts are retained beside the original experiment evidence.
+Their SHA-256 identities are
+`52b7bf700e326cf44ecb355e953cf834df41c7b6112c4b05de0ba3629727349f`
+for Word and
+`506bc92da1a48b3a5713251df122eaf8d3336b5173e9b1bea9f9f25daf31602f`
+for PDF. No production capture rule or corpus verdict changed during this step.
+
 ## Zero-area text-box visibility controls
 
 The same retained workbook has three zero-size `Text 1` shapes on Deutschland,

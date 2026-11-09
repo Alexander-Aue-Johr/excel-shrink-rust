@@ -16,6 +16,7 @@ use std::{
 };
 use zip::ZipArchive;
 
+mod namespaces;
 mod representations;
 
 #[derive(Debug, Default, Serialize)]
@@ -30,6 +31,8 @@ pub(super) struct Catalogue {
 #[derive(Debug, Default, Serialize)]
 struct Object {
     qualified_name: String,
+    element_namespaces: BTreeMap<String, BTreeSet<Option<String>>>,
+    relationship_namespaces: BTreeSet<Option<String>>,
     attributes: BTreeMap<String, String>,
     properties: Option<BTreeMap<String, String>>,
     anchor: BTreeMap<String, i64>,
@@ -65,9 +68,11 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
     let mut active = None;
     let mut marker = None;
     let mut coordinate: Option<(String, Vec<u8>)> = None;
+    let mut scope = namespaces::Namespaces::default();
     streaming_xml::scan(input, |event| {
         match event {
             Event::Tag(tag) => {
+                scope.observe(tag)?;
                 if tag.kind != Kind::End
                     && (tag.depth == 0
                         || active.is_some()
@@ -95,11 +100,13 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
                         active = None;
                     } else {
                         ensure!(active.is_none(), "Nested OLE records");
-                        result.push(Object {
+                        let mut object = Object {
                             qualified_name: std::str::from_utf8(tag.name)?.to_owned(),
                             attributes: attributes(tag.attrs)?,
                             ..Default::default()
-                        });
+                        };
+                        observe_namespaces(&mut object, tag, &scope)?;
+                        result.push(object);
                         active = (tag.kind == Kind::Start).then_some(result.len() - 1);
                     }
                     return Ok(());
@@ -107,6 +114,7 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
                 let Some(index) = active else { return Ok(()) };
                 let object = &mut result[index];
                 if tag.kind != Kind::End {
+                    observe_namespaces(object, tag, &scope)?;
                     object
                         .child_elements
                         .insert(std::str::from_utf8(tag.name)?.to_owned());
@@ -159,6 +167,24 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
         "Incomplete OLE metadata"
     );
     Ok((result, namespaces))
+}
+
+fn observe_namespaces(
+    object: &mut Object,
+    tag: crate::regression::xml_views::Tag<'_>,
+    scope: &namespaces::Namespaces,
+) -> Result<()> {
+    object
+        .element_namespaces
+        .entry(std::str::from_utf8(tag.name)?.into())
+        .or_default()
+        .insert(scope.element(tag.name)?);
+    if tag.attr(b"r:id")?.is_some() {
+        object
+            .relationship_namespaces
+            .insert(scope.element(b"r:id")?);
+    }
+    Ok(())
 }
 
 fn read_relationships(
@@ -416,5 +442,48 @@ mod tests {
         ] {
             assert!(objects(input.as_bytes()).is_err());
         }
+    }
+
+    #[test]
+    fn observations_resolve_inherited_and_rebound_namespaces_per_object() -> Result<()> {
+        let xml = br#"<worksheet xmlns="main" xmlns:r="relationships"><wrapper xmlns="foreign"><oleObject r:id="object"><objectPr xmlns="main" xmlns:r="foreign" r:id="preview"/><anchor><xdr:row>2</xdr:row></anchor></oleObject></wrapper><oleObject r:id="object"/></worksheet>"#;
+        let (data, _) = objects(xml.as_slice())?;
+        assert_eq!(data.len(), 2);
+        assert_eq!(
+            data[0].element_namespaces["oleObject"],
+            BTreeSet::from([Some("foreign".into())])
+        );
+        assert_eq!(
+            data[0].element_namespaces["objectPr"],
+            BTreeSet::from([Some("main".into())])
+        );
+        assert_eq!(
+            data[0].element_namespaces["xdr:row"],
+            BTreeSet::from([None])
+        );
+        assert_eq!(
+            data[0].relationship_namespaces,
+            BTreeSet::from([Some("relationships".into()), Some("foreign".into()),])
+        );
+        assert_eq!(
+            data[1].element_namespaces["oleObject"],
+            BTreeSet::from([Some("main".into())])
+        );
+        assert_eq!(
+            data[1].relationship_namespaces,
+            BTreeSet::from([Some("relationships".into())])
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "Requires XML_DIAG_LEFT, OLE_DIAG_SHEET and XML_DIAG_OUTPUT retained metadata paths"]
+    fn inspect_retained_ole_metadata() -> Result<()> {
+        let input = std::env::var("XML_DIAG_LEFT")?;
+        let sheet = std::env::var("OLE_DIAG_SHEET")?;
+        let output = std::env::var("XML_DIAG_OUTPUT")?;
+        let observation = inspect(Path::new(&input), &sheet)?;
+        std::fs::write(output, serde_json::to_vec_pretty(&observation)?)?;
+        Ok(())
     }
 }
