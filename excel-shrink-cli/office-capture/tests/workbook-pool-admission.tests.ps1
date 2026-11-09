@@ -1,4 +1,9 @@
 $ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+public sealed class PoolFixtureResponse : System.Net.WebResponse {
+    public System.Net.HttpStatusCode StatusCode { get; set; }
+}
+'@
 $module = Import-Module (Join-Path $PSScriptRoot '../WorkbookPool.psm1') -Force -PassThru
 & $module {
     $script:requests = @()
@@ -24,3 +29,20 @@ $module = Import-Module (Join-Path $PSScriptRoot '../WorkbookPool.psm1') -Force 
     throw 'Connect failure was silently retried.'
 }
 Write-Output 'PASS bounded admission timeout retry keeps its identity and connection failure remains explicit'
+& $module {
+    $script:releaseTokens = @()
+    function script:Invoke-WorkbookPoolRequest($Connection, $Path, $Body, $Lease, $TimeoutSeconds) {
+        $script:releaseTokens += $Lease.lease_token
+        if ($script:releaseTokens.Count -eq 1) {
+            $response = New-Object PoolFixtureResponse
+            $response.StatusCode = [Net.HttpStatusCode]::Conflict
+            throw [Net.WebException]::new('Fixture release contention', $null, [Net.WebExceptionStatus]::ProtocolError, $response)
+        }
+        return @{ok=$true;repeated=$true}
+    }
+    Remove-WorkbookPoolLease @{} @{slot=0;lease_token='original-token'}
+    if ($script:releaseTokens.Count -ne 2 -or $script:releaseTokens[0] -ne $script:releaseTokens[1]) {
+        throw 'Release contention retry changed the lease identity.'
+    }
+}
+Write-Output 'PASS release contention retries the same idempotent lease token'

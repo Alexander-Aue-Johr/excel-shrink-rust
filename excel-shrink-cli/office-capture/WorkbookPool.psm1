@@ -84,8 +84,24 @@ function Invoke-ResidentPoolCommand {
 
 function Remove-WorkbookPoolLease {
     param($Connection, $Lease)
-    $reply = Invoke-WorkbookPoolRequest $Connection ('/release/' + $Lease.slot) @{} $Lease 10
-    if ($reply.ok -ne $true) { throw 'Workbook pool did not confirm release.' }
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $lastFailure = $null
+    while ($clock.Elapsed.TotalSeconds -lt 10) {
+        try {
+            $reply = Invoke-WorkbookPoolRequest $Connection ('/release/' + $Lease.slot) @{} $Lease 2
+            if ($reply.ok -ne $true) { throw 'Workbook pool did not confirm release.' }
+            return
+        } catch [Net.WebException] {
+            $lastFailure = $_
+            if ($null -eq $_.Exception.Response) {
+                if ($_.Exception.Status -ne [Net.WebExceptionStatus]::Timeout) { throw }
+            } elseif ([int]$_.Exception.Response.StatusCode -ne 409) { throw }
+            # The server acknowledges repeated release tokens without touching a new lease.
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    $detail = if ($lastFailure.ErrorDetails.Message) { $lastFailure.ErrorDetails.Message } else { $lastFailure.Exception.Message }
+    throw ('Workbook pool lease release timed out: ' + $detail)
 }
 
 Export-ModuleMember -Function Read-WorkbookPoolConnection, Get-WorkbookPoolLease, Invoke-WorkbookPoolCommand, Remove-WorkbookPoolLease, Invoke-ResidentPoolCommand

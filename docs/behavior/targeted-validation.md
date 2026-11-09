@@ -1231,6 +1231,10 @@ pause request. Initialization reserves its request identity before releasing the
 global admission gate, allowing other slots to initialize concurrently. Retried
 HTTP admission timeouts retain that identity. Legacy pool settings without a
 control-file path preserve their fixed slot count.
+Lease release retries HTTP 409 and transport timeouts for at most ten seconds,
+with a two-second bound per request. Each retry retains the same lease token.
+The server's repeated-release guard acknowledges completion without mutating a
+new lease. Authorization failures and other errors remain immediate failures.
 Optional Check Performance cannot select this pool path yet.
 
 The pool process waits for a startup gate. Its coordinator assigns a kill-on-close
