@@ -338,8 +338,8 @@ unresolved conditional formatting, objects and unsupported worksheet features di
 proof and retain the conservative extent. Changed column formats and effective
 row heights inside the retained envelope still produce capture candidates.
 
-An additional inherited-background rule applies when every worksheet view
-explicitly hides gridlines, inherited row/column formats and the default style
+An additional inherited-background rule applies when worksheet views have
+supported gridline settings, inherited row/column formats and the default style
 have no visible borders, and each visible inherited fill is a supported solid
 fill. It requires resolved column definitions, supported worksheet markup and
 no conditional-format effect on unserialized blank tails. The envelope retains every serialized cell,
@@ -353,7 +353,10 @@ retained extent, without assuming that the colors are equal.
 Coverage records expose `background_tail_sampling=true` when any included state
 uses this rule. Pixels outside that extent were not captured. This records
 representative background coverage and must not be presented as exhaustive
-whole-grid pixel coverage. Unresolved CF, visible gridlines, inherited borders, patterned
+whole-grid pixel coverage. Gridline visibility is sheet-wide and adds no finite
+transition after the last recorded row or column layout transition. Visible,
+hidden and default gridline settings are supported. Missing views, unknown
+gridline settings, unresolved CF, inherited borders, patterned
 fills, unknown styles or unsupported markup retain the previous fallback.
 
 A standard CF catalogue consisting entirely of `cellIs equal` rules with

@@ -422,7 +422,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     let mut layout = Sha256::new();
     let mut uniform_background_supported = true;
     let mut sheet_views = 0;
-    let mut gridlines_hidden = true;
+    let mut sheet_views_supported = true;
     streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
         if let Event::Tag(tag) = &event {
             if let Some(reason) = super::execution_plan::worksheet_blocker(*tag) {
@@ -451,10 +451,13 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                 .unwrap_or(standard_namespace);
             if tag.local() == b"sheetView" && tag.kind != Kind::End {
                 sheet_views += 1;
-                gridlines_hidden &= tag_namespace
+                sheet_views_supported &= tag_namespace
                     && tag.name == b"sheetView"
                     && tag.depth == 2
-                    && tag.attr(b"showGridLines")? == Some(b"0");
+                    && matches!(
+                        tag.attr(b"showGridLines")?,
+                        None | Some(b"0") | Some(b"1") | Some(b"false") | Some(b"true")
+                    );
             }
             let (x14_declaration, xm_declaration) =
                 if data_depth.is_none() || tag.local() == b"sheetData" {
@@ -686,7 +689,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     model.background_tail_sampling = visual.finish_background_bands(
         solid_fills,
         finite,
-        cf_blank_tail_inactive && sheet_views > 0 && gridlines_hidden,
+        cf_blank_tail_inactive && sheet_views > 0 && sheet_views_supported,
     );
     if !model.background_tail_sampling {
         visual.finish_columns(solid_fills, finite, cf_blank_tail_inactive);
@@ -989,7 +992,7 @@ mod tests {
     }
 
     #[test]
-    fn background_band_sampling_requires_hidden_gridlines_and_blank_inactive_cf() -> Result<()> {
+    fn background_band_sampling_requires_supported_views_and_blank_inactive_cf() -> Result<()> {
         use std::io::Write;
         let styles_xml = br#"<styleSheet><fills><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill></fills><cellXfs><xf fillId="0" borderId="0"/><xf fillId="1" borderId="0" applyFill="1"/></cellXfs></styleSheet>"#;
         let styles = excel_shrink_core::styles::parse_xfs(styles_xml)?;
@@ -1004,10 +1007,25 @@ mod tests {
             (
                 r#"<sheetViews><sheetView workbookViewId="0"/></sheetViews>"#,
                 "",
-                false,
+                true,
             ),
             (
                 r#"<sheetViews><sheetView showGridLines="0" workbookViewId="0"/><sheetView showGridLines="1" workbookViewId="1"/></sheetViews>"#,
+                "",
+                true,
+            ),
+            (
+                r#"<sheetViews><sheetView showGridLines="unknown" workbookViewId="0"/></sheetViews>"#,
+                "",
+                false,
+            ),
+            (
+                r#"<sheetViews><sheetView xmlns="urn:unsupported" workbookViewId="0"/></sheetViews>"#,
+                "",
+                false,
+            ),
+            (
+                "",
                 "",
                 false,
             ),

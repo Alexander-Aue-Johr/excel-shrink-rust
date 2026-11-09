@@ -206,7 +206,8 @@ impl<'a> VisualBounds<'a> {
     }
 
     /// Flat inherited fills repeat beyond their last finite transition. Preserve
-    /// every explicit cell and transition, plus one tail row/column. Gridlines,
+    /// every explicit cell and transition, plus one tail row/column. Gridline
+    /// visibility is sheet-wide, so it adds no transition in the repeating tail.
     /// CF, borders and unsupported worksheet features must be excluded by callers.
     pub fn finish_background_bands(
         &mut self,
