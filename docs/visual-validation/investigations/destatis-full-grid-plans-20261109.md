@@ -231,3 +231,29 @@ continuous borders remain separate review cases. Historical production verdicts
 are preserved until explicit retrospective classification. The retained finding
 input and initial per-region measurements are under
 `G:\deltasieve-work\destatis-difference-triage-20261109`.
+
+## Retained difference triage on November 9
+
+A read-only pixel pass examined the 63 completed Destatis difference records
+while Abwasser and Elterngeld continued capturing. It compared RGBA pixels at
+matching image coordinates and measured exterior pixels separately. The retained
+JSONL measurements include report identities and per-region measurements.
+
+The pass found 27 workbooks with changed overlapping pixels and 32 with equal
+overlapping pixels and exclusively white exterior pixels. Three records lacked
+a retained comparison image, and one failed the evidence-path check. These four
+cases remain unmeasured. The 27 overlap-change records require cause analysis.
+The 32 white-exterior records are candidates for capture-extent review. This
+classification preserves their original production verdicts. A white exterior
+alone does not establish that the complete-blank-image exception applies.
+
+The largest measured overlap change is `verkehr-umwelt-5859007207005.xlsx`,
+with 88,378 changed pixels across `2.4.1`, `2.4.2` and `2.5`. On
+`2.4.1!A1:F48`, both retained images are 533 by 1,040 pixels. The changed
+pixel envelope is `[21,252,441,870)`, with changes concentrated in text bands.
+The current normal SheetShrink entry point reproduced the previous cleaned
+archive SHA-256 `7f4db698e53153c26ce15d1ebc2539f195acf6d9e208313f4fa5f9ad69459c5d`.
+A separate native reference attempt timed out at `open_batch` after 60 seconds.
+It supplies no new successful image comparison or causal attribution. Its
+earlier invocation failed before opening Excel because an incorrect packaged
+asset path was supplied. Both attempts remain separate from corpus outcomes.
