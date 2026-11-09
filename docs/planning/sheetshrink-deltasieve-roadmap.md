@@ -1,5 +1,30 @@
 # SheetShrink and DeltaSieve delivery plan
 
+## Full local night queue requested on 2026-11-09
+
+The user requested complete SheetShrink-only comparisons sequentially for
+Destatis, Data.gov and then the supplied Enron v2 extraction. The private queue
+uses four comparison groups, geometry batches of 256, capture batches of eight
+and a 256-megapixel batch allowance. Equal images are not retained. Working
+outputs use G: to preserve the free-space buffer on V:. Corpus identities and
+results remain separate. The existing Check Performance preparation target was
+reduced to two workers to prioritize these comparisons.
+
+The queue uses the verified optimized six-machine runtime, without modifying
+its binaries or assets. An initial PowerShell hash-command availability error
+occurred before any study started. Replacing that private launch check with
+streamed .NET hashing allowed normal study startup. Destatis runner PID 47256
+was confirmed live with its full 1,182-file selection and four preparations in
+flight. Data.gov and Enron remain queued. This is startup acceptance, not corpus
+completion. The queue requires a final complete report before advancing and
+retains nonzero findings exits as findings rather than infrastructure success.
+
+The Enron receiving-side import finished with 34,065 members and an explicit
+external-generation receipt. Count, total uncompressed bytes and three additional
+member hashes were checked. The import writer had already verified every copied
+candidate hash. This proves candidate transport integrity, not Excel openability
+or full source reconstruction. The earlier small Enron run remains stopped.
+
 ## Latest deployment direction on 2026-11-09
 
 The user requested an immediate offline package for six external machines.
