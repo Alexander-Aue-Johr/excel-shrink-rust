@@ -16,12 +16,15 @@ use std::{
 };
 use zip::ZipArchive;
 
+mod representations;
+
 #[derive(Debug, Default, Serialize)]
 pub(super) struct Catalogue {
     worksheet_part: String,
     namespaces: BTreeMap<String, BTreeSet<String>>,
     objects: Vec<Object>,
     relationships: BTreeMap<String, Relationship>,
+    representations: Vec<representations::Representation>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -240,6 +243,7 @@ pub(super) fn inspect(path: &Path, sheet: &str) -> Result<Catalogue> {
         });
     }
     let (objects, namespaces) = objects(archive.by_name(&part)?)?;
+    let representations = representations::inspect(&mut archive, &relationships)?;
     let used: BTreeSet<_> = objects
         .iter()
         .flat_map(|object| {
@@ -257,6 +261,20 @@ pub(super) fn inspect(path: &Path, sheet: &str) -> Result<Catalogue> {
         relationships.len() == used.len(),
         "OLE metadata references a missing relationship"
     );
+    hash_local_parts(&mut archive, &mut relationships)?;
+    Ok(Catalogue {
+        worksheet_part: part,
+        namespaces,
+        objects,
+        relationships,
+        representations,
+    })
+}
+
+fn hash_local_parts(
+    archive: &mut ZipArchive<File>,
+    relationships: &mut BTreeMap<String, Relationship>,
+) -> Result<()> {
     for relationship in relationships
         .values_mut()
         .filter(|relationship| !relationship.external)
@@ -276,12 +294,7 @@ pub(super) fn inspect(path: &Path, sheet: &str) -> Result<Catalogue> {
         relationship.bytes = Some(entry.size());
         relationship.sha256 = Some(format!("{:x}", hash.finalize()));
     }
-    Ok(Catalogue {
-        worksheet_part: part,
-        namespaces,
-        objects,
-        relationships,
-    })
+    Ok(())
 }
 
 #[cfg(test)]

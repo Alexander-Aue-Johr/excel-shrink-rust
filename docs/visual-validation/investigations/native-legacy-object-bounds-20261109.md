@@ -116,3 +116,28 @@ changed 6,473 RGBA pixels. Replacing only the cached EMF changed 5,242 pixels.
 Both pairs retained identical capture geometry and their rendered images were
 inspected. These controls establish that the native reference detects the two
 specific mutations. Production bounded-OLE qualification remains outstanding.
+
+## DrawingML and VML identity observations
+
+The reference receipt now also retains the two linked representation inventories.
+Each representation has a part hash. DrawingML records retain `cNvPr` identity,
+native name and compatibility IDs. VML records retain the shape ID, style,
+legacy anchor and preview relationship, including its target and hash. External
+representation targets are recorded without fetching them. Representation XML
+is bounded to one MiB, and missing VML preview links fail explicitly.
+
+Six focused Rust tests passed, including local preview hashing, external targets,
+missing links, missing identity fields and nested drawing records. Two further
+native attempts retained the expected Unsupported qualification failure.
+
+| Case | Seconds | Shape ID | Native name | Reference receipt SHA-256 |
+| --- | ---: | --- | --- | --- |
+| `word-object-representations` | 10.700414 | 4099 | Object 3 | `74eb905c4df2ceb962a09896499d3931aa4803d11a80baec86485de6b880eece` |
+| `pdf-icon-representations` | 11.902800 | 2050 | Object 2 | `ac0fa2040b60e03252998f01392b348b940a13f3a8ab846d31a29663df8dd623` |
+
+Explicit assertions against the retained JSON confirmed the worksheet shape ID,
+DrawingML identity and `_x0000_s<id>` VML identity agree in both cases. The VML
+preview target and hash also agree with the worksheet object's cached preview.
+This checks these two observations only. Namespace resolution, supported-property
+validation, DrawingML anchor agreement, native-frame agreement and all-object
+accounting remain required for the bounded reference qualification rule.

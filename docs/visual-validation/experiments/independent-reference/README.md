@@ -25,6 +25,14 @@ targets remain recorded without fetching them. Missing relationships, missing
 local parts and malformed coordinates fail explicitly. These observations do
 not qualify OLE frames or change the supported Image/Chart coverage rule.
 
+The same observation includes referenced DrawingML and VML parts, each bounded
+to one MiB before reading. It retains their hashes, namespace declarations,
+DrawingML identity/name and compatibility IDs, VML shape attributes, legacy
+anchors and linked preview identities. External representation targets are
+recorded without access. Missing local representation parts or preview links
+fail explicitly. Qualified-name matching in this diagnostic inventory does not
+establish namespace-aware coverage or acceptance of unknown rendering effects.
+
 A qualification failure describes this guard's supported object model. It does
 not establish that the workbook is invalid or the range renderer omits the
 object. Bounded native controls have rendered embedded Word and PDF previews
