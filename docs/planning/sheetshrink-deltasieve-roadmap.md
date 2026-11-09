@@ -2,6 +2,24 @@
 
 ## Full local night queue requested on 2026-11-09
 
+The `3453df30` repeating-background extension passed 143 targeted tests, the
+retained Mikrozensus extent diagnostic and ordinary optimized native unchanged
+and changed-fill controls with gridlines enabled on both sides. The separate
+114-file runtime was verified before a controlled night-study migration. The
+termination API reported stopped, no active comparisons and no live runner.
+The previous launch, controls and queue script were retained in the private
+runtime migration receipt directory. The verified old Observatory host was
+then closed, and normal resume started the new hash-pinned executable
+`56fbbbdf25e120a9dca85fd1dfdd76d95fe6cac7c805836275c5a930b163faf5`.
+The Shrink core and visual profile have no changes from `0ad30f53` to
+`3453df30`. Explicit reviewed preparation producer compatibility preserves
+source and profile checks. The ordinary startup retained 797 completed visual
+comparisons and all 1,182 preparation outcomes, reused 385 pending preparations
+and admitted four groups. Previous skipped outcomes are retried and remain in
+the historical evidence. The sequential queue now uses this verified runtime
+for later Data.gov and imported Enron studies too. Full corpus completion and
+unsupported-object background cases remain open.
+
 A later live check confirmed 745 completed Destatis comparisons, ten skipped
 inputs and 397 remaining, with four live groups. Long Elterngeld and Abwasser
 attempts continued returning successful capture batches. An offline check of
