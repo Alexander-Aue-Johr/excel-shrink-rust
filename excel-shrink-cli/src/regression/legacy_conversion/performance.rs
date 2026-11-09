@@ -1,4 +1,4 @@
-//! Prepare independent, attributable optimization artifacts with continuously reused Excel.
+//! Prepare attributable optimization artifacts with a continuously refilled Excel pool.
 use super::*;
 use crate::validation_preparation::{self, Input};
 use std::sync::{
@@ -595,12 +595,12 @@ mod tests {
 
     #[test]
     #[ignore = "requires desktop Excel with Check Performance and PERFORMANCE_PREPARATION_FIXTURE"]
-    fn native_performance_worker_reuses_excel_and_retains_controls() -> Result<()> {
+    fn native_performance_pool_refills_fresh_excel_and_retains_controls() -> Result<()> {
         let input = PathBuf::from(std::env::var("PERFORMANCE_PREPARATION_FIXTURE")?);
         let output =
             std::env::temp_dir().join(format!("performance-pool-{}", uuid::Uuid::new_v4()));
         run(Args {
-            input: vec![input.clone(), input],
+            input: vec![input.clone(), input.clone(), input],
             source_manifest: None,
             output: output.clone(),
             workers: 1,
@@ -609,29 +609,48 @@ mod tests {
         let progress =
             read_json(&output.join("progress.json")).context("Progress receipt missing")?;
         assert_eq!(progress["status"], "completed");
-        assert_eq!(progress["prepared"], 2);
+        assert_eq!(progress["prepared"], 3);
         assert_eq!(progress["unresolved"], 0);
         let first = read_json(&output.join("input-000000/prepared.json"))
             .context("First receipt missing")?;
         let second = read_json(&output.join("input-000001/prepared.json"))
             .context("Second receipt missing")?;
+        let third = read_json(&output.join("input-000002/prepared.json"))
+            .context("Third receipt missing")?;
         let batch = read_json(&output.join("preparation.json")).context("Batch receipt missing")?;
         assert_eq!(first["producer_sha256"], batch["producer_sha256"]);
         assert_eq!(second["producer_sha256"], batch["producer_sha256"]);
-        assert_eq!(
+        assert_ne!(
             first["measurements"]["excel_pid"],
             second["measurements"]["excel_pid"]
         );
-        assert_eq!(second["measurements"]["worker_jobs_completed"], 2);
+        assert_ne!(
+            first["measurements"]["excel_pid"],
+            third["measurements"]["excel_pid"]
+        );
+        assert_ne!(
+            second["measurements"]["excel_pid"],
+            third["measurements"]["excel_pid"]
+        );
         assert_eq!(first["source_sha256"], second["source_sha256"]);
-        for receipt in [&first, &second] {
+        for receipt in [&first, &second, &third] {
+            assert_eq!(receipt["measurements"]["worker_jobs_completed"], 1);
+            assert_eq!(
+                receipt["measurements"]["excel_reuse_policy"],
+                "fresh-excel-per-input"
+            );
+            assert_eq!(
+                receipt["native_result"]["status"],
+                first["native_result"]["status"],
+                "Repeating the same original must not reuse the previous optimization outcome"
+            );
             assert_eq!(receipt["artifacts"].as_object().unwrap().len(), 3);
             assert!(matches!(
                 receipt["native_result"]["status"].as_str(),
                 Some("optimization_confirmed" | "no_optimization_needed")
             ));
         }
-        for directory in ["input-000000", "input-000001"] {
+        for directory in ["input-000000", "input-000001", "input-000002"] {
             let receipt = read_json(&output.join(directory).join("prepared.json")).unwrap();
             assert_eq!(
                 super::super::super::artifact_cache::hash_file(

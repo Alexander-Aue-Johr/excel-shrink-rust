@@ -174,7 +174,11 @@ try {
             if ($request.performance) {
                 $metrics.Remove('workbooks_converted')
                 $metrics['worker_jobs_completed'] = $convertedCount + 1
-                $metrics['measurement_scope'] = 'current workbook in a reused Excel process'
+                $metrics['measurement_scope'] = 'current workbook in a fresh Check Performance Excel process'
+                $metrics['excel_reuse_policy'] = 'fresh-excel-per-input'
+                # Withdraw this session before publishing success to avoid stale native pane results.
+                [IO.File]::WriteAllText((Join-Path $Session 'retire'), 'check-performance input complete')
+                $recycle = $true
             }
             if (-not $request.performance) {
                 Move-Item -LiteralPath $pendingOutput -Destination $request.output -Force

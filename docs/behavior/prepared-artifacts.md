@@ -356,6 +356,16 @@ failed outcomes as part of the package denominator.
 
 ## Live preparation concurrency
 
+Check Performance assigns each input a fresh Excel process. A completed worker
+publishes its retirement marker before its response, so another request cannot
+lease a departing session. The continuously refilled pool replaces that worker
+at the selected target. Receipts record `excel_reuse_policy` as
+`fresh-excel-per-input`. This policy addresses a native stale-pane outcome found
+when repeating unchanged inputs in one Excel process. Closing the pane and
+changing temporary workbook names did not establish reliable reset in the
+bounded tests. Legacy XLS conversion continues to use its tested persistent
+sessions. The changed worker recipe invalidates older CP preparation reuse.
+
 An active Check Performance preparation has an independent positive worker target
 in its atomic `control.json` document, with version 1 and integer `workers`.
 The manager observes changes approximately once per second. It starts additional
@@ -402,4 +412,28 @@ partitions, producer/consumer environment differences and unavailable local
 Check Performance. Test interrupted publication and retries without overwriting
 completed evidence. Verify that measured producer costs remain attributable to
 the producing machine and that the normal comparison entry point can consume
-the imported pairs. Keep Enron advancing during bounded native acceptance tests.
+the imported pairs. Respect explicit corpus stop requests during native acceptance
+tests. The historical Enron run was intentionally stopped on 2026-11-09.
+
+## Prepare an existing corpus through the web interface
+
+Copy the complete verified runtime directory, including its executables,
+`office-capture`, cleanup helpers and release manifest, to the destination PC.
+Desktop Excel with Check Performance must be available on that producer PC.
+Keep working data and temporary files on a drive with sufficient free space.
+Run `deltasieve.exe observatory` from the runtime directory and use the local URL
+printed by the host. Port zero selects an available port.
+
+In Configure validation, choose Prepare Check Performance variants, then XLSX
+directory. Select the originals folder, an optional matching corpus identity,
+a new preparation directory and the independent worker count. Submit Start
+preparation. Selecting Destatis or Data.gov verifies the complete pinned input
+inventory before native processing. A custom directory requires prior XLSX
+conversion for every discovered workbook.
+
+The host continues the job when the browser tab is closed. Keep the host process
+running. The main page shows finished, prepared, failed, queued and in-flight
+counts and an independent live worker target. Successful files retain all three
+save/optimization controls and their producer measurements. A failure remains a
+failure in the denominator. Export prepared variants with the transfer workflow
+for subsequent comparison on a different PC.

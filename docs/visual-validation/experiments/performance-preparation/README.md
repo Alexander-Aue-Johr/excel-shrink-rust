@@ -1,4 +1,11 @@
-# Persistent Check Performance preparation
+# Check Performance preparation
+
+## Later corpus acceptance
+
+The 2026-11-09 Destatis web run exposed stale no-work outcomes when Excel was
+reused across inputs. The stronger repetition test supersedes the earlier
+two-request reuse acceptance below. See `web-destatis-20261109.md`. Current
+preparation uses continuously refilled fresh Excel sessions for Check Performance.
 
 This experiment checks independent artifact generation, instance reuse,
 continuous refill, failure isolation and owned cleanup. It does not measure
@@ -291,7 +298,7 @@ password.xls. Run the native tests serially with a bounded external deadline.
 
 ```powershell
 cargo test -p excel-shrink-cli --lib `
-  native_performance_worker_reuses_excel_and_retains_controls `
+  native_performance_pool_refills_fresh_excel_and_retains_controls `
   -- --ignored --nocapture --test-threads=1
 
 cargo test -p excel-shrink-cli --lib `

@@ -78,7 +78,7 @@
         <label class="wide">New preparation directory<input name="output" required></label>
         <label class="wide">Previous preparation, optional<span class="path"><input id="performance-job-reuse" name="reuse_from"><button type="button" data-browse="performance-job-reuse">Browse…</button></span><span class="help">Copy compatible completed inputs into the new directory. The previous preparation stays intact.</span></label>
         <label>Parallel Check Performance workers<input name="workers" type="number" min="1" step="1" value="2" required></label>
-        <p class="help wide">May exceed logical processors. Each successful worker reuses Excel for successive workbooks. The selected target applies to this job.</p>
+        <p class="help wide">May exceed logical processors. The pool refills continuously with a fresh Excel process for each input to isolate native Check Performance state. The selected target applies to this job.</p>
         <button type="submit">Start preparation</button>
       </fieldset>
     </form>
