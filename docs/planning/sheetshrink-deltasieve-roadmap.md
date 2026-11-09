@@ -606,8 +606,6 @@ in `../visual-validation/experiments/independent-reference/README.md`. Seeded
 reference sampling, the broader mutation matrix and selector-coverage scoring
 remain open.
 
-## 14 Write and review complete first manuscript drafts
-
 Five controlled comparator pairs now also have explicit reference observations
 independent of the selector. All five completed, with a pixel-equal identical
 control and differences in the four deliberately changed pairs. Continuous
@@ -617,6 +615,8 @@ producer/source hashes, deadlines, raw images and the initial failed path attemp
 in `../visual-validation/experiments/independent-reference/comparator-pilot-20261109.md`.
 These are controlled pair-level checks. The real-world seeded sample, broader
 mutation matrix, pixel-coverage scoring and matched cost experiments remain open.
+
+## 14 Write and review complete first manuscript drafts
 
 - [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.
 
