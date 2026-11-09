@@ -453,7 +453,14 @@ fn clean_row_aligned_chunks_by_max_size(
         sheet_name,
         &chunks,
     );
-    clean_chunks_in_parallel(sheet_data, params, metrics, &chunks, clean_chunk)
+    clean_chunks_in_parallel(
+        sheet_data,
+        params,
+        metrics,
+        &chunks,
+        range_kind,
+        clean_chunk,
+    )
 }
 
 fn log_chunking_plan(
@@ -482,6 +489,7 @@ fn clean_chunks_in_parallel(
     params: &CleanSheetParameters,
     metrics: &mut CleanSheetMetrics,
     chunks: &[RowAlignedChunk],
+    range_kind: &'static str,
     clean_chunk: CleanChunkFn,
 ) -> Result<Vec<u8>> {
     let _profile = profiling::phase(
@@ -522,7 +530,15 @@ fn clean_chunks_in_parallel(
             .map(|(chunk, pending, handoff)| {
                 drop(pending);
                 handoff.finish();
-                clean_chunk_in_isolation(sheet_data, params, &base_metrics, chunk, clean_chunk)
+                clean_chunk_in_isolation(
+                    sheet_data,
+                    params,
+                    &base_metrics,
+                    chunk,
+                    chunks.len(),
+                    range_kind,
+                    clean_chunk,
+                )
             })
             .collect();
 
@@ -543,8 +559,22 @@ fn clean_chunk_in_isolation(
     params: &CleanSheetParameters,
     base_metrics: &CleanSheetMetrics,
     chunk: RowAlignedChunk,
+    chunk_count: usize,
+    range_kind: &'static str,
     clean_chunk: CleanChunkFn,
 ) -> Result<CleanedChunk> {
+    if crate::work_events::should_stop() {
+        return Err(ShrinkError::Interrupted);
+    }
+    let _observed = crate::work_events::TaskGuard::start(
+        &params.xlsx_file_path,
+        &params.zip_info_filename,
+        crate::work_events::TaskKind::Chunk {
+            index: chunk.index,
+            count: chunk_count,
+            range: range_kind,
+        },
+    );
     let _profile = tracing::info_span!(target: "excel_shrink::profile", "clean_range_chunk",
         xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, chunk = chunk.index,
         input_bytes = chunk.end - chunk.start)

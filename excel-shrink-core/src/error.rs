@@ -2,6 +2,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ShrinkError {
+    #[error("Cleanup interrupted by its run controller")]
+    Interrupted,
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 

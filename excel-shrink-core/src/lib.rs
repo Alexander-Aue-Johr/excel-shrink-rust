@@ -15,3 +15,4 @@ pub mod xml;
 mod tests;
 
 pub mod work_priority;
+pub mod work_events;
