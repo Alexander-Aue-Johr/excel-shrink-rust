@@ -73,3 +73,31 @@ sheets qualified for sampling. Two still had whole-grid visual bounds. This is
 an XML extent result, before native geometry partitioning, and supplies no
 end-to-end capture timing for the new planner. Production deployment and a
 normal targeted native control remain separate gates.
+
+## Optimized ordinary-workflow controls
+
+The optimized runtime from `3453df30` was packaged and verified as 114 files.
+Its DeltaSieve executable SHA-256 is
+`56fbbbdf25e120a9dca85fd1dfdd76d95fe6cac7c805836275c5a930b163faf5`.
+The existing bounded Destatis background fixture was reused for two normal
+`run-targeted-comparison.ps1` attempts. `visible_views.py` enabled gridlines in
+both inputs by changing exactly one attribute in each of their two worksheet
+parts. All other member bytes and both source files were checked unchanged.
+
+The ordinary unchanged pair completed with four captures per rebuilt state and
+zero pixel differences. `Jahr` retained the `A1:V619` background envelope and
+three captures. `Titelseite` retained one capture. The report SHA-256 is
+`6b3a7b30aff7c1769263ea654357df67f143e4ff6409ab300b1f9bd8a66c44ec`.
+
+A second pair used the existing deliberate cyan-fill mutation with gridlines
+enabled on both sides. All three selected `Jahr` regions reported pixel
+differences, using three captures per rebuilt state. The variant image was
+visually inspected. The report SHA-256 is
+`707354856023aead9781948b3f61bf93919b2e1be8d4f9d9b471e9967977ae4d`.
+Both attempts completed with the normal explicit coverage limitations, without
+Check Performance. Input/output hashes and exact changed worksheet parts are
+retained in their respective `preparation.json` files.
+
+These controls exercised the ordinary planner, geometry partitioner, transport
+and comparator through the packaged optimized runtime. They did not deploy that
+runtime into the active night study or change any corpus verdict.
