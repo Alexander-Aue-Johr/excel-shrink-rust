@@ -230,7 +230,7 @@ impl Workflow<'_, '_> {
         self.comparison
             .telemetry
             .update(|state| state.step(id, Phase::Discover, StepStatus::Running))?;
-        let xml = self.comparison.snapshots.read(&path)?;
+        let xml = self.read_bounded_snapshot(id, &path)?;
         self.content_bounds.include(&xml);
         self.comparison
             .telemetry
@@ -257,6 +257,73 @@ impl Workflow<'_, '_> {
             },
         );
         Ok(())
+    }
+
+    /// Qualify closed line drawings against this exact saved/rebuilt native state.
+    fn read_bounded_snapshot(&mut self, id: LaneId, path: &Path) -> Result<Snapshot> {
+        let xml = self.comparison.snapshots.read(path)?;
+        if !xml.sheets.values().any(|sheet| {
+            sheet.bottom == 1_048_576 || sheet.right == 16_384
+        }) {
+            return Ok(xml);
+        }
+        let plan = crate::regression::office_plan::build_workbook_visual_plan(path)?;
+        let mut qualified = BTreeSet::new();
+        let digest = crate::regression::artifact_cache::hash_file(path)?;
+        for sheet in plan.sheets.into_iter()
+            .filter(|sheet| sheet.drawing_fallback_required)
+        {
+            // Unsupported OLE, effects and mixed drawings retain their existing fallback.
+            let Ok(lines) = super::ole_metadata::line_frames(path, &sheet.sheet) else {
+                continue;
+            };
+            if lines.is_empty() {
+                continue;
+            }
+            let rectangle = super::content_bounds::Rectangle {
+                top: 1,
+                left: 1,
+                bottom: (sheet.bottom_row + 1).min(1_048_576),
+                right: (sheet.base_right_column + 1).min(16_384),
+            };
+            let area = Candidate {
+                sheet: sheet.sheet.clone(),
+                cell: rectangle.address(),
+            };
+            let host = self.comparison.excel.as_mut()
+                .context("Excel host missing")?;
+            let inventory = host.reference_objects(id, &sheet.sheet, &self.comparison.telemetry)?;
+            let geometries = host.measure_ranges(
+                &[(id, vec![area.clone()])], &self.comparison.telemetry,
+            )?;
+            let result = super::reference_objects::validate_line_sheet(
+                &inventory, &geometries[0], &lines,
+            );
+            self.comparison.report.native_drawing_bounds.push(serde_json::json!({
+                "lane": id.key(), "sheet": sheet.sheet, "workbook_sha256": digest,
+                "area": area, "geometries": geometries[0], "inventory": inventory,
+                "line_frames": lines, "qualified": result.is_ok(),
+                "reason": result.as_ref().err().map(|error| format!("{error:#}")),
+            }));
+            if result.is_ok() {
+                // Capture the qualified object area even when cell XML is unchanged.
+                self.requested_candidates.insert(area);
+                qualified.insert(sheet.sheet);
+            }
+        }
+        if qualified.is_empty() {
+            return Ok(xml);
+        }
+        // Keep qualified snapshots out of the archive-only audit cache. A later
+        // state needs its own native observations even when archive bytes match.
+        let bounded = Snapshot::read_with_bounded_drawings(
+            path, &self.comparison.args.output.join("xml-scratch"), &qualified,
+        )?;
+        ensure!(
+            crate::regression::artifact_cache::hash_file(path)? == digest,
+            "Workbook changed during native drawing qualification"
+        );
+        Ok(bounded)
     }
 
     /// Enumerate rebuilt chart identities and live placement before deciding which images are needed.

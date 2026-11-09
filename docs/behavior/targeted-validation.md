@@ -1419,3 +1419,24 @@ directory. A path outside that workbook remains an error. This compatibility
 does not alter raw reports or comparison verdicts. Missing measurements must
 remain distinguishable from zero changed pixels.
 
+### Native-qualified horizontal lines and background tails
+
+A saved or rebuilt state with a full-grid visual extent can qualify a closed
+horizontal-line drawing through both XML metadata and the native object
+inventory. Every object must belong to that family. Names and point frames must
+match one-to-one, with zero rotation. The finite worksheet rectangle must contain
+each line plus half its stroke width and two points of rasterization context.
+Unknown drawing templates and additional objects retain the existing fallback.
+
+The report retains the workbook SHA-256, lane, sheet, supplied rectangle, measured
+geometry, complete native inventory, line metadata and qualification outcome in
+`native_drawing_bounds`. The qualified snapshot is separate from the archive-only
+XML audit cache. Each observed state must establish its own native qualification.
+The archive hash is checked again after reading its qualified snapshot.
+
+Qualification permits the existing inherited-background proof to run. It does
+not discard explicit cells, column-style boundaries or other worksheet blockers.
+The supplied object rectangle is always requested for capture, including when
+cell XML is unchanged. Failed native commands remain errors. A failed envelope
+qualification retains the ordinary fallback and its reason in the report.
+

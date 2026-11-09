@@ -106,6 +106,15 @@ impl Snapshot {
 
     /// Select scratch ownership explicitly for retained analyses in corpus attempts.
     pub fn read_with_scratch(path: &Path, scratch: &Path) -> Result<Self> {
+        Self::read_with_bounded_drawings(path, scratch, &BTreeSet::new())
+    }
+
+    /// Native-qualified drawings affect only this snapshot's background-tail bounds.
+    pub(super) fn read_with_bounded_drawings(
+        path: &Path,
+        scratch: &Path,
+        bounded_drawings: &BTreeSet<String>,
+    ) -> Result<Self> {
         let plan = build_workbook_visual_plan(path)?;
         let mut archive = ZipArchive::new(File::open(path)?)?;
         let mut workbook = Vec::new();
@@ -139,7 +148,7 @@ impl Snapshot {
                 &styles,
                 &style_identity,
                 &solid_fills,
-                !sheet.drawing_fallback_required,
+                !sheet.drawing_fallback_required || bounded_drawings.contains(&sheet.sheet),
             )?;
             sheets.insert(sheet.sheet, model);
         }
@@ -1086,6 +1095,33 @@ mod tests {
             drop(archive);
             std::fs::remove_file(path)?;
         }
+        Ok(())
+    }
+
+    /// Inspect retained states without opening Excel or changing corpus results.
+    #[test]
+    #[ignore = "Requires LINE_DIAG_REFERENCE with the retained Abwasser native inventory"]
+    fn retained_abwasser_native_lines_bound_background_tail() -> Result<()> {
+        let receipt = std::path::PathBuf::from(std::env::var("LINE_DIAG_REFERENCE")?);
+        let report: serde_json::Value = serde_json::from_slice(&std::fs::read(&receipt)?)?;
+        let workbook = receipt.parent().unwrap().join("original.xlsx");
+        assert_eq!(crate::regression::artifact_cache::hash_file(&workbook)?,
+            report["original_rebuilt_sha256"].as_str().unwrap());
+        let observation = &report["object_coverage"][0];
+        let lines = super::super::ole_metadata::line_frames(&workbook, "Inhalt")?;
+        let areas: Vec<super::super::capture_layout::Geometry> =
+            serde_json::from_value(observation["areas"].clone())?;
+        super::super::reference_objects::validate_line_sheet(&observation["inventory"], &areas, &lines)?;
+        let raw = Snapshot::read(&workbook)?;
+        let bounded = Snapshot::read_with_bounded_drawings(&workbook, &std::env::temp_dir(),
+            &BTreeSet::from(["Inhalt".to_owned()]))?;
+        assert_eq!(raw.sheets["Inhalt"].visual_bounds.unwrap().bottom, 1_048_576);
+        let bounds = bounded.sheets["Inhalt"].visual_bounds.unwrap();
+        assert_eq!(bounds.bottom, 50);
+        // The saved workbook still has a distant column-style boundary. Keep it.
+        assert_eq!(bounds.right, 16_136);
+        assert!(bounded.sheets["Inhalt"].background_tail_sampling);
+        assert!(raw.changes(&bounded)?.is_empty());
         Ok(())
     }
 

@@ -402,3 +402,30 @@ completed in the launcher observations. No result is recorded as a successful
 new native qualification. The Computer Use window listing also timed out after
 its prescribed retry and session reset. Existing corpus capture batches and
 Check Performance preparations continued making progress during these failures.
+
+## State-specific background-tail qualification
+
+The staged comparison now uses the closed line family to qualify finite
+background-tail analysis. Qualification is attempted only for full-grid extents
+with drawing fallback. It requires the complete native object inventory to
+consist of the recognized horizontal lines. Their identities and frames must
+match, and stroke-expanded envelopes must fit inside the finite supplied area.
+The entire supplied area is requested for capture even if cell XML is unchanged.
+Each open-save and rebuilt state establishes a separate qualification. Receipts
+include the exact workbook hash and remain separate from the raw XML audit cache.
+
+`retained_abwasser_native_lines_bound_background_tail` verifies the actual
+hash-bound rebuilt `abwasser-oeffentlich-2190212199005.xlsx`, sheet `Inhalt`,
+against the retained native inventory. Its original visual envelope reaches row
+1,048,576. The qualified envelope ends at row 50. A distant column-format
+boundary at column 16,136 remains represented. Cell and layout differences
+between the two snapshots are empty. The earlier assumption that both dimensions
+would become small was rejected by this test and corrected.
+
+The targeted suite passed 159 tests with 18 integration tests ignored. This
+retained-workbook test and the retained native line-inventory test were then run
+explicitly and passed. The first build failed because its temporary linker path
+was unavailable. An initial integration invocation also selected a different
+diagnostic requiring additional environment variables. Both failed invocations
+precede the successful explicit tests. Fresh native startup remains unresolved,
+so this source change has not replaced either running long capture attempt.

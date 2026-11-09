@@ -219,6 +219,7 @@ pub(super) fn new_report() -> Report {
         height_checks: Vec::new(),
         conditional_formatting: Vec::new(),
         chart_dependencies: Vec::new(),
+        native_drawing_bounds: Vec::new(),
         comparisons: Vec::new(),
         formula_diagnostics: Value::Null,
         candidate_count: 0,

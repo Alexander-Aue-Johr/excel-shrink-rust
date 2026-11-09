@@ -70,6 +70,19 @@ fn validate(inventory: &Value, areas: &[Geometry]) -> Result<()> {
     validate_with_lines(inventory, areas, &[])
 }
 
+/// Background-tail qualification accounts for every object through the closed line family.
+pub(super) fn validate_line_sheet(
+    inventory: &Value,
+    areas: &[Geometry],
+    lines: &[super::ole_metadata::LineFrame],
+) -> Result<()> {
+    let objects = inventory["objects"].as_array().context("Native object inventory missing")?;
+    ensure!(!lines.is_empty() && objects.len() == lines.len()
+        && objects.iter().all(|object| object["kind"] == "GeometricShape"),
+        "Native sheet contains objects outside the closed line family");
+    validate_with_lines(inventory, areas, lines)
+}
+
 fn validate_with_lines(
     inventory: &Value,
     areas: &[Geometry],
@@ -180,6 +193,7 @@ mod tests {
         assert_eq!(lines.len(), 2);
         let areas: Vec<Geometry> = serde_json::from_value(observation["areas"].clone())?;
         validate_with_lines(&observation["inventory"], &areas, &lines)?;
+        validate_line_sheet(&observation["inventory"], &areas, &lines)?;
         Ok(())
     }
 
@@ -196,6 +210,11 @@ mod tests {
         }]});
         let area = Geometry { top: 0.0, left: 0.0, width: 100.0, height: 100.0 };
         validate_with_lines(&inventory, &[area], std::slice::from_ref(&line))?;
+        validate_line_sheet(&inventory, &[area], std::slice::from_ref(&line))?;
+        let mut extra = inventory.clone();
+        extra["objects"].as_array_mut().unwrap().push(json!({"kind":"Image"}));
+        assert!(validate_line_sheet(&extra, &[area], std::slice::from_ref(&line)).is_err());
+        assert!(validate_line_sheet(&json!({"objects":[]}), &[area], &[]).is_err());
         assert!(validate(&inventory, &[area]).is_err());
         assert!(validate_with_lines(&inventory, &[line.geometry], std::slice::from_ref(&line)).is_err());
         let mut moved = inventory.clone();
