@@ -18,6 +18,12 @@ and reads no local workbook or network source. The web endpoint uses the existin
 local-request checks. Full workbook manifests remain embedded in the executable;
 they are omitted from this compact selection response.
 
+Source-only collections can also appear with `acquisition_ready=false` and an
+unknown workbook count. The Enron EDRM v2 entry contains a multi-ZIP source
+inventory while its extraction recipe and output inventory are pending. Such an
+entry is visible but disabled in the selectors and rejected by the start API.
+Its import and provenance contract is in [Enron v2 import](enron-edrm-v2-import.md).
+
 `deltasieve corpus-inspect --profile <id> --artifacts <directory>` verifies the
 extracted originals. `deltasieve corpus-prepare --profile <id> --artifacts
 <directory> --cache <directory> [--archive <zip>]` restores missing originals.

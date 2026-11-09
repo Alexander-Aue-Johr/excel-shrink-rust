@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, fs, path::Path};
 
 mod acquisition;
+mod source_profile;
 
 pub(crate) use acquisition::{prepare, prepare_with_progress};
 
@@ -88,6 +89,7 @@ pub(crate) fn catalog() -> Result<Value> {
             "workbook_bytes": profile.workbooks.iter().map(|item| item.bytes).sum::<u64>(),
         }));
     }
+    profiles.push(source_profile::enron_catalog_entry()?);
     Ok(json!({"version": 1, "profiles": profiles}))
 }
 

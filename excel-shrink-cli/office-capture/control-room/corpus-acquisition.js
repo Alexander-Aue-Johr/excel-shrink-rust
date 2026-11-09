@@ -30,7 +30,9 @@ export async function installCorpusAcquisition({ api, message, session }) {
   select.replaceChildren(...catalog.profiles.map(profile => {
     const option = document.createElement('option');
     option.value = profile.id;
-    option.textContent = profile.name;
+    option.textContent = profile.acquisition_ready === false
+      ? `${profile.name} (awaiting extraction package)` : profile.name;
+    option.disabled = profile.acquisition_ready === false;
     return option;
   }));
   byId('corpus-cache').value = session.corpus_download_cache;
@@ -38,6 +40,10 @@ export async function installCorpusAcquisition({ api, message, session }) {
   function selectedProfile() {
     const profile = catalog.profiles.find(item => item.id === select.value);
     if (!profile) return;
+    if (profile.acquisition_ready === false) {
+      byId('corpus-profile-details').textContent = `${profile.archive_count} source archives · extraction recipe and workbook manifest pending`;
+      return;
+    }
     const artifacts = byId('corpus-artifacts');
     if (!artifacts.value || artifacts.value === suggestedArtifacts) {
       suggestedArtifacts = `${session.corpus_artifacts_root.replace(/[\\/]+$/, '')}/${profile.id}`;

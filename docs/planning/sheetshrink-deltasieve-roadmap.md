@@ -18,6 +18,15 @@ Imported artifacts must retain their external-generation provenance and verified
 file identities. A converted XLSX is the saved baseline for an XLS original.
 SheetShrink and Check Performance preparations remain distinct producers.
 
+The version-2 source profile now freezes all 159 URLs, byte lengths and upstream
+SHA-1/MD5 values. The compact catalog exposes it with unknown workbook coverage
+and acquisition disabled pending the extraction package. The generator is tested
+with split archives, unsafe/duplicate names and malformed identities. Rust checks
+the embedded source list and rejects premature acquisition. The detailed import
+requirements are in `../behavior/enron-edrm-v2-import.md`. No source ZIP was fetched
+for this metadata preparation. The user expects to supply scripts and artifacts
+after extraction finishes on the other machine.
+
 ## Active Enron and web-start checkpoint on 2026-11-09
 
 Enron is running under the explicitly selected v10 warm-worker implementation

@@ -36,7 +36,7 @@ test('profile controls preserve custom storage and render an independently runni
   const element = (value = '') => ({
     value, listeners: new Map(),
     addEventListener(name, listener) { this.listeners.set(name, listener); },
-    replaceChildren(...options) { this.value = options[0]?.value || ''; },
+    replaceChildren(...options) { this.options = options; this.value = options[0]?.value || ''; },
   });
   const ids = Object.fromEntries([
     'corpus-acquisition', 'corpus-profile', 'corpus-cache', 'corpus-artifacts',
@@ -52,6 +52,7 @@ test('profile controls preserve custom storage and render an independently runni
     id, name: id, workbook_count: 3,
     archive: { bytes: 1024, url: 'https://example.org/archive.zip', sha256: 'a'.repeat(64) },
   }));
+  profiles.push({ id: 'enron-edrm-v2', name: 'Enron EDRM v2 XML', acquisition_ready: false, archive_count: 159 });
   const calls = [];
   const api = async (url, body) => {
     calls.push({ url, body });
@@ -63,6 +64,8 @@ test('profile controls preserve custom storage and render an independently runni
       api, message() {}, session: { corpus_artifacts_root: 'V:/artifacts/', corpus_download_cache: 'V:/cache' },
     });
     assert.equal(ids['corpus-artifacts'].value, 'V:/artifacts/datagov');
+    assert.equal(ids['corpus-profile'].options[2].disabled, true);
+    assert.match(ids['corpus-profile'].options[2].textContent, /awaiting extraction package/);
     ids['corpus-artifacts'].value = 'R:/custom-originals';
     ids['corpus-profile'].value = 'destatis';
     ids['corpus-profile'].listeners.get('change')();

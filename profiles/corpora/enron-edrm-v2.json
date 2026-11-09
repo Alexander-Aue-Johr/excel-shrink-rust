@@ -1,0 +1,1133 @@
+{
+  "version": 2,
+  "id": "enron-edrm-v2",
+  "name": "Enron EDRM v2 XML",
+  "source": {
+    "identifier": "edrm.enron.email.data.set.v2.xml",
+    "url": "https://archive.org/details/edrm.enron.email.data.set.v2.xml",
+    "metadata_url": "https://archive.org/metadata/edrm.enron.email.data.set.v2.xml",
+    "title": "EDRM Enron Email Data Set v2 XML",
+    "creator": "Enron",
+    "retrieved_at": "2026-11-09T01:20:11.5338609Z",
+    "metadata_document_sha256": "13f76bd495ece88a76cc374432d785073e0e6698927e230731c4b12b5cc1ca32"
+  },
+  "archives": [
+    {
+      "name": "edrm-enron-v2_allen-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_allen-p_xml.zip",
+      "bytes": 889346061,
+      "sha1": "26f63439661c2eb8e240ce054b059ee65eef0374",
+      "md5": "ee1a24f74f7a9aea0daf1ae36ad408d3"
+    },
+    {
+      "name": "edrm-enron-v2_arnold-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_arnold-j_xml.zip",
+      "bytes": 490663359,
+      "sha1": "1d95dc1a34920f5a8255421adf34d89112f7f783",
+      "md5": "06cb61b22615bb4be01e2536a15284c8"
+    },
+    {
+      "name": "edrm-enron-v2_arora-h_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_arora-h_xml.zip",
+      "bytes": 44594541,
+      "sha1": "3af82a21a9d5a6b9b29ba8591058318501c838e8",
+      "md5": "f8c53b2c4bece686594f69bde28bee28"
+    },
+    {
+      "name": "edrm-enron-v2_badeer-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_badeer-r_xml.zip",
+      "bytes": 127943799,
+      "sha1": "e671c05e17cf1714605558a34779940ce1765786",
+      "md5": "57e5cd97ab82068306ba2c3986bbe6fa"
+    },
+    {
+      "name": "edrm-enron-v2_bailey-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_bailey-s_xml.zip",
+      "bytes": 17260560,
+      "sha1": "05b6dc822617b596685e0239c32b6605e8f9506c",
+      "md5": "e328de16ff6b1c08915ae8af82a7c086"
+    },
+    {
+      "name": "edrm-enron-v2_bass-e_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_bass-e_xml.zip",
+      "bytes": 450001563,
+      "sha1": "ce32c458a3a5657c68a45c5c89abe631f3433ae4",
+      "md5": "8cfdf216e5cfbe1da5e5681540436817"
+    },
+    {
+      "name": "edrm-enron-v2_baughman-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_baughman-d_xml.zip",
+      "bytes": 259415007,
+      "sha1": "becdf95489055d8e0f1a8ce99daf7d0ff9bd3a52",
+      "md5": "3005e847f7a80c355b0c51eb8eee9f26"
+    },
+    {
+      "name": "edrm-enron-v2_beck-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_beck-s_xml.zip",
+      "bytes": 1873264813,
+      "sha1": "b4c3ad61d0ee28d242a29c559ee79ca04dd94797",
+      "md5": "f4f1f7e18074c52c8d6e8a9c7143524b"
+    },
+    {
+      "name": "edrm-enron-v2_benson-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_benson-r_xml.zip",
+      "bytes": 64577847,
+      "sha1": "16fde581e1fa676799107b6d51b34d2780d0f092",
+      "md5": "822f91368b3418cf5d8db56b65f60c22"
+    },
+    {
+      "name": "edrm-enron-v2_blair-l_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_blair-l_xml.zip",
+      "bytes": 87441882,
+      "sha1": "b4914d268065d3357b95c80c9e02f798e71b727a",
+      "md5": "64c59d87748b78d81e6137dcb16d3be6"
+    },
+    {
+      "name": "edrm-enron-v2_brawner-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_brawner-s_xml.zip",
+      "bytes": 56632959,
+      "sha1": "18bfaae7549aa1123a3eeb40b95fde792bbf0cd4",
+      "md5": "4297ea6a562c4929466b76ebda10f0ef"
+    },
+    {
+      "name": "edrm-enron-v2_buy-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_buy-r_xml.zip",
+      "bytes": 272464809,
+      "sha1": "52decc1f4d055905f3e163637c92a39118007ee6",
+      "md5": "0373ee30a922091272c90cb54149279b"
+    },
+    {
+      "name": "edrm-enron-v2_campbell-l_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_campbell-l_xml.zip",
+      "bytes": 576737388,
+      "sha1": "f5330bbc36475a5bf4bc88252603273d12d20176",
+      "md5": "708170122cce0a3d753270f44314ede8"
+    },
+    {
+      "name": "edrm-enron-v2_carson-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_carson-m_xml.zip",
+      "bytes": 44536173,
+      "sha1": "c7379a0d0d7297c6b33b599dfa97150b76e47e25",
+      "md5": "e27a61e550d1c313fab4ee2c8897db94"
+    },
+    {
+      "name": "edrm-enron-v2_cash-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_cash-m_xml.zip",
+      "bytes": 133295320,
+      "sha1": "6079aad57ede4976c5acad9f4c219deeb4112881",
+      "md5": "1c65110479083575bcc0dadbbbda6b24"
+    },
+    {
+      "name": "edrm-enron-v2_causholli-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_causholli-m_xml.zip",
+      "bytes": 142681628,
+      "sha1": "96d88ed8d18630862717302a486bb414ea467dc6",
+      "md5": "fee6d71b496b2bb3e765191d64d667ef"
+    },
+    {
+      "name": "edrm-enron-v2_corman-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_corman-s_xml.zip",
+      "bytes": 78069175,
+      "sha1": "3f1ff605089915af6a66c14d45ece658af512c91",
+      "md5": "bcedd58a6a195ba77a83cb70501ae54d"
+    },
+    {
+      "name": "edrm-enron-v2_crandall-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_crandall-s_xml.zip",
+      "bytes": 55215344,
+      "sha1": "0ae62bf66532ad7b9a80852e711bd251f61988d5",
+      "md5": "befa8a35b0f41b968e2af9a29ae6073b"
+    },
+    {
+      "name": "edrm-enron-v2_cuilla-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_cuilla-m_xml.zip",
+      "bytes": 57626649,
+      "sha1": "444bc9fe5a0a736d77caf089eac1c2b9fc81a907",
+      "md5": "9a60872c13589e19c4a54bb97713b63b"
+    },
+    {
+      "name": "edrm-enron-v2_dasovich-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_dasovich-j_xml.zip",
+      "bytes": 3987955738,
+      "sha1": "0322da2faa79563f63d1479f8888b1678bc37e42",
+      "md5": "f12c2b92a03c51c7d5a9e9b29f010fd4"
+    },
+    {
+      "name": "edrm-enron-v2_davis-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_davis-d_xml.zip",
+      "bytes": 524335598,
+      "sha1": "dd8b53f7645af4e1d725601e7d02da05726d6e9a",
+      "md5": "3142dd63728c7847f6529fcc8c34d59c"
+    },
+    {
+      "name": "edrm-enron-v2_dean-c2_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_dean-c2_xml.zip",
+      "bytes": 21942092,
+      "sha1": "8e6ceb254540b89fae81910072f5dbdfd45a9af9",
+      "md5": "1c8b09e862535010ac651fd19bc85702"
+    },
+    {
+      "name": "edrm-enron-v2_dean-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_dean-c_xml.zip",
+      "bytes": 203515004,
+      "sha1": "7be08d1bb10bf436def9d18c48c379e7f2852dd3",
+      "md5": "37569068c4a8e553488631432ab2da64"
+    },
+    {
+      "name": "edrm-enron-v2_delainey-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_delainey-d_xml.zip",
+      "bytes": 184500353,
+      "sha1": "fde9ff4a6c8bc8152a04fdb0dd1e459bf7ac4066",
+      "md5": "5d5d0d26cbe16ba7e96742f48d2c8a5f"
+    },
+    {
+      "name": "edrm-enron-v2_derrick-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_derrick-j_xml.zip",
+      "bytes": 99962258,
+      "sha1": "ef05c6111c906f9913320d03406f8acf786b103c",
+      "md5": "9eb973008c50857a8f989c24917b5d12"
+    },
+    {
+      "name": "edrm-enron-v2_dickson-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_dickson-s_xml.zip",
+      "bytes": 43896359,
+      "sha1": "7bbde6e4a7f6dd6e0be48038dfb575b008c16150",
+      "md5": "5b93b107dd72378a0172a0806237de74"
+    },
+    {
+      "name": "edrm-enron-v2_donoho-l_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_donoho-l_xml.zip",
+      "bytes": 47112653,
+      "sha1": "34fa536f7caa1bd7a0bec00aa49195824c25dae5",
+      "md5": "9d4bfe509d2cf8a262117233af681d6d"
+    },
+    {
+      "name": "edrm-enron-v2_donohoe-t_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_donohoe-t_xml.zip",
+      "bytes": 107874895,
+      "sha1": "2cac7f4f2b5a90022122b9f55241655ddfe7c80c",
+      "md5": "c4dcf5d27b5811b19e56e01b5ba02f41"
+    },
+    {
+      "name": "edrm-enron-v2_dorland-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_dorland-c_xml.zip",
+      "bytes": 960364365,
+      "sha1": "b9362d13012edfea73089358105158fae5fa3c07",
+      "md5": "61f207f669d399de1d9f057e7b4ee3cb"
+    },
+    {
+      "name": "edrm-enron-v2_ermis-f_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_ermis-f_xml.zip",
+      "bytes": 118711096,
+      "sha1": "a1c7f80bd4ed944dfec394ff553a6fbade8a8554",
+      "md5": "7b8d9d19314b5e7d2727528668eca099"
+    },
+    {
+      "name": "edrm-enron-v2_farmer-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_farmer-d_xml.zip",
+      "bytes": 765165147,
+      "sha1": "5a77e5fd46e6a5da3be15bdadf8d8c16e8f56930",
+      "md5": "f94ddf860637b28fe7d46e7c8c8bf415"
+    },
+    {
+      "name": "edrm-enron-v2_fischer-m2_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_fischer-m2_xml.zip",
+      "bytes": 37965636,
+      "sha1": "74a77838351be87fa92c6065e0409731c42529d9",
+      "md5": "75fc03dbb5a6c61f69aa6c55d5362a33"
+    },
+    {
+      "name": "edrm-enron-v2_fischer-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_fischer-m_xml.zip",
+      "bytes": 252288398,
+      "sha1": "df724416001375f577ab1b75eab18526b8025e67",
+      "md5": "1ccd3a86c9708d9ca3f172e0472090fa"
+    },
+    {
+      "name": "edrm-enron-v2_forney-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_forney-j_xml.zip",
+      "bytes": 33194890,
+      "sha1": "ed8047628e000db510164373022ac81a295145c5",
+      "md5": "ea12456b8a79986b5fa3e48090a2d6f6"
+    },
+    {
+      "name": "edrm-enron-v2_fossum-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_fossum-d_xml.zip",
+      "bytes": 239818429,
+      "sha1": "a6f27ba31a30451be344ae78ac6fa311f027718a",
+      "md5": "1925b0468e577c740b6db55a6fcc6742"
+    },
+    {
+      "name": "edrm-enron-v2_gang-l_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_gang-l_xml.zip",
+      "bytes": 49259531,
+      "sha1": "7b7b626982ab9e512840016bed96fa521d1eb3c6",
+      "md5": "ea9a4d8cb063c85fe7c1985fff5abd40"
+    },
+    {
+      "name": "edrm-enron-v2_gay-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_gay-r_xml.zip",
+      "bytes": 244076638,
+      "sha1": "4e16d28eaab72d4212c6dfbb1f05797c85483451",
+      "md5": "5ea09b10d30305faa34129a89fd692d8"
+    },
+    {
+      "name": "edrm-enron-v2_geaccone-t_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_geaccone-t_xml.zip",
+      "bytes": 106286998,
+      "sha1": "e640340d5417f53576dd0409b3255c8a52de662c",
+      "md5": "32e73d6d1bc9e0dbeaac1475c9fa82d4"
+    },
+    {
+      "name": "edrm-enron-v2_germany-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_germany-c_xml.zip",
+      "bytes": 471398722,
+      "sha1": "b24e787737dcd2326946ae3d0f5992f1a080e3a9",
+      "md5": "c78a97d7e361302416c1547183fa1187"
+    },
+    {
+      "name": "edrm-enron-v2_gilbertsmith-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_gilbertsmith-d_xml.zip",
+      "bytes": 63844125,
+      "sha1": "23e609389473079865016caaca88963c0bf77919",
+      "md5": "581ceb617d09c21dbbc73cab075e22a3"
+    },
+    {
+      "name": "edrm-enron-v2_giron-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_giron-d_xml.zip",
+      "bytes": 972164351,
+      "sha1": "97cfc0af66a7f925c6287ca25b7626a45a5e03ae",
+      "md5": "841cd36ce51b06111dbf11ad1ecf6ae9"
+    },
+    {
+      "name": "edrm-enron-v2_griffith-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_griffith-j_xml.zip",
+      "bytes": 434680674,
+      "sha1": "c03644029edf8e88c4f6868f106cfdb03a8564ca",
+      "md5": "cef15c564a0f717b75577193c5cf6357"
+    },
+    {
+      "name": "edrm-enron-v2_grigsby-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_grigsby-m_xml.zip",
+      "bytes": 355567859,
+      "sha1": "46bf2cd7a454cdd2c852c309a0a2d56a07d673de",
+      "md5": "cd5812a3c2bf976ce51d437ef606e598"
+    },
+    {
+      "name": "edrm-enron-v2_guzman-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_guzman-m_xml.zip",
+      "bytes": 161944903,
+      "sha1": "42207bdb63d3394976be7cc5140f5029abe02055",
+      "md5": "b776f0554c1dcd419c03b9e96dec221b"
+    },
+    {
+      "name": "edrm-enron-v2_haedicke-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_haedicke-m_xml.zip",
+      "bytes": 646360536,
+      "sha1": "951f56fe6e89ed2ab3a0890a0a30ceee7b17192b",
+      "md5": "895134bd94f22800bd0911bd4515ff78"
+    },
+    {
+      "name": "edrm-enron-v2_hain-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hain-m_xml.zip",
+      "bytes": 303475278,
+      "sha1": "1b5297d4180f5dec136be0c511b82bc39a7d46fe",
+      "md5": "d0f02a2f9f9f13d29393372bfbdfbac4"
+    },
+    {
+      "name": "edrm-enron-v2_harris-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_harris-s_xml.zip",
+      "bytes": 6027493,
+      "sha1": "ce974e24aafd4b5a06ab4f87ea4e79c9fad4face",
+      "md5": "3fc327d0699b9b19068638d6801a6581"
+    },
+    {
+      "name": "edrm-enron-v2_hayslett-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hayslett-r_xml.zip",
+      "bytes": 129012407,
+      "sha1": "4c4ecd705ea6859dc380067e0815960a3cc5c526",
+      "md5": "88e79cdfdf2666f8edf060235bb8b3fa"
+    },
+    {
+      "name": "edrm-enron-v2_heard-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_heard-m_xml.zip",
+      "bytes": 85256413,
+      "sha1": "244e1046d34a45e4494d3c9c376e8b0b3ea87ebe",
+      "md5": "32dbfb25ba82a9e4a181972dd0485bf3"
+    },
+    {
+      "name": "edrm-enron-v2_hendrickson-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hendrickson-s_xml.zip",
+      "bytes": 25774051,
+      "sha1": "8a9772d7de2fbd6083b5e3cab8af20e4ad784347",
+      "md5": "4a0e0cf175c56692c7117d18282aac54"
+    },
+    {
+      "name": "edrm-enron-v2_hernandez-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hernandez-j_xml.zip",
+      "bytes": 230800338,
+      "sha1": "5cd9910fa11663a9cd31be4595ff645a950d56fe",
+      "md5": "2f01a39c0481df901c4e0590e3f2753c"
+    },
+    {
+      "name": "edrm-enron-v2_hodge-j2_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hodge-j2_xml.zip",
+      "bytes": 46841813,
+      "sha1": "456ad30e00832b84705181d48540c0b6ea14217a",
+      "md5": "bea3df953a84cac9887116f76cffa955"
+    },
+    {
+      "name": "edrm-enron-v2_hodge-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hodge-j_xml.zip",
+      "bytes": 70057424,
+      "sha1": "dd6fb4fe12b71b5a3032819bc288cd9cd60533a9",
+      "md5": "92b2fa11f7304ff38bac6608a7a948e9"
+    },
+    {
+      "name": "edrm-enron-v2_holst-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_holst-k_xml.zip",
+      "bytes": 43070243,
+      "sha1": "9d79f1e0254fcb4d5f0ab82c8d4cd3e83adab768",
+      "md5": "6a3af4af06be18ab815a8f8fe4e60ad6"
+    },
+    {
+      "name": "edrm-enron-v2_horton-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_horton-s_xml.zip",
+      "bytes": 126784336,
+      "sha1": "1e82bb7b43daa854c82fe34626c26abe61a4601b",
+      "md5": "43f3cf94d064de7137e05b7d0cc358d3"
+    },
+    {
+      "name": "edrm-enron-v2_hyatt-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hyatt-k_xml.zip",
+      "bytes": 154232340,
+      "sha1": "91d3e48533debe80c03e66e07c143b199b22d376",
+      "md5": "862e8cd718a3f25b74fb6be90c924e20"
+    },
+    {
+      "name": "edrm-enron-v2_hyvl-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_hyvl-d_xml.zip",
+      "bytes": 344582300,
+      "sha1": "2dd9339e22af6a4a67689c27b289eb048752da9e",
+      "md5": "bfca0a4d94d96dd98ab2a2a9db48e373"
+    },
+    {
+      "name": "edrm-enron-v2_jones-t_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_jones-t_xml.zip",
+      "bytes": 1433832722,
+      "sha1": "b665f85799e2381b4c065d54890398aab7cff3ea",
+      "md5": "d09339944d98506f2cce0aa758bf43f6"
+    },
+    {
+      "name": "edrm-enron-v2_kaminski-v_xml_1of2.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kaminski-v_xml_1of2.zip",
+      "bytes": 4114600777,
+      "sha1": "07ff00fc923122515157cb7d288bf25e5cc3e901",
+      "md5": "957ce8e45994f848b082d189eaa21a34"
+    },
+    {
+      "name": "edrm-enron-v2_kaminski-v_xml_2of2.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kaminski-v_xml_2of2.zip",
+      "bytes": 3298792295,
+      "sha1": "fc2827e4300d40a2ff584fe35f472317ac21ef21",
+      "md5": "75767bf2218c1c8371c54d48ca714f23"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_1of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_1of8.zip",
+      "bytes": 3366510249,
+      "sha1": "25eaa28e14d6af0f92db1ac24a42dd62c72af724",
+      "md5": "b384828ca28e6019a4ba6ae8dca09ff4"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_2of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_2of8.zip",
+      "bytes": 3541527437,
+      "sha1": "a45f25a2a91bba1ecb8bfd8d4399f87492ce27c2",
+      "md5": "98f8c77f250b444b6e17bed579dd635d"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_3of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_3of8.zip",
+      "bytes": 2278919986,
+      "sha1": "b0a14b059c4658e29a7c3775da73961ac72d83b7",
+      "md5": "7a61444424514711df19862d9ebca957"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_4of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_4of8.zip",
+      "bytes": 3143957518,
+      "sha1": "31f30b66985f2fe3c4b097f350ac1af6d31fd799",
+      "md5": "0bbb3fd34dfc7e7d071ba9eb7164733e"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_5of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_5of8.zip",
+      "bytes": 2935430868,
+      "sha1": "8c193acc5cc7a54bdac32ace91cb0ccdcd4624ac",
+      "md5": "5071a189768b1150099adbd7ca5b0de2"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_6of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_6of8.zip",
+      "bytes": 1839033325,
+      "sha1": "ed4cd4645299aa79134a8a632a6d58e31b83f51a",
+      "md5": "259453c07afad9e3f915923caffe56d8"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_7of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_7of8.zip",
+      "bytes": 3245248519,
+      "sha1": "cb0da819a22aac2f2abeb14a750634b607af2861",
+      "md5": "f98b9af310193f1a35c9a79a99066a4e"
+    },
+    {
+      "name": "edrm-enron-v2_kean-s_xml_8of8.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kean-s_xml_8of8.zip",
+      "bytes": 2327652926,
+      "sha1": "d9946f152ba755cc6b1b4a2a14fe6a8d9a50c56c",
+      "md5": "bb1a7da2a1faa8dfa75f5c206ac14b20"
+    },
+    {
+      "name": "edrm-enron-v2_keavey-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_keavey-p_xml.zip",
+      "bytes": 76674843,
+      "sha1": "e228c9fc4c26aa56896c9229ea664ad4e0638427",
+      "md5": "a7b6608a92c196797e63acc1c7f78fea"
+    },
+    {
+      "name": "edrm-enron-v2_keiser-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_keiser-k_xml.zip",
+      "bytes": 107503893,
+      "sha1": "3e15ebe37da4578a5a75762639f9d3c26b0ea110",
+      "md5": "d2c1eec369b193e6e3f0a539a3285b81"
+    },
+    {
+      "name": "edrm-enron-v2_king-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_king-j_xml.zip",
+      "bytes": 19867684,
+      "sha1": "dd6fc595ad80030b0a0231ba44d5f5fa0976857c",
+      "md5": "e3b32e617db976b394179d89c957e0a5"
+    },
+    {
+      "name": "edrm-enron-v2_kitchen-l_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kitchen-l_xml.zip",
+      "bytes": 561667469,
+      "sha1": "ed6483c5b8febe10ba05a9c6e73dbf7c7cdc2918",
+      "md5": "84171a885b4a4b59c6e56542b1b6a84d"
+    },
+    {
+      "name": "edrm-enron-v2_kuykendall-t_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_kuykendall-t_xml.zip",
+      "bytes": 89629860,
+      "sha1": "6bc8d5a7a6838effb783cabcc05a72eedc2f41eb",
+      "md5": "aaac05f305f937274484c0383c9b05ca"
+    },
+    {
+      "name": "edrm-enron-v2_lavorato-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_lavorato-j_xml.zip",
+      "bytes": 864434617,
+      "sha1": "faa453f533927c17ae7de53182272db2dc9e46a9",
+      "md5": "ef8cf462a4964ee3952fd7d8c4ddb43e"
+    },
+    {
+      "name": "edrm-enron-v2_lay-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_lay-k_xml.zip",
+      "bytes": 263547355,
+      "sha1": "ab1a2b73e04519e49c4fc868f54314b75d3164f6",
+      "md5": "63dedc833ea1c05c8df58d45c8bc5b3f"
+    },
+    {
+      "name": "edrm-enron-v2_lenhart-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_lenhart-m_xml.zip",
+      "bytes": 2527948698,
+      "sha1": "5129e2d19ae4964b5eb3eadc75a1ebe84dc23b90",
+      "md5": "5732f47646cf5b96d9423c4e65d00f2e"
+    },
+    {
+      "name": "edrm-enron-v2_lewis-a_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_lewis-a_xml.zip",
+      "bytes": 114201459,
+      "sha1": "ede8ee6a8710c70828d88ca13d14d58d43cc640d",
+      "md5": "5d847a7b217f742f5ad77d54c95e5517"
+    },
+    {
+      "name": "edrm-enron-v2_linder-e_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_linder-e_xml.zip",
+      "bytes": 59278006,
+      "sha1": "a11fddce53b5a989b0cd6dd02669909aafa505f3",
+      "md5": "08494414768a9e126cff7b6d94df7b19"
+    },
+    {
+      "name": "edrm-enron-v2_lokay-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_lokay-m_xml.zip",
+      "bytes": 385972362,
+      "sha1": "b1a4d72ff6f5c97a22b7152a5457691b0e9630df",
+      "md5": "92723c4dc6a225fe01bc9276d71a8db4"
+    },
+    {
+      "name": "edrm-enron-v2_lokey-t_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_lokey-t_xml.zip",
+      "bytes": 40772159,
+      "sha1": "7f8f9ef901bcffd48cd6bb2e07e17bcfa88a4815",
+      "md5": "a509cb9b6f01a5d26a2153bb2a75644b"
+    },
+    {
+      "name": "edrm-enron-v2_love-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_love-p_xml.zip",
+      "bytes": 766792461,
+      "sha1": "87f9e2ef064f40f66f828d2a51d0ca8f9c65a49e",
+      "md5": "1a5398eef2cfc12b65420ed8e259b8dd"
+    },
+    {
+      "name": "edrm-enron-v2_lucci-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_lucci-p_xml.zip",
+      "bytes": 65605662,
+      "sha1": "14e9bcf530ee6b0ebc9042b8d60e964f756eb55d",
+      "md5": "84044ac069c23983e80dd4f89e3b2a11"
+    },
+    {
+      "name": "edrm-enron-v2_maggi-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_maggi-m_xml.zip",
+      "bytes": 65449857,
+      "sha1": "9d5ffb10696795aa479abf10a18fca14f7e9adba",
+      "md5": "dfee04e9aaa7c61213e3e692115117a6"
+    },
+    {
+      "name": "edrm-enron-v2_mann-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_mann-k_xml.zip",
+      "bytes": 2840813630,
+      "sha1": "e1961876373273fa0101c255f4af65642cd4feac",
+      "md5": "8e8b9f522a9d2199baf1a8056fe3ca63"
+    },
+    {
+      "name": "edrm-enron-v2_martin-t_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_martin-t_xml.zip",
+      "bytes": 76697705,
+      "sha1": "a0a09608481d892e467cab3c35e057d047cfc50e",
+      "md5": "0682c17519b722df8d9a0c43795627b0"
+    },
+    {
+      "name": "edrm-enron-v2_may-l_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_may-l_xml.zip",
+      "bytes": 242013348,
+      "sha1": "2cb9c98c2b69254c122c1494235ae9ddec6567e8",
+      "md5": "9f8d2867c05dccaa276a8909aa8623b9"
+    },
+    {
+      "name": "edrm-enron-v2_mccarty-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_mccarty-d_xml.zip",
+      "bytes": 38687656,
+      "sha1": "906a17dfdb4e6270cfb3bef22c9623a3d1c403c8",
+      "md5": "3cda381c54abf2e3daa3e983a3c4b8d9"
+    },
+    {
+      "name": "edrm-enron-v2_mcconnell-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_mcconnell-m_xml.zip",
+      "bytes": 774902377,
+      "sha1": "fd43e0dcd738f6b8c9e248112c15d328fa2a5732",
+      "md5": "2be247af80af6771ae17e1c9064001dd"
+    },
+    {
+      "name": "edrm-enron-v2_mckay-b_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_mckay-b_xml.zip",
+      "bytes": 40681287,
+      "sha1": "dd023b2a6410a40a6404e14734d4e5fef66da03f",
+      "md5": "8575a9896349be98d2eda88fba8cc17e"
+    },
+    {
+      "name": "edrm-enron-v2_mckay-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_mckay-j_xml.zip",
+      "bytes": 193333079,
+      "sha1": "9c390a75204fa7d4d1e0b2a91845bd4bfcc440f4",
+      "md5": "b39aceeee6a39fd55597ab8421046ffc"
+    },
+    {
+      "name": "edrm-enron-v2_mclaughlin-e_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_mclaughlin-e_xml.zip",
+      "bytes": 277121184,
+      "sha1": "256bd6b206b1a6a931af35a78b93d4633be529aa",
+      "md5": "5650a7153a5dccf5501497059331e657"
+    },
+    {
+      "name": "edrm-enron-v2_merris-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_merris-s_xml.zip",
+      "bytes": 40959339,
+      "sha1": "6ea4eb94a11d27ae7e21a5aee0d11cba7dbf5b95",
+      "md5": "28c3c13eaeea7ce00648bbd922b53924"
+    },
+    {
+      "name": "edrm-enron-v2_meyers-a_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_meyers-a_xml.zip",
+      "bytes": 6074167,
+      "sha1": "ba909bc7ad9e6a28589fdf3beeef31e9b221671c",
+      "md5": "d2ee9763e09ccc882dda16833c408f49"
+    },
+    {
+      "name": "edrm-enron-v2_mims-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_mims-p_xml.zip",
+      "bytes": 52206651,
+      "sha1": "cea55ea3fc41c2a9dbf7c10bc02f0e1af179246a",
+      "md5": "1f829564f669b6d1ff6601076c20b0c0"
+    },
+    {
+      "name": "edrm-enron-v2_motley-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_motley-m_xml.zip",
+      "bytes": 35230579,
+      "sha1": "bda90f6c1fd4d6d1fcb6755093b5c45ec2e89eb0",
+      "md5": "a2bbb91d0b59458ed9b2bce4281571ff"
+    },
+    {
+      "name": "edrm-enron-v2_neal-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_neal-s_xml.zip",
+      "bytes": 274446191,
+      "sha1": "d3bab1adc7bf3a13a5cb29e15ebcd481a44fea9d",
+      "md5": "0c4052b4f8b73dbf52d6f738ad94be7b"
+    },
+    {
+      "name": "edrm-enron-v2_nemec-g_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_nemec-g_xml.zip",
+      "bytes": 773999335,
+      "sha1": "991f9b9aec0b99218b58db87be77b291017c115d",
+      "md5": "2ab150a9b1f6b3a3b75294fc80060e39"
+    },
+    {
+      "name": "edrm-enron-v2_panus-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_panus-s_xml.zip",
+      "bytes": 14995333,
+      "sha1": "67c76e7d1c4b4fdc48e44e618e89a695572d5243",
+      "md5": "6e308a085727920c005177cd9e3eda06"
+    },
+    {
+      "name": "edrm-enron-v2_parks-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_parks-j_xml.zip",
+      "bytes": 182018165,
+      "sha1": "4bf867df157445284674bb9783bb75c2292093c0",
+      "md5": "8df67ce59548eecd39220f026e0c5c3f"
+    },
+    {
+      "name": "edrm-enron-v2_pereira-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_pereira-s_xml.zip",
+      "bytes": 5481547,
+      "sha1": "00df03b9151d881ee057e9f64c9fcf42232b999b",
+      "md5": "de9aad85b3a6fdb87186477e5d63411c"
+    },
+    {
+      "name": "edrm-enron-v2_perlingiere-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_perlingiere-d_xml.zip",
+      "bytes": 295265067,
+      "sha1": "f1411052407431475e0e1231eeda2d76325bf8e6",
+      "md5": "4af35dadbc5add81585d1f8be8e04538"
+    },
+    {
+      "name": "edrm-enron-v2_pimenov-v_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_pimenov-v_xml.zip",
+      "bytes": 62814979,
+      "sha1": "a2d8912e7f2e50823088003f1f1e9507b4b20539",
+      "md5": "7e371179dcb7523f8e16e6516ab19a84"
+    },
+    {
+      "name": "edrm-enron-v2_platter-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_platter-p_xml.zip",
+      "bytes": 41739126,
+      "sha1": "ea8c6b0be8cf2307caa48552fd76794103cd44c8",
+      "md5": "ce96042b0c1f7d55f1ba750e6f845a0b"
+    },
+    {
+      "name": "edrm-enron-v2_presto-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_presto-k_xml.zip",
+      "bytes": 80846660,
+      "sha1": "eb6e034585d6d7c24fc715c08f56c95c98bf7796",
+      "md5": "c9caab0ea86485cc45407cb42d09d420"
+    },
+    {
+      "name": "edrm-enron-v2_quenet-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_quenet-j_xml.zip",
+      "bytes": 8375043,
+      "sha1": "757f7ef2abcafe62bc98b1bf318233a5a284ad4e",
+      "md5": "2299f8314d60f4cdab3c86d59423c4e6"
+    },
+    {
+      "name": "edrm-enron-v2_quigley-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_quigley-d_xml.zip",
+      "bytes": 97902947,
+      "sha1": "6abd931c57ceb524897099e5cd83218d31f350bb",
+      "md5": "78ea1702245223fdefdde6c61b829195"
+    },
+    {
+      "name": "edrm-enron-v2_rapp-b_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_rapp-b_xml.zip",
+      "bytes": 5228419,
+      "sha1": "4417e90ed8b80b3f0bbd9606cf2bc1f53e7e8095",
+      "md5": "7f108df10743569bb242ef62a174ed6e"
+    },
+    {
+      "name": "edrm-enron-v2_reitmeyer-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_reitmeyer-j_xml.zip",
+      "bytes": 58911830,
+      "sha1": "8b4020e5aec8f4a5a1c3d7cc29746d19054f0b32",
+      "md5": "e2fe3632829bf9ff51dbae2fcaf109b8"
+    },
+    {
+      "name": "edrm-enron-v2_richey-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_richey-c_xml.zip",
+      "bytes": 50119125,
+      "sha1": "451882b62096b3d98c5c011a0e5846d22f142d1c",
+      "md5": "b9b5fee132a09e4605a13143fddefb59"
+    },
+    {
+      "name": "edrm-enron-v2_ring-a_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_ring-a_xml.zip",
+      "bytes": 195826527,
+      "sha1": "a57bc901f32de232c3cfc721ec985d077d01794f",
+      "md5": "2b6f21545565742be41068725751af14"
+    },
+    {
+      "name": "edrm-enron-v2_ring-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_ring-r_xml.zip",
+      "bytes": 113417202,
+      "sha1": "9795c6eef16880df054e55e407f27fb0ca255a8f",
+      "md5": "4bcc5ba0257103a76bdb431d54867fab"
+    },
+    {
+      "name": "edrm-enron-v2_rodrigue-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_rodrigue-r_xml.zip",
+      "bytes": 433289884,
+      "sha1": "018e23a956c400cc7e38d8893eaed33fcd6b5cda",
+      "md5": "b3bc235259232ea9f4be17f35683072a"
+    },
+    {
+      "name": "edrm-enron-v2_rogers-b_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_rogers-b_xml.zip",
+      "bytes": 2671419536,
+      "sha1": "c1d9c11c1c1551780e1bd84be7786b50f5590577",
+      "md5": "b3e8633d99b781e7570bd3233aec5b00"
+    },
+    {
+      "name": "edrm-enron-v2_ruscitti-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_ruscitti-k_xml.zip",
+      "bytes": 211794427,
+      "sha1": "1b71a1ff163e6a9ba8edd3dbb7100d362c368fba",
+      "md5": "db065e6c529c2fd1d1f3dadc33ff738a"
+    },
+    {
+      "name": "edrm-enron-v2_sager-e_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_sager-e_xml.zip",
+      "bytes": 522332025,
+      "sha1": "c26a3b75e36792ddfddfcb74d3712203fa5564ab",
+      "md5": "7ef60ec753521f327548664301a72a21"
+    },
+    {
+      "name": "edrm-enron-v2_saibi-e_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_saibi-e_xml.zip",
+      "bytes": 70154461,
+      "sha1": "d478d351ed17437e534efdd63e1f4347e2c2234a",
+      "md5": "3c7b24569c8cb7fa73da887da23244f1"
+    },
+    {
+      "name": "edrm-enron-v2_salisbury-h_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_salisbury-h_xml.zip",
+      "bytes": 55283595,
+      "sha1": "487b4c5ffe813c1425fabd2a63daeed3361bf7d2",
+      "md5": "3aae029d58f550233603e7d30528c9e0"
+    },
+    {
+      "name": "edrm-enron-v2_sanchez-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_sanchez-m_xml.zip",
+      "bytes": 22612418,
+      "sha1": "cf76153b68158d194d7760c2d033c5efe5df81c0",
+      "md5": "ba43cd2f1976444aa4613c55dfe7faaa"
+    },
+    {
+      "name": "edrm-enron-v2_sanders-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_sanders-r_xml.zip",
+      "bytes": 750675367,
+      "sha1": "596054655e79b5c19825944a2335150d5896e33c",
+      "md5": "839d137ba35eaf0aa850604f81a2d655"
+    },
+    {
+      "name": "edrm-enron-v2_scholtes-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_scholtes-d_xml.zip",
+      "bytes": 64865879,
+      "sha1": "512d44722ed5fc8f7808517550ea4f6710d6ac4b",
+      "md5": "b75d04d4928225122c9d66507d81d58c"
+    },
+    {
+      "name": "edrm-enron-v2_schoolcraft-d_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_schoolcraft-d_xml.zip",
+      "bytes": 150633409,
+      "sha1": "3d21fb907ed7a92f165e19701668b21fc157a4f3",
+      "md5": "194a741c987f0e3981534ff31931fc4c"
+    },
+    {
+      "name": "edrm-enron-v2_schwieger-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_schwieger-j_xml.zip",
+      "bytes": 83298000,
+      "sha1": "2f9a51e6aa14f170f2794a849df027d6c9d5c3e6",
+      "md5": "7f162d98d1e1e812b65b378335ddae0a"
+    },
+    {
+      "name": "edrm-enron-v2_scott-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_scott-s_xml.zip",
+      "bytes": 944450358,
+      "sha1": "b4ba81398be932cb4a088fa7cbc7f2067ca2a54e",
+      "md5": "a25aee1c5e362831419d36a3ec3b6838"
+    },
+    {
+      "name": "edrm-enron-v2_semperger-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_semperger-c_xml.zip",
+      "bytes": 50087473,
+      "sha1": "9b19d6d3af3c7daacf9f93b4746dcd49bc6faa1b",
+      "md5": "af9398993125c34a5fe01482fa5643d2"
+    },
+    {
+      "name": "edrm-enron-v2_shackleton-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_shackleton-s_xml.zip",
+      "bytes": 1054290819,
+      "sha1": "ba611242670a6fa06e7e79fa94550823f1225aa9",
+      "md5": "14348735cb329c9323cf021f223a97ff"
+    },
+    {
+      "name": "edrm-enron-v2_shankman-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_shankman-j_xml.zip",
+      "bytes": 385093858,
+      "sha1": "d5304563f7673d935da2258ca4336ae9af93b968",
+      "md5": "a7199eabf2c282599d0cbbaaecc6463c"
+    },
+    {
+      "name": "edrm-enron-v2_shapiro-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_shapiro-r_xml.zip",
+      "bytes": 850319663,
+      "sha1": "0140cbcbca97d6a94eee20cb12309df3454700e4",
+      "md5": "0041029dca26ce97a646e9ef40ce98b7"
+    },
+    {
+      "name": "edrm-enron-v2_shively-h_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_shively-h_xml.zip",
+      "bytes": 255785148,
+      "sha1": "bc810f22cd4bdb4a4b4236706fe62aa915b158c6",
+      "md5": "890a20ead9132bf0777017bab947308d"
+    },
+    {
+      "name": "edrm-enron-v2_skilling-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_skilling-j_xml.zip",
+      "bytes": 1358268860,
+      "sha1": "9b8c2e3f5045a792a6f2984ac23266784ba92c49",
+      "md5": "87bbdd2ba7c25402e7837b89ec74bb3f"
+    },
+    {
+      "name": "edrm-enron-v2_slinger-r_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_slinger-r_xml.zip",
+      "bytes": 9190142,
+      "sha1": "9d7810fe559f916c2734911a01bb7d36bfa3722a",
+      "md5": "f85153db95f0aa9f27fc7680f38a3dbb"
+    },
+    {
+      "name": "edrm-enron-v2_smith-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_smith-m_xml.zip",
+      "bytes": 127849156,
+      "sha1": "fd4efdd995a0d671555787ad9d9642d36f69c5dc",
+      "md5": "ceeab3472325755acd552a0a62fa3e0e"
+    },
+    {
+      "name": "edrm-enron-v2_solberg-g_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_solberg-g_xml.zip",
+      "bytes": 41681975,
+      "sha1": "5fde73867c7c796c26c7f25ca1e4ce4ef36514dc",
+      "md5": "e086100633d51f45b253a4e6f1981d2a"
+    },
+    {
+      "name": "edrm-enron-v2_south-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_south-s_xml.zip",
+      "bytes": 5927358,
+      "sha1": "62ae743c51aca41c030f65ad72f18ffdb608934c",
+      "md5": "0da35ad86e6a0ff12ceef24c9ee8d3c5"
+    },
+    {
+      "name": "edrm-enron-v2_staab-t_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_staab-t_xml.zip",
+      "bytes": 46637755,
+      "sha1": "0b530945d1a1618ffd80aa8f7e9afe7170b8547e",
+      "md5": "d56803780a4b65859b1bd8e6b341b981"
+    },
+    {
+      "name": "edrm-enron-v2_stclair-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_stclair-c_xml.zip",
+      "bytes": 80456559,
+      "sha1": "3f560c5ae8ac17283d9d116977904c7822b99a48",
+      "md5": "01794510845bd00d1bc5d6a2eb4c31f4"
+    },
+    {
+      "name": "edrm-enron-v2_steffes-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_steffes-j_xml.zip",
+      "bytes": 171153858,
+      "sha1": "e4c528a99e8e6800c6f97c353adb09599bee658f",
+      "md5": "0429a2f5bf37ee67e94c0967a73cf881"
+    },
+    {
+      "name": "edrm-enron-v2_stepenovitch-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_stepenovitch-j_xml.zip",
+      "bytes": 50546493,
+      "sha1": "f5b50d41a93721a176d8172b617baf0f960217c5",
+      "md5": "79762a6c9955d4e6a55a804caa795eab"
+    },
+    {
+      "name": "edrm-enron-v2_stokley-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_stokley-c_xml.zip",
+      "bytes": 116550201,
+      "sha1": "c9f4e5c505692b37ee6b27c6dbf9696013a94ae1",
+      "md5": "1a00180006e0362744a01458f1814157"
+    },
+    {
+      "name": "edrm-enron-v2_storey-g_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_storey-g_xml.zip",
+      "bytes": 91549630,
+      "sha1": "a8b49319f91878347ace54b2dc29797e722623c7",
+      "md5": "bb295101b698939b40d3f0b14aacd52f"
+    },
+    {
+      "name": "edrm-enron-v2_sturm-f_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_sturm-f_xml.zip",
+      "bytes": 56717182,
+      "sha1": "24fb15913e817e16418716a56465ec862e489c12",
+      "md5": "de61b8f500654aef0e596cb70eae2c3c"
+    },
+    {
+      "name": "edrm-enron-v2_swerzbin-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_swerzbin-m_xml.zip",
+      "bytes": 147420408,
+      "sha1": "0fe3038c3f20041a9a8e4bb14969bd1a885b87be",
+      "md5": "7d9b7f04a20f7d08cba684b3adc104f1"
+    },
+    {
+      "name": "edrm-enron-v2_symes-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_symes-k_xml.zip",
+      "bytes": 758441496,
+      "sha1": "2d50aa283d0eadeb3ee50007af661611a143c4dc",
+      "md5": "bce329d39ec3b0f37502ed6b6d495a60"
+    },
+    {
+      "name": "edrm-enron-v2_taylor-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_taylor-m_xml.zip",
+      "bytes": 1326426309,
+      "sha1": "7f95cc4991666afdc8080eb9658c3ae9eff356b4",
+      "md5": "0d73626d71e0d3dbbf75a6ea45f97bd7"
+    },
+    {
+      "name": "edrm-enron-v2_tholt-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_tholt-j_xml.zip",
+      "bytes": 195739043,
+      "sha1": "788c0bb0a19b2f59cee8f5aed73f672561b987c9",
+      "md5": "be1b98e29cd487f205f6272d6b79f277"
+    },
+    {
+      "name": "edrm-enron-v2_thomas-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_thomas-p_xml.zip",
+      "bytes": 115144311,
+      "sha1": "341ddbd88eaf43a51301c48138cf97242a450527",
+      "md5": "1614723d251b9cfd1d02a0a72cabbf4a"
+    },
+    {
+      "name": "edrm-enron-v2_townsend-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_townsend-j_xml.zip",
+      "bytes": 25621445,
+      "sha1": "8970cd9a199499c56104812ddd3b24393801e326",
+      "md5": "9f0dc46f9e4d38486f9c9fd575797ddb"
+    },
+    {
+      "name": "edrm-enron-v2_tycholiz-b_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_tycholiz-b_xml.zip",
+      "bytes": 98392927,
+      "sha1": "4f986139ce7141b004086afc07ffc29ae121ed38",
+      "md5": "325b1e093eaa50c7b6552c8f3ed8d36b"
+    },
+    {
+      "name": "edrm-enron-v2_ward-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_ward-k_xml.zip",
+      "bytes": 178544504,
+      "sha1": "23e6474ef7856843acc1cd627c6c3fca52ac62fa",
+      "md5": "9802eb4c3226934f9adc8ada9d479ce8"
+    },
+    {
+      "name": "edrm-enron-v2_watson-k_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_watson-k_xml.zip",
+      "bytes": 128525372,
+      "sha1": "bf4e6144576d1b9e54d330e3b67bdb805a2bf3ac",
+      "md5": "5f5c87aa6a8c8984227442dedd541bb7"
+    },
+    {
+      "name": "edrm-enron-v2_weldon-c_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_weldon-c_xml.zip",
+      "bytes": 83224374,
+      "sha1": "618c92c76c4b3198553847fd40d0e7896f3f8c8d",
+      "md5": "52c0684c5512d9c49a9e2b35a982aa5a"
+    },
+    {
+      "name": "edrm-enron-v2_whalley-g_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_whalley-g_xml.zip",
+      "bytes": 1258017528,
+      "sha1": "f9cac44ce70c6a086051504e6f88c232258b5143",
+      "md5": "83bd9c7da6f4caae6b4cb50eb11aeeb0"
+    },
+    {
+      "name": "edrm-enron-v2_white-s_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_white-s_xml.zip",
+      "bytes": 222224912,
+      "sha1": "c5a51b7d00b0b2cbc3abe15deaf43ea6ecfaf76f",
+      "md5": "aadc8bda896938ae7b390f494ebb99b7"
+    },
+    {
+      "name": "edrm-enron-v2_whitt-m_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_whitt-m_xml.zip",
+      "bytes": 73392849,
+      "sha1": "2fa1556caba3430cf392d8e09e0e0436f77fea12",
+      "md5": "f2fc5d27c88970b7c3911232ef1cb07e"
+    },
+    {
+      "name": "edrm-enron-v2_williams-b_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_williams-b_xml.zip",
+      "bytes": 109276010,
+      "sha1": "b5898286c7bb484d2fb3c5410889f77e5f57147a",
+      "md5": "cb32da5ffc22788cdeadbf41e1887437"
+    },
+    {
+      "name": "edrm-enron-v2_williams-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_williams-j_xml.zip",
+      "bytes": 102706339,
+      "sha1": "6d84564e0b2954be6c99150bbc48edf234407ae0",
+      "md5": "8b2f4ece87276b931509b29db6d12371"
+    },
+    {
+      "name": "edrm-enron-v2_wolfe-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_wolfe-j_xml.zip",
+      "bytes": 176287914,
+      "sha1": "12d014e2d394b34c1e9eea1d85e5e3934b2a7f81",
+      "md5": "f864c3763206efba706c93149bf0ccbf"
+    },
+    {
+      "name": "edrm-enron-v2_ybarbo-p_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_ybarbo-p_xml.zip",
+      "bytes": 182089487,
+      "sha1": "08de2a5b07ae8ee30c5476e0ccc679f41253dd12",
+      "md5": "d1184f9362efaa86120b704d2383242b"
+    },
+    {
+      "name": "edrm-enron-v2_zipper-a_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_zipper-a_xml.zip",
+      "bytes": 252927942,
+      "sha1": "74c3dc3d18ce6207507c68838e8ca628cd9269bb",
+      "md5": "ea1e154d44c7b0c2c75a0ff6eb2c7eff"
+    },
+    {
+      "name": "edrm-enron-v2_zufferli-j_xml.zip",
+      "url": "https://archive.org/download/edrm.enron.email.data.set.v2.xml/edrm-enron-v2_zufferli-j_xml.zip",
+      "bytes": 83074905,
+      "sha1": "0ff0962dae55731153bfcfecc1dd20e95fab45b6",
+      "md5": "64f67594233fcfbbb3e87b22476ada21"
+    }
+  ],
+  "extraction": {
+    "kind": "recursive-edrm-attachments",
+    "status": "pending-recipe"
+  }
+}

@@ -809,7 +809,7 @@ mod tests {
     async fn corpus_catalog_exposes_compact_embedded_identities() {
         let response = corpus_catalog().await.unwrap().0;
         assert_eq!(response["version"], 1);
-        assert_eq!(response["profiles"].as_array().unwrap().len(), 2);
+        assert_eq!(response["profiles"].as_array().unwrap().len(), 3);
         assert_eq!(response["profiles"][0]["workbook_count"], 9117);
         assert!(response["profiles"][0].get("workbooks").is_none());
     }

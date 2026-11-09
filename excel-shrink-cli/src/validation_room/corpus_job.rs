@@ -23,14 +23,14 @@ pub(super) struct Request {
 impl Request {
     fn validate(&self) -> Result<()> {
         let catalog = crate::validation_corpora::catalog()?;
-        ensure!(
-            catalog["profiles"]
-                .as_array()
-                .context("Corpus catalog")?
-                .iter()
-                .any(|profile| profile["id"] == self.profile),
-            "Choose a versioned corpus profile"
-        );
+        let selected = catalog["profiles"]
+            .as_array()
+            .context("Corpus catalog")?
+            .iter()
+            .find(|profile| profile["id"] == self.profile)
+            .context("Choose a versioned corpus profile")?;
+        ensure!(selected["acquisition_ready"] != false,
+            "This source collection requires its extraction recipe and imported workbook manifest first");
         ensure!(
             self.artifacts.is_absolute(),
             "Choose an absolute originals directory"
@@ -153,6 +153,24 @@ pub(super) async fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_source_collection_cannot_start_acquisition() {
+        let root = std::env::temp_dir().join(format!("enron-pending-{}", uuid::Uuid::new_v4()));
+        let request = Request {
+            profile: "enron-edrm-v2".into(),
+            operation: Operation::Prepare,
+            artifacts: root.join("originals"),
+            cache: root.join("cache"),
+            archive: None,
+        };
+        assert!(request
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("extraction recipe"));
+        assert!(!root.exists());
+    }
 
     #[tokio::test]
     async fn read_only_job_finishes_after_request_and_keeps_polling_compact() -> Result<()> {

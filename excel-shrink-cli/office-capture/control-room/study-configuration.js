@@ -85,7 +85,9 @@ export function installStudyConfiguration({ api, message, defaults, logicalProce
     for (const profile of profiles) {
       const option = document.createElement('option');
       option.value = profile.id;
-      option.textContent = profile.name;
+      option.textContent = profile.acquisition_ready === false
+        ? `${profile.name} (awaiting extraction package)` : profile.name;
+      option.disabled = profile.acquisition_ready === false;
       profileSelect.append(option);
     }
     profileSelect.value = defaults.corpus_profile;

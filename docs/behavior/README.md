@@ -17,6 +17,9 @@ remains historical. Current experiments and claim boundaries are recorded in the
 The [replay contract](replay.md) describes recorded progress, bounded static
 playback, export verification and unavailable historical telemetry.
 
+The [Enron v2 import contract](enron-edrm-v2-import.md) records the confirmed
+multi-archive source and the pending adapter for externally extracted workbooks.
+
 ## Product objective and acceptance
 
 Owner clarification, 2026-11-04. Default is the production preservation target.
