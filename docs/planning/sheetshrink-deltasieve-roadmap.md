@@ -27,7 +27,37 @@ requirements are in `../behavior/enron-edrm-v2-import.md`. No source ZIP was fet
 for this metadata preparation. The user expects to supply scripts and artifacts
 after extraction finishes on the other machine.
 
-## Active Enron and web-start checkpoint on 2026-11-09
+## Destatis Check Performance request on 2026-11-09
+
+The user requested Check Performance preparation for all 1,182 Destatis inputs,
+started through the ordinary web form with one worker per logical CPU. The
+verified host has 16 logical CPUs. The `f099d740` packaged runtime passed file
+verification, and browser interaction started a profile-bound 16-worker job.
+All 16 Excel processes were observed. The old Enron run remains stopped.
+
+This larger acceptance exposed an unsafe native warm-session outcome. Repeated
+unchanged inputs could receive a stale no-work result, while later requests
+failed to close the old pane. Independent XML inspection confirmed that an
+unchanged before control was optimized in the first request and left unchanged
+in the second. Preserve the development attempt and exclude its unverified warm
+results from final benchmark conclusions. The original source files are read-only
+inputs to private copies.
+
+Commit `941b0bd5` changes Check Performance to continuously refilled fresh Excel
+sessions, with retirement published before response delivery. The stronger native
+test passed three repeated inputs in distinct Excel PIDs with identical optimized
+sheet members. Legacy conversion keeps its existing persistent workers. A later
+pane-query optimization also passed positive and genuinely already-optimized
+three-input tests. Its corrected full-corpus deployment is still pending.
+
+The running development host is on port 18832. Automatic approval review rejected
+stopping it without current-run permission, and the user has been asked whether
+it may be stopped and restarted with the correction. Do not bypass that pending
+question or alter its frozen runtime assets. The paper sources were updated and
+pushed separately as `2bba218` and `c28f9b0`, with rebuilt and rendered drafts.
+The Enron v2 extraction package is still awaited from the user.
+
+## Earlier Enron and web-start checkpoint on 2026-11-09
 
 Enron is running under the explicitly selected v10 warm-worker implementation
 with ten comparison groups after the dynamic-pool deployment. A deployment omission initially caused 132 attempts

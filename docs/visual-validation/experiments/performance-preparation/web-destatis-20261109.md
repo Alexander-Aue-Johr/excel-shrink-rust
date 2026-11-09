@@ -65,6 +65,28 @@ unresolved inputs. Owned Excel process exit was confirmed. This single run
 occurred alongside the 16-worker development attempt and is functional evidence,
 with no controlled throughput claim.
 
+## Bounded pane-query optimization
+
+The adapter's repeated raw-tree walks inspected the entire Excel window before
+inspecting the relevant pane, including a second full-tree diagnostic walk.
+The revised adapter locates native `MsoWorkPane` elements through one scoped
+UI Automation property query and walks only the selected pane's controls. It
+preserves the unique-pane, unique-action and positive-completion requirements.
+
+The same three-request positive fixture passed after this change, using three
+fresh Excel PIDs with identical after-optimization sheet XML to the previous
+test. Its progress receipt recorded 38.66 seconds. Individual optimization
+phases took 5.06, 5.24 and 5.04 seconds, compared with 33.04, 34.97 and 22.84
+seconds in the prior functional run. These sequential exploratory runs had
+concurrent development load and do not estimate a corpus-wide speedup.
+
+A second three-request test used the already optimized control as its unchanged
+source. All three fresh Excel processes reported `no_optimization_needed`, with
+zero failures and unresolved inputs, in 25.69 seconds. Owned process exit was
+confirmed by both native tests. The private receipts are
+`cp-fresh-native-acceptance.json` and `cp-pane-query-acceptance.json` beside the
+scratch test roots. Full 16-worker corrected-corpus acceptance remains open.
+
 The corpus remains an incomplete acceptance attempt until the defect and its
 affected outcomes have been resolved. Later attempts must retain the prior
 generation, failures and attribution rather than rewriting their receipts.

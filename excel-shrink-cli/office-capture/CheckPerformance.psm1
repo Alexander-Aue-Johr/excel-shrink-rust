@@ -33,11 +33,14 @@ function Get-PerformancePaneState {
     Resolves a unique performance pane and reads its action and completion text.
     #>
     param($Root)
-    $panes = @(Get-PerformanceControls $Root | Where-Object {
-        $_.class -eq 'MsoWorkPane' -and $_.name -match '^(Workbook Performance|Arbeitsmappenleistung|Leistung der Arbeitsmappe)$'
+    # Locate native panes in one provider query before walking the selected pane's controls.
+    $condition = [Windows.Automation.PropertyCondition]::new(
+        [Windows.Automation.AutomationElement]::ClassNameProperty, 'MsoWorkPane')
+    $panes = @($Root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
+        $_.Current.Name -match '^(Workbook Performance|Arbeitsmappenleistung|Leistung der Arbeitsmappe)$'
     })
     if ($panes.Count -ne 1) { return $null }
-    $controls = @(Get-PerformanceControls $panes[0].element)
+    $controls = @(Get-PerformanceControls $panes[0])
     $buttons = @($controls | Where-Object {
         $_.type -eq 'ControlType.Button' -and $_.enabled -and
         $_.name -match '^(Optimize all|Optimize All|Alle optimieren)$'
@@ -116,9 +119,9 @@ function Invoke-WorkbookPerformanceOptimization {
     $observed = $false
     while ([DateTime]::UtcNow -lt $deadline) {
         $state = Get-PerformancePaneState $root
-        if (-not $observed) {
-            Write-PerformanceTrace ((Get-PerformanceControls $root | Where-Object { $_.class -eq 'MsoWorkPane' } | ForEach-Object name) -join ' | ')
-            if ($null -ne $state) { Write-PerformanceTrace ($state.text -join ' | '); $observed = $true }
+        if (-not $observed -and $null -ne $state) {
+            Write-PerformanceTrace ($state.text -join ' | ')
+            $observed = $true
         }
         if ($null -ne $state) {
             if ($clicked -and $state.completion.Count -gt 0) {
