@@ -650,6 +650,18 @@ Completed corpus comparisons remove temporary upload-pool links after both repor
 
 ### Embedded authentication dialogs
 
+The targeted launcher observes the atomic `capture-regions.jsonl` index before
+geometry partitioning. A literal `A1:XFD1048576` region produces an explicit
+`unbounded_capture_plan` failure with unverified coverage. Owned processes are
+closed through the existing launcher cleanup, and the raw plan remains retained.
+This safeguard does not establish equality or classify the workbook as invalid.
+It prevents a known whole-grid expansion from monopolizing a corpus worker while
+bounded inherited-background/CF coverage remains unresolved. The observer reads
+at most 4,096 index entries and rereads only when the index timestamp changes.
+Large bounded-column plans, including `A1:P1048576`, remain eligible for the
+ordinary geometric partitioner. Explicit independent reference commands retain
+their own supplied-area and image-budget contract.
+
 The persistent PowerShell command host receives a normalized Windows script
 path, including when capture assets were resolved through canonical filesystem
 paths. Windows verbatim prefixes must not reach its `-File` argument because

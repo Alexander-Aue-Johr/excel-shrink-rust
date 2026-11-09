@@ -22,11 +22,14 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'TargetedProcessObservation.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'TargetedCapturePlan.psm1') -Force
 Add-Type -Path @((Join-Path $PSScriptRoot 'CaptureProcesses.cs'), (Join-Path $PSScriptRoot 'CaptureDesktop.cs'))
 $desktop = New-Object CaptureDesktop
 $owned = New-Object CaptureProcesses
 $process = $null
 $captureIdleTimedOut = $false
+$capturePlanFailure = $null
+$planStamp = 0L
 try {
     $env:EXCEL_SHRINK_EXPECTED_DESKTOP = $desktop.Name
     $arguments = 'regression targeted-compare --original "{0}" --default "{1}" --output "{2}" --observatory-group-dir "{3}" --host-script "{4}"' -f `
@@ -42,6 +45,16 @@ try {
     $lastProgressSequence = 0L
     $process = $desktop.Start($Binary, $arguments, $owned)
     while (-not $process.WaitForExit(500)) {
+        $planPath = [IO.Path]::Combine($Output, 'capture-regions.jsonl')
+        if ([IO.File]::Exists($planPath)) {
+            $stamp = [IO.File]::GetLastWriteTimeUtc($planPath).Ticks
+            if ($stamp -ne $planStamp) {
+                try { $capturePlanFailure = Get-TargetedFullGridPlanFailure $planPath }
+                catch [IO.FileNotFoundException] { continue }
+                $planStamp = $stamp
+                if ($null -ne $capturePlanFailure) { throw $capturePlanFailure.error }
+            }
+        }
         $telemetryPath = [IO.Path]::Combine($Output, 'telemetry.json')
         if ([IO.File]::Exists($telemetryPath)) {
             # A transient read or ordinary heartbeat must never extend the deadline.
@@ -68,13 +81,13 @@ try {
     finally {
         if ($null -ne $process) { $process.Dispose() }
         $desktop.Dispose()
-        if ($captureIdleTimedOut) {
+        if ($captureIdleTimedOut -or $null -ne $capturePlanFailure) {
             # The CLI was terminated before it could publish a failure. Keep the
             # durable error and live mirror consistent with the launcher result.
             try {
-                $message = "No verified capture or geometry progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
+                $message = if ($capturePlanFailure) { $capturePlanFailure.error } else { "No verified capture or geometry progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt." }
                 [void][IO.Directory]::CreateDirectory($Output)
-                $failure = @{status='failed';error=$message;kind='capture_idle_timeout';timeout_seconds=$CaptureIdleTimeoutSeconds}
+                $failure = if ($capturePlanFailure) { $capturePlanFailure } else { @{status='failed';error=$message;kind='capture_idle_timeout';timeout_seconds=$CaptureIdleTimeoutSeconds} }
                 [IO.File]::WriteAllText(([IO.Path]::Combine($Output, 'failure.json')),($failure|ConvertTo-Json))
                 $local = [IO.Path]::Combine($Output, 'telemetry.json')
                 if ([IO.File]::Exists($local)) {
