@@ -368,7 +368,7 @@ pub(crate) fn require_regular_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn require_regular_source(path: &Path) -> Result<()> {
+pub(crate) fn require_regular_source(path: &Path) -> Result<()> {
     let metadata =
         fs::symlink_metadata(path).with_context(|| format!("Inspect input {}", path.display()))?;
     ensure!(
@@ -417,7 +417,7 @@ struct DownloadRecord {
     bytes: u64,
 }
 
-fn cached_download(url: &str, cache_root: &Path, refresh: bool) -> Result<PathBuf> {
+pub(crate) fn cached_download(url: &str, cache_root: &Path, refresh: bool) -> Result<PathBuf> {
     ensure!(
         !url.chars().any(char::is_control),
         "Control character in archive URL"

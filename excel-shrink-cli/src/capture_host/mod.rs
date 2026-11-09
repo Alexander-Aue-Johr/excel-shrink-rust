@@ -263,7 +263,7 @@ async fn replace_snapshot(pending: &Path, destination: &Path) -> std::io::Result
 }
 
 #[cfg(windows)]
-fn publish_new(pending: &Path, destination: &Path) -> std::io::Result<()> {
+pub(crate) fn publish_new(pending: &Path, destination: &Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     let from: Vec<u16> = pending.as_os_str().encode_wide().chain(Some(0)).collect();
     let to: Vec<u16> = destination
@@ -282,7 +282,7 @@ fn publish_new(pending: &Path, destination: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(windows))]
-fn publish_new(pending: &Path, destination: &Path) -> std::io::Result<()> {
+pub(crate) fn publish_new(pending: &Path, destination: &Path) -> std::io::Result<()> {
     std::fs::hard_link(pending, destination)
 }
 

@@ -19,9 +19,18 @@ local-request checks. Full workbook manifests remain embedded in the executable;
 they are omitted from this compact selection response.
 
 `deltasieve corpus-inspect --profile <id> --artifacts <directory>` verifies the
-extracted originals. Catalog discovery and inspection do not yet download or
-repair missing files. Automatic acquisition and profile-driven study creation
-remain integration work.
+extracted originals. `deltasieve corpus-prepare --profile <id> --artifacts
+<directory> --cache <directory> [--archive <zip>]` restores missing originals.
+It first verifies present files. A complete directory requires no archive or
+network access. Conflicting local originals stop acquisition before download.
+Incomplete directories use the supplied ZIP or the shared download cache, then
+verify its byte length and SHA-256 against the embedded profile. Member indices,
+names, sizes and extracted hashes must match before create-only publication.
+Existing originals are never overwritten. Verified partial progress survives a
+later member failure and can be reused on retry. Concurrent acquisition into the
+same directory is rejected by an operating-system file lock. Failed current
+staging files are removed; a process crash can leave uniquely named partials.
+Profile-driven study creation and web acquisition controls remain integration work.
 
 A preparation input has a stable source ID, a logical display name, a local
 baseline path and its SHA-256. A known raw source additionally records its hash,

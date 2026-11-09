@@ -4,7 +4,11 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, fs, path::Path};
 
-#[derive(Deserialize)]
+mod acquisition;
+
+pub(crate) use acquisition::prepare;
+
+#[derive(Clone, Deserialize)]
 struct Profile {
     version: u32,
     id: String,
@@ -13,14 +17,14 @@ struct Profile {
     workbooks: Vec<Workbook>,
 }
 
-#[derive(Deserialize, serde::Serialize)]
+#[derive(Clone, Deserialize, serde::Serialize)]
 struct Archive {
     url: String,
     sha256: String,
     bytes: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Workbook {
     index: usize,
     name: String,

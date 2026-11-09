@@ -329,6 +329,17 @@ This completes the bounded worker test, not Task 06's portable-package and UI
 integration requirements. The existing Enron runner remains pinned and continued
 with four configured groups after each test window.
 
+Task 06 implementation checkpoint on 2026-11-09: `050bc9d7` exposes one embedded
+Data.gov/Destatis catalog through the CLI and local configurator API. The next
+acquisition step adds `corpus-prepare`, using the same profiles, existing download
+cache and create-only publication. Small synthetic ZIP tests cover partial reuse,
+offline complete reuse, conflicts, bad archive/member hashes, failed-member
+cleanup, retry, concurrent acquisition and publication races. The existing host
+overwrite-protection test also passes. The real multi-gigabyte profile archives
+have not been downloaded or extracted by this acceptance. Web selection,
+acquisition progress, profile-driven study creation and distributed rehearsal
+remain open. No Task 06 completion box is changed.
+
 ## 07 Verify conversion and environment-dependent formulas
 
 - [ ] Verify completed conversion fixes and finish the handling of `CELL("filename")` and related evidence.

@@ -88,6 +88,18 @@ enum Command {
     Export { report: PathBuf, output: PathBuf },
     /// List embedded corpus profiles and their pinned archive identities without downloading.
     CorpusList,
+    /// Restore missing corpus originals from a pinned archive, retaining verified files.
+    CorpusPrepare {
+        #[arg(long)]
+        profile: String,
+        #[arg(long)]
+        artifacts: PathBuf,
+        #[arg(long)]
+        cache: PathBuf,
+        /// Use an already downloaded archive instead of the profile URL.
+        #[arg(long)]
+        archive: Option<PathBuf>,
+    },
     /// Verify extracted originals against a versioned corpus manifest without Excel.
     CorpusInspect {
         #[arg(long)]
@@ -599,6 +611,13 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
             println!("{}", serde_json::to_string_pretty(&catalog)?);
             Ok(())
         }
+        Some(Command::CorpusPrepare { profile, artifacts, cache, archive }) => {
+            let result = crate::validation_corpora::prepare(
+                &profile, &artifacts, &cache, archive.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            Ok(())
+        }
         Some(Command::CorpusInspect {
             profile,
             artifacts,
@@ -715,6 +734,21 @@ mod tests {
     fn corpus_catalog_requires_no_local_input_configuration() {
         let parsed = Cli::try_parse_from(["deltasieve", "corpus-list"]).unwrap();
         assert!(matches!(parsed.command, Some(Command::CorpusList)));
+    }
+
+    #[test]
+    fn corpus_acquisition_accepts_explicit_storage_and_offline_archive() {
+        let parsed = Cli::try_parse_from([
+            "deltasieve", "corpus-prepare", "--profile", "datagov",
+            "--artifacts", "originals", "--cache", "cache", "--archive", "local.zip",
+        ]).unwrap();
+        let Some(Command::CorpusPrepare { profile, artifacts, cache, archive }) = parsed.command else {
+            panic!("Expected corpus acquisition");
+        };
+        assert_eq!(profile, "datagov");
+        assert_eq!(artifacts, PathBuf::from("originals"));
+        assert_eq!(cache, PathBuf::from("cache"));
+        assert_eq!(archive, Some(PathBuf::from("local.zip")));
     }
 
     #[test]
