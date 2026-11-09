@@ -1392,3 +1392,16 @@ remains retained when the server retires its registry entry or the ordinary
 snapshot. Closing the dialog releases its detailed views and signal canvases.
 Worker Overview remains available independently.
 
+### Retained pixel-diagnostic paths
+
+Portable image references use paths relative to the study directory. Publication
+resolves retained image and audit paths before relativizing them, including when
+Windows upload paths and study paths use different verbatim prefixes. Missing
+retained files prevent successful publication.
+
+Historical reports can contain absolute image paths. Pixel diagnostics resolve
+those paths and accept them only within the current study's `evidence/<workbook>`
+directory. A path outside that workbook remains an error. This compatibility
+does not alter raw reports or comparison verdicts. Missing measurements must
+remain distinguishable from zero changed pixels.
+

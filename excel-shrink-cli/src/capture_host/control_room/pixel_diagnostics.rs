@@ -152,11 +152,23 @@ fn inspect_report(
 }
 
 fn evidence_path(study: &Path, id: &str, relative: &str) -> Result<PathBuf> {
+    let path = Path::new(relative);
+    let relative = if path.is_absolute() {
+        // Older portable reports retained absolute upload paths. Accept those
+        // only after resolving them inside this study and the same workbook.
+        let root = std::fs::canonicalize(study)?;
+        std::fs::canonicalize(path)?
+            .strip_prefix(root)?
+            .to_string_lossy()
+            .replace('\\', "/")
+    } else {
+        relative.to_owned()
+    };
     anyhow::ensure!(
         relative.starts_with(&format!("evidence/{id}/")) && relative.ends_with(".png"),
         "Pixel diagnostics require retained evidence from this workbook"
     );
-    confined_path(study, relative)
+    confined_path(study, &relative)
 }
 
 #[derive(Default, serde::Serialize)]
@@ -358,5 +370,23 @@ mod tests {
         assert!(evidence_path(&root, "one", "evidence/two/image.png").is_err());
         assert!(evidence_path(&root, "one", "evidence/one/../image.png").is_err());
         assert!(evidence_path(&root, "one", "file:///image.png").is_err());
+    }
+
+    #[test]
+    fn legacy_absolute_images_remain_confined_to_the_same_workbook() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("pixel-paths-{}", uuid::Uuid::new_v4()));
+        let own = root.join("evidence/one/image.png");
+        let other = root.join("evidence/two/image.png");
+        std::fs::create_dir_all(own.parent().unwrap())?;
+        std::fs::create_dir_all(other.parent().unwrap())?;
+        std::fs::write(&own, b"path fixture")?;
+        std::fs::write(&other, b"path fixture")?;
+        assert!(evidence_path(&root, "one", own.to_str().unwrap()).is_ok());
+        assert!(evidence_path(&root, "one", other.to_str().unwrap()).is_err());
+        assert!(evidence_path(&root.join("evidence/one"), "one", other.to_str().unwrap()).is_err());
+        let canonical = std::fs::canonicalize(&own)?;
+        assert!(evidence_path(&root, "one", canonical.to_str().unwrap()).is_ok());
+        std::fs::remove_dir_all(root)?;
+        Ok(())
     }
 }

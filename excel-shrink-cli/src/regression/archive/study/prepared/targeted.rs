@@ -264,7 +264,17 @@ fn publish_portable_evidence(
                 }
             }
             Value::String(text) => {
-                let path = PathBuf::from(&*text);
+                let mut path = PathBuf::from(&*text);
+                if path.is_absolute()
+                    && path.extension().is_some_and(|extension| {
+                        matches!(extension.to_str(), Some("png" | "image" | "gz"))
+                    })
+                {
+                    // Excel upload paths and the study root can use different
+                    // Windows verbatim prefixes for the same retained file.
+                    path = fs::canonicalize(&path)
+                        .with_context(|| format!("Resolve retained evidence {}", path.display()))?;
+                }
                 if let Ok(relative) = path.strip_prefix(root) {
                     let mut image = path.clone();
                     if path
@@ -314,7 +324,8 @@ fn publish_portable_evidence(
     }
     let mut images = BTreeSet::new();
     let mut audits = BTreeSet::new();
-    normalize(&mut report, root, &mut images, &mut audits)?;
+    let evidence_root = fs::canonicalize(root).context("Resolve portable evidence root")?;
+    normalize(&mut report, &evidence_root, &mut images, &mut audits)?;
     let path = directory.join("portable-report.json");
     artifact_cache::atomic_write(&path, &serde_json::to_vec(&report)?)?;
     record["targeted_comparison"]["targeted_report_file"] = json!(path
@@ -335,6 +346,37 @@ fn publish_portable_evidence(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn portable_images_accept_mixed_windows_verbatim_prefixes() -> Result<()> {
+        let root = artifact_cache::unique_path(&std::env::temp_dir(), "portable-prefix")?;
+        let directory = root.join("evidence/attempt");
+        fs::create_dir_all(&directory)?;
+        let image = directory.join("original.png");
+        image::RgbaImage::new(2, 2).save(&image)?;
+        let canonical_image = fs::canonicalize(&image)?;
+        let ordinary_image = PathBuf::from(
+            canonical_image.to_str().unwrap().strip_prefix(r"\\?\").unwrap(),
+        );
+        for source in [ordinary_image, canonical_image] {
+            let mut record = json!({});
+            publish_portable_evidence(
+                &directory,
+                &root,
+                json!({"comparisons":[{"findings":[{"left_png":source}]}]}),
+                &mut record,
+            )?;
+            let report: Value = serde_json::from_slice(
+                &fs::read(directory.join("portable-report.json"))?,
+            )?;
+            assert_eq!(report["comparisons"][0]["findings"][0]["left_png"],
+                "evidence/attempt/original.png");
+            assert_eq!(record["targeted_comparison"]["evidence_images"].as_array().unwrap().len(), 1);
+        }
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
     #[test]
     fn portable_evidence_contains_only_retained_images() -> Result<()> {
         let root = artifact_cache::unique_path(&std::env::temp_dir(), "portable-retention")?;
