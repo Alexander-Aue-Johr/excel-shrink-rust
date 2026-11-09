@@ -111,10 +111,68 @@ function Set-InitialWorksheet([string]$workbook, [int]$index, [bool]$hideErrorIn
     [CaptureWorkbook]::PrepareCapture($workbook, $index, $hideErrorIndicators, $manualCalculation)
 }
 
+function Test-MissingCaptureManifest([string]$path, [string[]]$roots) {
+    $owned = $false
+    foreach ($root in $roots) {
+        $prefix = [IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
+        if (-not $path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $relative = $path.Substring($prefix.Length)
+        $owned = $relative -match '^(?:es-office-capture-[0-9a-f]{32}\\(?:[a-zA-Z0-9_.-]+-)?manifest\.xml|es-parallel-[0-9a-f]{32}\\(?:original|default|maximum|too-aggressive)\.xml)$'
+        if ($owned) { break }
+    }
+    if (-not $owned) { return $false }
+    # File.Exists also returns false for access errors. Only positive absence qualifies.
+    try { [void][IO.File]::GetAttributes($path); return $false }
+    catch [IO.FileNotFoundException] { return $true }
+    catch [IO.DirectoryNotFoundException] { return $true }
+}
+
+function Remove-MissingCaptureRegistrations($key, [string[]]$roots, [string]$backupDirectory) {
+    $entries = @(foreach ($name in $key.GetValueNames()) {
+        $guid = [Guid]::Empty
+        if (-not [Guid]::TryParse($name, [ref]$guid)) { continue }
+        $value = $key.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        if ($value -is [string] -and (Test-MissingCaptureManifest $value $roots)) {
+            [pscustomobject]@{ id=$name; manifest=$value; kind=[int]$key.GetValueKind($name) }
+        }
+    })
+    if (-not $entries.Count) { return }
+    [void][IO.Directory]::CreateDirectory($backupDirectory)
+    $backup = Join-Path $backupDirectory ('missing-manifests-' + [Guid]::NewGuid().ToString('N') + '.json')
+    $receipt = @{
+        registry_path='Software\Microsoft\Office\16.0\WEF\Developer'
+        created_utc=[DateTime]::UtcNow.ToString('o')
+        entries=$entries
+    } | ConvertTo-Json -Depth 5
+    # A failed durable backup prevents deletion.
+    $stream = [IO.File]::Open($backup, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($receipt)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    } finally { $stream.Dispose() }
+    $removed = 0
+    foreach ($entry in $entries) {
+        if ($key.GetValue($entry.id) -cne $entry.manifest) { continue }
+        if (-not (Test-MissingCaptureManifest $entry.manifest $roots)) { continue }
+        $key.DeleteValue($entry.id, $false)
+        $removed++
+    }
+    Write-Information "Removed $removed missing capture manifest registrations. Backup $backup"
+}
+
 function Register-AddIn([string]$id, [string]$manifestPath) {
     $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Office\16.0\Wef\Developer', $true)
     if ($null -eq $key) { throw 'Cannot open Office developer add-in registry key.' }
     try {
+        $stage = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($manifestPath))
+        $scratch = [IO.Path]::GetDirectoryName($stage)
+        $roots = @([IO.Path]::GetTempPath(), (Join-Path $env:LOCALAPPDATA 'Temp'), $scratch)
+        try {
+            Remove-MissingCaptureRegistrations $key $roots (Join-Path $scratch 'registry-backups')
+        } catch {
+            Write-Warning "Capture manifest cleanup failed: $($_.Exception.Message)"
+        }
         # Other capture sessions register concurrently. Read this known value
         # directly instead of enumerating a registry key that is changing.
         $previous = $key.GetValue($id, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)

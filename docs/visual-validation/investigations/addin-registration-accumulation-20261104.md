@@ -19,6 +19,23 @@ Resident cleanup restores registrations on normal exit, while forced launcher
 termination can bypass its `finally` block. This observation does not identify
 which exit path produced each of the 609 missing-path entries.
 
+The user subsequently authorized removal during the active run. Two backed-up
+passes removed 567 missing capture manifests and 40 further missing capture or
+legacy parallel-test manifests. Ten existing manifests remained. The live
+Destatis summary advanced to 1,095 completed comparisons with four active groups.
+These observations establish continued operation, not a measured speedup.
+
+Automatic missing-only cleanup now runs immediately before `Register-AddIn`.
+It considers GUID values under the current user's local temporary directory,
+the process temporary directory and the current capture staging parent. Only
+the known capture-manifest or legacy parallel-test filename patterns qualify.
+`GetAttributes` must report file or directory absence. Access errors are reported
+as cleanup warnings. A flushed JSON backup precedes deletion, and both the
+unchanged registry value and missing file are checked again before deletion.
+Existing manifests are preserved even when their owning process may have ended.
+The older manual cleanup command retains its closed-Excel gate because it can
+also remove existing abandoned manifests.
+
 A small real Data.gov Original/Default pair timed out after 120 seconds without
 an Office.js heartbeat. Excel consumed approximately one CPU core while no
 WebView appeared. Visible inspection showed the workbook grid without an add-in.
