@@ -42,6 +42,7 @@ pub(super) fn has_differences(report: &Value, skip_performance: bool) -> Result<
                 | "targeted-content-grid-v8"
                 | "targeted-content-grid-v9"
                 | "targeted-content-grid-v10"
+                | "targeted-content-grid-v11"
         )
     ) {
         expected = super::execution_contract::expected_pairs(report, skip_performance)?;

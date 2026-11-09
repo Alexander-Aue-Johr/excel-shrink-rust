@@ -12,7 +12,7 @@ One changed pixel is sufficient to offer an explanation. The explanation is a
 possible dependency path and does not establish the cause of every changed pixel.
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v10`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v11`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -1444,4 +1444,10 @@ not discard explicit cells, column-style boundaries or other worksheet blockers.
 The supplied object rectangle is always requested for capture, including when
 cell XML is unchanged. Failed native commands remain errors. A failed envelope
 qualification retains the ordinary fallback and its reason in the report.
+
+This state-specific selection rule introduces policy v11. Historical v10 reports
+retain their producer and policy identities. A v11 runtime does not automatically
+accept their completion as v11 coverage. A live study upgrade therefore needs an
+explicit selection/revalidation plan. The two current long Destatis attempts
+remain on their immutable v10 runtime while native acceptance is pending.
 
