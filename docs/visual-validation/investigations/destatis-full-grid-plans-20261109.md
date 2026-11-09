@@ -67,3 +67,45 @@ The migration receipt and previous launch/configuration/control files remain in
 the private night-run `runtime-migrations/6c744038` directory. They bind the asset
 checkout, unchanged executable hash and previous/current launch hashes. No raw
 finding or failed attempt was discarded by this recovery.
+
+## Bounded native background countercheck
+
+The retained `Jahr` pair was checked independently with four explicit areas,
+`A1:V256`, `A257:V512`, `A513:V620` and `W1:X620`. These cover the serialized
+content and nearby right/bottom background samples. They do not cover the whole
+grid. Native object qualification returned no pictures or charts on this sheet
+in either rebuilt state. The reference completed in 17.347844 seconds while the
+night study continued with four active groups.
+
+| Area | Original image | Shrink image | Changed overlapping RGBA pixels | Extra original pixels |
+| --- | --- | --- | --- | --- |
+| A1:V256 | 2348 × 5533 | 2146 × 5533 | 0 | 1,117,666 |
+| A257:V512 | 2348 × 5533 | 2146 × 5533 | 0 | 1,117,666 |
+| A513:V620 | 2348 × 2347 | 2146 × 2347 | 0 | 474,094 |
+| W1:X620 | 407 × 13411 | 205 × 13411 | 0 | 2,709,022 |
+
+Every extra pixel was opaque white, with all four RGBA channel extrema equal
+to 255. This is sampled evidence of excess capture geometry, not a proof that
+every unsampled region is equal. The failed production coverage remains unresolved.
+
+Both worksheets disable gridlines. The inherited fills include indexed color 9
+and theme color 0, and column D uses no fill. Thus the existing same-fill-ID,
+full-width background proof does not apply directly. Resolving actual color
+properties and the interaction with no-fill/gridline presentation is required
+before broadening the proof. Merely accepting every solid fill would be unsound.
+
+Evidence is retained under
+`G:\deltasieve-work\destatis-background-probe-20261109`.
+The plan SHA-256 is
+`cfbfa59090e879e5a6eebd5921450716e1a83eb8de21f37e23eba0202ed21d4e`.
+The input hashes recorded by the successful reference are
+`dc84b83ca4fd9fde73b78f89aa42b755a985e625590fbc18a1789df0debe8417`
+and `81904c78164aac3ef9e84ab212ca2cc9487f64e7b43576f5ee142e036d17b926`.
+The diagnostic executable hash is
+`92653fc1f36a28984d74081301632c8b0b339e07a05d536ffd854504460306b1`.
+
+Two setup failures remain retained beside the successful `reference-matched-assets`
+attempt. The first used a stale executable without the object-check argument.
+The second used stale JavaScript assets without the matching operation. Rebuilding
+the diagnostic executable and using the current checkout's assets resolved both.
+Neither failed setup supplied visual evidence or changed production runtime files.
