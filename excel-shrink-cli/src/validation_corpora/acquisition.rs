@@ -11,6 +11,8 @@ use std::{
 };
 use zip::ZipArchive;
 
+mod member_name;
+
 /// Reuse complete originals before consulting an optional archive or the network.
 /// A conflicting original is an error. Successfully published members survive retries.
 pub(crate) fn prepare(
@@ -89,7 +91,9 @@ fn prepare_profile(
         }
         let mut member = zip.by_index(workbook.index)?;
         ensure!(
-            member.name() == workbook.name && member.size() == workbook.bytes && !member.is_dir(),
+            member_name::matches(&member, &workbook.name)?
+                && member.size() == workbook.bytes
+                && !member.is_dir(),
             "Archive member identity differs for {}",
             workbook.name
         );

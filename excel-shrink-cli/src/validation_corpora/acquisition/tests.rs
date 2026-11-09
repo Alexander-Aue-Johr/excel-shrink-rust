@@ -90,6 +90,99 @@ fn restores_only_missing_members_and_reuses_complete_files_without_archive() -> 
 }
 
 #[test]
+fn acquires_the_registered_unicode_path_when_the_legacy_header_differs() -> Result<()> {
+    let mut fixture = Fixture::new()?;
+    let raw = b"Ramh\x9bj.xlsx";
+    let expected = "Ramhøj.xlsx";
+    let placeholder = b"RamhXj.xlsx";
+    let mut writer = ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    writer.start_file_with_extra_data("RamhXj.xlsx", FileOptions::default())?;
+    // Independent fixture encoding of version-one Info-ZIP Unicode path metadata.
+    // ZipWriter reserves 0x7075 behind an optional feature. Emit its documented
+    // test field ID first and patch the two field IDs in the completed fixture.
+    writer.write_all(&[0xef, 0xbe, 17, 0, 1])?;
+    writer.write_all(&crc32fast::hash(raw).to_le_bytes())?;
+    writer.write_all(expected.as_bytes())?;
+    writer.end_extra_data()?;
+    writer.write_all(b"original-0")?;
+    let mut bytes = writer.finish()?.into_inner();
+    let fields: Vec<_> = bytes
+        .windows(5)
+        .enumerate()
+        .filter_map(|(position, value)| (value == [0xef, 0xbe, 17, 0, 1]).then_some(position))
+        .collect();
+    assert_eq!(fields.len(), 2);
+    for position in fields {
+        bytes[position] = 0x75;
+        bytes[position + 1] = 0x70;
+    }
+    let positions: Vec<_> = bytes
+        .windows(placeholder.len())
+        .enumerate()
+        .filter_map(|(position, value)| (value == placeholder).then_some(position))
+        .collect();
+    assert_eq!(positions.len(), 2);
+    for position in positions {
+        bytes[position + 4] = 0x9b;
+    }
+    fs::write(&fixture.archive, &bytes)?;
+    fixture.profile.workbooks.truncate(1);
+    fixture.profile.workbooks[0].name = expected.into();
+    fixture.profile.archive.bytes = bytes.len() as u64;
+    fixture.profile.archive.sha256 = hash_file(&fixture.archive)?;
+    {
+        let mut archive = ZipArchive::new(std::io::Cursor::new(&bytes))?;
+        let member = archive.by_index(0)?;
+        assert_eq!(member.name_raw(), raw);
+        assert_ne!(member.name(), expected);
+        assert!(member_name::matches(&member, expected)?);
+        assert!(!member_name::matches(&member, "different.xlsx")?);
+    }
+    let result = fixture.prepare(Some(&fixture.archive))?;
+    assert_eq!(result["inspection"]["complete"], true);
+    assert_eq!(fs::read(fixture.artifacts.join(expected))?, b"original-0");
+    Ok(())
+}
+
+#[test]
+#[ignore = "Reads the private pinned Data.gov source archive from an explicit environment path"]
+fn inspect_pinned_datagov_archive_member_names() -> Result<()> {
+    let path = PathBuf::from(
+        std::env::var_os("DELTASIEVE_DATAGOV_ARCHIVE").context("Set DELTASIEVE_DATAGOV_ARCHIVE")?,
+    );
+    let profile = super::super::profile("datagov")?;
+    ensure!(
+        fs::metadata(&path)?.len() == profile.archive.bytes,
+        "Archive size differs"
+    );
+    ensure!(
+        hash_file(&path)? == profile.archive.sha256,
+        "Archive SHA-256 differs"
+    );
+    let mut archive = ZipArchive::new(File::open(&path)?)?;
+    let mut unicode_aliases = 0;
+    for workbook in &profile.workbooks {
+        let member = archive.by_index_raw(workbook.index)?;
+        ensure!(
+            member_name::matches(&member, &workbook.name)?,
+            "Name differs at {}",
+            workbook.index
+        );
+        ensure!(
+            member.size() == workbook.bytes && member.crc32() == workbook.crc32,
+            "Member metadata differs at {}",
+            workbook.index
+        );
+        unicode_aliases += usize::from(member.name() != workbook.name);
+    }
+    println!(
+        "Verified {} pinned archive members, {unicode_aliases} Unicode path aliases",
+        profile.workbooks.len()
+    );
+    Ok(())
+}
+
+#[test]
 fn conflicting_originals_stop_before_downloading_or_replacing() -> Result<()> {
     let fixture = Fixture::new()?;
     fs::create_dir(&fixture.artifacts)?;

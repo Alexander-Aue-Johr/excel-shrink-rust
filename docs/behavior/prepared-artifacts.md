@@ -444,6 +444,20 @@ save/optimization controls and their producer measurements. A failure remains a
 failure in the denominator. Export prepared variants with the transfer workflow
 for subsequent comparison on a different PC.
 
+## Profile-backed original acquisition
+
+Versioned profiles retain registered archive indices, member names, sizes and
+content hashes. A legacy ZIP-name mismatch can be resolved by a version-one
+Info-ZIP Unicode Path field (`0x7075`) whose raw-header-name CRC32 matches and
+whose strict UTF-8 value equals the registered name. Unknown field versions and
+stale checksums retain the ordinary header-name comparison. Malformed fields,
+invalid UTF-8 and ambiguous valid Unicode fields fail explicitly when resolving
+such a mismatch. The validated profile supplies the destination path. Archive
+and extracted-member SHA-256 verification govern create-only publication.
+
+This follows section 4.6.9 of the ZIP format specification.
+[PKWARE APPNOTE](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT)
+
 ## Opening blockers in preparation workers
 
 Each owned conversion or Check Performance Excel worker has an independent,

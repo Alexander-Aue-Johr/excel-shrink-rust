@@ -88,3 +88,42 @@ The private preparation and selection receipts are under
 `validation-temp/profile-study-20261109`, including `prepare.json` and
 `selection-acceptance.json`. Full visual-browser acceptance, a native profile
 study through its web handoff and the multi-machine rehearsal remain open.
+
+## Full Data.gov acquisition and legacy Unicode names
+
+The optimized profile acquisition first restored 6,813 originals, then rejected
+ZIP member index 6814. Its registered name is
+`Ramhøj et al._ PFHxS and Thyroid_means and SD_21.02.2019_d9619a6370e9.xlsx`.
+The legacy header contains byte `0x9b`, which the ZIP library interprets through
+CP437. The same entry carries a version-one Info-ZIP Unicode Path extra field
+with a matching raw-name CRC and the registered UTF-8 name. The whole source
+archive had already passed its pinned size and SHA-256 check.
+
+The acquisition path now accepts that CRC-bound Unicode identity when the
+ordinary decoded name differs. Member indices, registered output paths, byte
+counts, content hashes and non-overwriting publication retain their existing
+contracts. Unknown versions or stale name checksums supply no Unicode match.
+Malformed and ambiguous valid fields are explicit errors. The interpretation
+follows [PKWARE APPNOTE section 4.6.9](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT).
+
+Eight focused acquisition tests passed, including an actual ZIP fixture with
+different legacy and Unicode names, strict CRC/UTF-8 handling, partial reuse,
+conflict preservation and exclusive publication. The fixture initially required
+a correction because the ZIP writer reserves this extra-field ID behind an
+optional feature. It now constructs the reserved metadata by patching the two
+documented test-field headers, with no production dependency change.
+
+The ignored test `inspect_pinned_datagov_archive_member_names` was then run with
+the explicit private archive path. It verified the complete archive SHA-256 and
+all 9,117 registered member names, sizes and CRCs. Exactly one name required the
+Unicode alias. This debug test took 540.74 seconds, primarily including the
+complete archive hash. Its elapsed time is an integrity-test observation.
+
+The optimized ordinary `corpus-prepare` command resumed the existing originals,
+added 2,304 files and reported 9,117 verified, zero missing and zero changed
+originals. The initial 6,813 successful publications remained reusable. Its final
+receipt and logs are retained under
+`G:\SheetShrink-Night-20261109\acquisition-fix`. The archive used is the same pinned
+Data.gov ZIP distributed with the offline package. This acceptance proves full
+source acquisition and hash verification. Native comparison outcomes are tracked
+independently by the sequential night queue.
