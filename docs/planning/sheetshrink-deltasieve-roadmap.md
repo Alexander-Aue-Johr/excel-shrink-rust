@@ -3,12 +3,29 @@
 ## Active Enron and web-start checkpoint on 2026-11-09
 
 Enron is running under the explicitly selected v10 warm-worker implementation
-with four comparison groups. A deployment omission initially caused 132 attempts
+with ten comparison groups after the dynamic-pool deployment. A deployment omission initially caused 132 attempts
 to fail before workbook opening. The missing archive-cleanup helpers were restored
 from the matching checkout, and all 132 attempts were queued through the normal
 restart API. Subsequent inspection found zero current records carrying that
 failure and 205 successful comparisons in this run. Historical failed attempts
 remain evidence. This checkpoint does not establish corpus completion.
+
+The later dynamic deployment uses source base `aa23f011` and preserves prepared
+artifacts and prior results. Its pool provides up to 64 worker slots, while the
+requested ten groups use twenty Excel workers. Slots are capacity, not a claim
+that 64 Excel processes are running. Bounded native probes cover growth, draining
+and an admitted pair completing after admission pauses. Four initial lease-release
+failures were retried after `f36d91c6`; all four current workbook records became
+unchanged. Historical failed attempts remain retained.
+
+The release-retry PowerShell module was updated in the frozen deployment for new
+resident sessions. The previous bytes, previous manifest, new file hash and source
+commit are recorded in its asset history and launch receipts. This was a scoped
+runtime asset update without restarting active workbook operations. At 01:39 local
+time, runner PID 38796 remained live. The local API retained 110 comparison cards;
+the inspected completed card had closed lanes with process_alive=false, confirming
+that pool reuse did not keep that card classified as active. This single-card check
+does not establish completion handling for every lifecycle edge case.
 
 Commit `fbae9fe1` rejects missing cleanup dependencies before warm-pool admission.
 Commit `3eea71ef` exposes warm workers in the ordinary web-study configuration and
