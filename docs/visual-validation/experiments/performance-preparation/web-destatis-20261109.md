@@ -137,3 +137,40 @@ further, although the retained workbook was an optimized original instead of the
 worker's blank settings workbook. The private desktop, visibility transitions,
 SaveAs controls, command routing and pane observation still differ.
 Fresh-per-input retirement remains a verified workaround pending diagnosis.
+
+## Requested order and process-restart matrix
+
+A is `01011970_Auszug_GV.xlsx`, with original SHA-256
+`9875a864482bba19e1b480452158b42283239931bd7d48d688308fd93894622c`.
+B is `01011975_Auszug_GV.xlsx`, with original SHA-256
+`79e6c3a844974e6daa005df47b24ae6310aa08e0a42ea5603e078899583bc3ef`.
+Each case received new original copies. The private test used the retained warm
+worker program, the current preparation-control module and the bounded pane-query
+module, with identical asset hashes across cases. The native desktop and worker
+settings were retained. This tests the automated worker lifecycle, separately
+from the visible manual-interface countercheck above.
+
+| Lifecycle | Order | A worksheet cells before / after | B worksheet cells before / after |
+| --- | --- | --- | --- |
+| Reused Excel, first run | A then B | 315,774 / 315,733 | 115,777 / 115,777 |
+| Reused Excel, first run | B then A | 315,774 / 315,733 | 115,777 / 115,699 |
+| Reused Excel, repeat | A then B | 315,774 / 315,733 | 115,777 / 115,777 |
+| Reused Excel, repeat | B then A | 315,774 / 315,774 | 115,777 / 115,699 |
+| Fresh Excel per file | A then B | 315,774 / 315,733 | 115,777 / 115,699 |
+| Fresh Excel per file | B then A | 315,774 / 315,733 | 115,777 / 115,699 |
+
+All before-optimization worksheet XML hashes matched within each input identity.
+The three unchanged second-position outputs corresponded to native no-work
+messages. Successful outputs for A shared worksheet XML SHA-256
+`d7fb666135aa4bfc22b425f827e80f729bdacb8213668b4cac3e569b4f84caa6`.
+Successful B outputs shared
+`9b7834a864a3fd145c327a0422d9ad60c03186212b2a9c40082889130adc81af`.
+The fresh cases had four distinct Excel PIDs. Each warm case kept one PID across
+its two requests. Receipts, source copies, asset hashes and independent worksheet
+checks are retained in the private `cp-order-matrix-20261109` evidence directory.
+
+The repeated reverse-order results differ, so a deterministic file-order rule
+is unsupported. The automated reuse policy remains unreliable on these inputs.
+Fresh-per-input workers passed all four matrix requests and remain the production
+workaround. These small tests establish functional evidence without estimating
+corpus throughput or the exact internal cause of the native state failure.
