@@ -48,6 +48,14 @@ lexical-scope tracker. These observations expose local prefix rebinding while
 keeping the existing JSON field names. Full representation validation and
 supported-frame qualification remain separate requirements.
 
+VML shape observations include `style_frame` with an explicit `absent`,
+`parsed_points` or `unsupported` status. The point parser accepts the observed
+absolute-position form with explicit margins and dimensions in points, allowing
+unitless zero. Repeated properties, unknown styles, rotation, unsupported units,
+negative/nonfinite values and overflowing rectangles remain unsupported.
+Successful parsing describes the stored rectangle. It does not establish that
+all drawing effects fit inside it or qualify an unsupported native object.
+
 A qualification failure describes this guard's supported object model. It does
 not establish that the workbook is invalid or the range renderer omits the
 object. Bounded native controls have rendered embedded Word and PDF previews

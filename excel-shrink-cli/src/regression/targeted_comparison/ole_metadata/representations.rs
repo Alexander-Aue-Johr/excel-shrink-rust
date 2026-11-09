@@ -1,6 +1,8 @@
 //! Retain DrawingML/VML identities alongside worksheet OLE records.
 //! Resolve identity-subtree namespaces without qualifying supported rendering frames.
-use super::{attributes, hash_local_parts, namespaces, read_relationships, Relationship};
+use super::{
+    attributes, hash_local_parts, namespaces, read_relationships, vml_geometry, Relationship,
+};
 use crate::regression::xml_views::{Kind, Reader};
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
@@ -23,6 +25,7 @@ struct Shape {
     qualified_name: String,
     #[serde(flatten)]
     resolved_namespaces: namespaces::Observation,
+    style_frame: vml_geometry::Observation,
     attributes: BTreeMap<String, String>,
     compatibility_ids: Vec<String>,
     preview_relationship_ids: Vec<String>,
@@ -63,6 +66,7 @@ fn read(part: String, bytes: &[u8]) -> Result<Representation> {
             result.shapes.push(Shape {
                 qualified_name: std::str::from_utf8(tag.name)?.to_owned(),
                 resolved_namespaces,
+                style_frame: vml_geometry::observe(attrs.get("style").map(String::as_str)),
                 attributes: attrs,
                 compatibility_ids: Vec::new(),
                 preview_relationship_ids: Vec::new(),

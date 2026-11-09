@@ -193,6 +193,30 @@ not establish support for every representation property, rendering effect or
 object frame. Production capture rules and native reference qualification
 remain unchanged.
 
+## Explicit VML point-frame observations
+
+The representation scanner now parses the observed absolute VML CSS frame into
+left, top, width and height in points. It records absent, parsed or unsupported
+states explicitly. Unknown properties, duplicate declarations, rotation,
+unsupported length units, missing coordinates, invalid values and overflowing
+rectangles do not produce a parsed frame. Stacking order and the observed tight
+wrap setting are validated separately from the point lengths.
+
+Twelve focused OLE tests passed. XML-only inspection of the retained inputs
+then matched their DrawingML compatibility IDs to VML IDs and native object
+names. The original Word and PDF input hashes exactly match those retained in
+the earlier native reference receipts. Their four parsed frame coordinates
+agree with the native rectangles with zero point difference.
+
+The existing moved-PDF fixture has top 159.75 points, compared with the original
+native top of 114.75. The independent comparison found the expected 45-point
+mismatch. This prevents interpreting any parsed style as agreement with an
+arbitrary native observation. The private `vml-native-frame-checks.json` receipt
+SHA-256 is
+`3d6a1b4a108abcaf6e31d69743ca83a8940321d6be26170b6689bc82a64a1c89`.
+All three XML inspections reused existing inputs and native evidence, without
+starting Excel. This step leaves OLE qualification and capture coverage unchanged.
+
 ## Zero-area text-box visibility controls
 
 The same retained workbook has three zero-size `Text 1` shapes on Deutschland,

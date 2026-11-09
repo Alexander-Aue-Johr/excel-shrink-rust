@@ -18,6 +18,7 @@ use zip::ZipArchive;
 
 mod namespaces;
 mod representations;
+mod vml_geometry;
 
 #[derive(Debug, Default, Serialize)]
 pub(super) struct Catalogue {
