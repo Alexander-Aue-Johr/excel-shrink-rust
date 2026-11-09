@@ -104,3 +104,12 @@ an explanatory case study, not as an independent coverage or recall estimate.
 The cleaned ZIP was also larger than its input, 15,022,001 against 13,534,365
 bytes, despite about 2 MiB less uncompressed worksheet XML. This case does not
 demonstrate an archive-size reduction.
+
+## Follow-up writer experiment
+
+A bounded [audit-write buffering experiment](../experiments/audit-write-buffering/README.md)
+found about 7.2–10.2 times lower serialization/compression time for a synthetic
+100,000-row audit when buffering JSON writes before gzip. Decoded payloads
+matched exactly. The production file roundtrip test also passed. This addresses
+one plausible cost inside the uninstrumented audit section. The original
+Seeschifffahrt attempt was not rerun, so its whole-workbook speedup is unmeasured.
