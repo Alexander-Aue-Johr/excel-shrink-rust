@@ -82,3 +82,16 @@ The normal-entry native reference receipt SHA-256 is
 The source and historical production verdicts remain unchanged. This reference
 check covers the supplied affected area. A new production validation must still
 inspect the changed output before replacing its historical corpus verdict.
+
+The normal targeted-comparison workflow subsequently compared the corrected
+output against the same original across all 264 regions selected for the file.
+Its OR-versus-SDR result has zero pixel, geometry and rendering differences.
+The report status is `completed_with_limitations`, retaining the ordinary
+targeted-coverage qualification. Capture selection and transport took 107,227
+milliseconds. This result is separate from the independent fixed-area control.
+Its report SHA-256 is
+`35136c9e05a8b6294a1abd1ba9980c06c3a65d755aeb236fafbb52f0c5d37a9d`.
+The report is retained in `fixed-full-targeted-retry/report.json` beneath the
+experiment root. The first invocation was rejected before Excel startup because
+its requested Observatory group directory was absent. That failed invocation
+remains separate. The historical study record has not been relabeled or replaced.
