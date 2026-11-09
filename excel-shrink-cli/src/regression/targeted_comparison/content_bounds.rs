@@ -115,19 +115,23 @@ pub(super) struct Coverage {
     clipped_to_content: usize,
     selected_capture_regions: usize,
     selected_grid_tiles: usize,
+    background_tail_sampling: bool,
 }
 
 #[derive(Default)]
-pub(super) struct ContentBounds(BTreeMap<String, Rectangle>);
+pub(super) struct ContentBounds {
+    bounds: BTreeMap<String, Rectangle>,
+    background_tail_sampling: BTreeSet<String>,
+}
 
 impl ContentBounds {
     /// Expose the unpadded visible-content envelope to layout candidate selection.
     pub fn envelope(&self, sheet: &str) -> Option<Rectangle> {
-        self.0.get(sheet).copied()
+        self.bounds.get(sheet).copied()
     }
     /// Account for both the candidate's neighborhood and the content margin before allocating a change.
     pub fn intersects_cell(&self, sheet: &str, row: u32, column: u32) -> bool {
-        self.0.get(sheet).is_some_and(|bounds| {
+        self.bounds.get(sheet).is_some_and(|bounds| {
             Rectangle {
                 top: row,
                 bottom: row,
@@ -142,11 +146,14 @@ impl ContentBounds {
     /// Include raw originals as well as saved/rebuilt variants: deleted real data stays covered.
     pub fn include(&mut self, snapshot: &Snapshot) {
         for (name, sheet) in &snapshot.sheets {
+            if sheet.background_tail_sampling {
+                self.background_tail_sampling.insert(name.clone());
+            }
             for bounds in [sheet.cells.content_bounds(), sheet.visual_bounds]
                 .into_iter()
                 .flatten()
             {
-                self.0
+                self.bounds
                     .entry(name.clone())
                     .and_modify(|previous| {
                         previous.top = previous.top.min(bounds.top);
@@ -163,7 +170,7 @@ impl ContentBounds {
     pub fn core_range(&self, candidate: &Candidate) -> Result<Option<String>> {
         let rectangle = Rectangle::parse(&candidate.cell)?;
         Ok(self
-            .0
+            .bounds
             .get(&candidate.sheet)
             .and_then(|bounds| bounds.intersection(rectangle))
             .map(Rectangle::address))
@@ -172,7 +179,7 @@ impl ContentBounds {
     /// Heights above and within visible content affect its position. Context margin rows
     /// below content may change height without creating a visual regression candidate.
     pub fn last_relevant_row(&self, sheet: &str) -> u32 {
-        self.0.get(sheet).map_or(0, |bounds| bounds.bottom)
+        self.bounds.get(sheet).map_or(0, |bounds| bounds.bottom)
     }
 
     /// Recompute after late discoveries; retained workbooks backfill newly eligible evidence.
@@ -183,7 +190,11 @@ impl ContentBounds {
         let mut selected = BTreeSet::new();
         let mut coverage = BTreeMap::new();
         for candidate in requested {
-            let bounds = self.0.get(&candidate.sheet).copied().map(Rectangle::padded);
+            let bounds = self
+                .bounds
+                .get(&candidate.sheet)
+                .copied()
+                .map(Rectangle::padded);
             let entry = coverage
                 .entry(candidate.sheet.clone())
                 .or_insert_with(|| Coverage {
@@ -195,6 +206,9 @@ impl ContentBounds {
                     clipped_to_content: 0,
                     selected_capture_regions: 0,
                     selected_grid_tiles: 0,
+                    background_tail_sampling: self
+                        .background_tail_sampling
+                        .contains(&candidate.sheet),
                 });
             entry.requested_candidates += 1;
             let region = Rectangle::parse(&padded_range(&candidate.cell)?)?;
@@ -232,28 +246,33 @@ pub(super) fn record_partition(coverage: &mut [Coverage], candidates: &BTreeSet<
 mod tests {
     use super::*;
 
+    fn bounds(address: &str) -> Result<ContentBounds> {
+        Ok(ContentBounds {
+            bounds: BTreeMap::from([("Data".into(), Rectangle::parse(address)?)]),
+            ..Default::default()
+        })
+    }
+
     #[test]
     fn height_scope_stops_at_content_while_captures_keep_their_context_margin() -> Result<()> {
-        let bounds = ContentBounds(BTreeMap::from([(
-            "Data".into(),
-            Rectangle::parse("B1:XFD83")?,
-        )]));
+        let bounds = bounds("B1:XFD83")?;
         assert_eq!(bounds.last_relevant_row("Data"), 83);
         assert_eq!(bounds.last_relevant_row("Missing"), 0);
-        let requested = [Candidate { sheet: "Data".into(), cell: "B83".into() }].into();
+        let requested = [Candidate {
+            sheet: "Data".into(),
+            cell: "B83".into(),
+        }]
+        .into();
         let (selected, _) = bounds.select(&requested)?;
-        assert!(selected.iter().all(|candidate| {
-            Rectangle::parse(&candidate.cell).unwrap().bottom == 84
-        }));
+        assert!(selected
+            .iter()
+            .all(|candidate| { Rectangle::parse(&candidate.cell).unwrap().bottom == 84 }));
         Ok(())
     }
 
     #[test]
     fn row_height_candidates_reach_content_starting_far_from_column_a() -> Result<()> {
-        let bounds = ContentBounds(BTreeMap::from([(
-            "Data".into(),
-            Rectangle::parse("T10:W20")?,
-        )]));
+        let bounds = bounds("T10:W20")?;
         let requested = BTreeSet::from([Candidate {
             sheet: "Data".into(),
             cell: "A12:XFD12".into(),
@@ -272,10 +291,7 @@ mod tests {
 
     #[test]
     fn dense_changes_share_tiles_without_dropping_grid_boundary_neighbors() -> Result<()> {
-        let bounds = ContentBounds(BTreeMap::from([(
-            "Data".into(),
-            Rectangle::parse("A1:Z1000")?,
-        )]));
+        let bounds = bounds("A1:Z1000")?;
         let requested = BTreeSet::from([Candidate {
             sheet: "Data".into(),
             cell: "P128".into(),
@@ -306,10 +322,7 @@ mod tests {
 
     #[test]
     fn deleted_blank_tail_does_not_expand_captures() -> Result<()> {
-        let bounds = ContentBounds(BTreeMap::from([(
-            "Data".into(),
-            Rectangle::parse("C1:F10")?,
-        )]));
+        let bounds = bounds("C1:F10")?;
         let requested = (1..=100_010)
             .map(|row| Candidate {
                 sheet: "Data".into(),
@@ -327,10 +340,7 @@ mod tests {
 
     #[test]
     fn rectangles_are_intersected_and_empty_sheets_are_explicitly_skipped() -> Result<()> {
-        let bounds = ContentBounds(BTreeMap::from([(
-            "Data".into(),
-            Rectangle::parse("C5:F10")?,
-        )]));
+        let bounds = bounds("C5:F10")?;
         let requested = BTreeSet::from([
             Candidate {
                 sheet: "Data".into(),

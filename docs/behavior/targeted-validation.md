@@ -338,6 +338,24 @@ conditional formatting, objects and unsupported worksheet features disable this
 proof and retain the conservative extent. Changed column formats and effective
 row heights inside the retained envelope still produce capture candidates.
 
+An additional inherited-background rule applies when every worksheet view
+explicitly hides gridlines, inherited row/column formats and the default style
+have no visible borders, and each visible inherited fill is a supported solid
+fill. It requires resolved column definitions, supported worksheet markup and
+no conditional-format blocks. The envelope retains every serialized cell,
+content/merge/bounded-drawing extent, row transition and finite column interval
+edge. It includes a following row and a column in the final interval as background
+samples. A column interval ending at XFD has no additional finite right edge.
+Beyond these transitions the empty background repeats. Different solid color
+references are allowed because their pixels are still compared within the
+retained extent, without assuming that the colors are equal.
+
+Coverage records expose `background_tail_sampling=true` when any included state
+uses this rule. Pixels outside that extent were not captured. This records
+representative background coverage and must not be presented as exhaustive
+whole-grid pixel coverage. CF, visible gridlines, inherited borders, patterned
+fills, unknown styles or unsupported markup retain the previous fallback.
+
 Intersect candidate neighborhoods with that envelope and put them on the shared
 internal grid of **128 rows by 16 columns**. Deduplicate grid regions and clip
 boundary tiles to the envelope. This is only a candidate index. Under capture

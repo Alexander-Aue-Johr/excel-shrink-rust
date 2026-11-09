@@ -25,6 +25,7 @@ use zip::ZipArchive;
 pub(super) struct Sheet {
     pub value_namespace_supported: bool,
     pub visual_bounds: Option<super::content_bounds::Rectangle>,
+    pub background_tail_sampling: bool,
     pub rebuild_blockers: BTreeSet<String>,
     pub cells: Cells,
     pub rows: Arc<BTreeMap<u32, BTreeMap<String, String>>>,
@@ -419,6 +420,8 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     let mut columns_depth = None;
     let mut layout = Sha256::new();
     let mut uniform_background_supported = true;
+    let mut sheet_views = 0;
+    let mut gridlines_hidden = true;
     streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
         if let Event::Tag(tag) = &event {
             if let Some(reason) = super::execution_plan::worksheet_blocker(*tag) {
@@ -442,6 +445,13 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                     namespace == b"http://schemas.openxmlformats.org/spreadsheetml/2006/main"
                 })
                 .unwrap_or(standard_namespace);
+            if tag.local() == b"sheetView" && tag.kind != Kind::End {
+                sheet_views += 1;
+                gridlines_hidden &= tag_namespace
+                    && tag.name == b"sheetView"
+                    && tag.depth == 2
+                    && tag.attr(b"showGridLines")? == Some(b"0");
+            }
             let (x14_declaration, xm_declaration) =
                 if data_depth.is_none() || tag.local() == b"sheetData" {
                     (tag.attr(b"xmlns:x14")?, tag.attr(b"xmlns:xm")?)
@@ -656,18 +666,26 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             }
         }
     }
-    visual.finish_columns(
+    let finite = super::content_bounds::Rectangle {
+        top: 1,
+        left: 1,
+        bottom: bottom.max(1),
+        right: right.max(1),
+    };
+    let background_supported = model.value_namespace_supported
+        && model.cf_columns.is_resolved()
+        && uniform_background_supported;
+    model.background_tail_sampling = visual.finish_background_bands(
         solid_fills,
-        super::content_bounds::Rectangle {
-            top: 1,
-            left: 1,
-            bottom: bottom.max(1),
-            right: right.max(1),
-        },
-        model.value_namespace_supported
-            && model.cf_columns.is_resolved()
-            && uniform_background_supported,
+        finite,
+        background_supported
+            && sheet_views > 0
+            && gridlines_hidden
+            && model.conditional.blocks.is_empty(),
     );
+    if !model.background_tail_sampling {
+        visual.finish_columns(solid_fills, finite, background_supported);
+    }
     model.visual_bounds = visual.bounds;
     if let Some(bounds) = model.visual_bounds {
         model.bottom = model.bottom.max(bounds.bottom);
@@ -959,6 +977,67 @@ mod tests {
             )?;
             assert_eq!(model.visual_bounds.unwrap().bottom, expected_bottom);
             assert!(!model.rebuild_blockers.is_empty());
+            drop(archive);
+            std::fs::remove_file(path)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn background_band_sampling_requires_hidden_gridlines_and_no_cf() -> Result<()> {
+        use std::io::Write;
+        let styles_xml = br#"<styleSheet><fills><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill></fills><cellXfs><xf fillId="0" borderId="0"/><xf fillId="1" borderId="0" applyFill="1"/></cellXfs></styleSheet>"#;
+        let styles = excel_shrink_core::styles::parse_xfs(styles_xml)?;
+        let identity = super::super::style_identity::StyleIdentity::read(styles_xml)?;
+        let fills = super::super::style_identity::solid_fill_ids(styles_xml)?;
+        for (views, cf, sampled) in [
+            (
+                r#"<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>"#,
+                "",
+                true,
+            ),
+            (
+                r#"<sheetViews><sheetView workbookViewId="0"/></sheetViews>"#,
+                "",
+                false,
+            ),
+            (
+                r#"<sheetViews><sheetView showGridLines="0" workbookViewId="0"/><sheetView showGridLines="1" workbookViewId="1"/></sheetViews>"#,
+                "",
+                false,
+            ),
+            (
+                r#"<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>"#,
+                r#"<conditionalFormatting sqref="A1:XFD1048576"><cfRule type="cellIs" operator="equal" priority="1"><formula>1</formula></cfRule></conditionalFormatting>"#,
+                false,
+            ),
+        ] {
+            let xml = format!(
+                r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">{views}<cols><col min="1" max="3" style="1"/><col min="5" max="16384" style="1"/></cols><sheetData><row r="20" s="1" customFormat="1"><c r="T20"><v>7</v></c></row></sheetData>{cf}</worksheet>"#
+            );
+            let path =
+                std::env::temp_dir().join(format!("background-bands-{}.zip", uuid::Uuid::new_v4()));
+            let mut writer = zip::ZipWriter::new(File::create(&path)?);
+            writer.start_file("sheet.xml", zip::write::FileOptions::default())?;
+            writer.write_all(xml.as_bytes())?;
+            writer.finish()?;
+            let mut archive = ZipArchive::new(File::open(&path)?)?;
+            let model = read_sheet::<true>(
+                &mut archive,
+                "sheet.xml",
+                20,
+                20,
+                None,
+                &styles,
+                &identity,
+                &fills,
+                true,
+            )?;
+            assert_eq!(model.background_tail_sampling, sampled);
+            assert_eq!(
+                model.visual_bounds.unwrap().address(),
+                if sampled { "A1:T21" } else { "A1:XFD1048576" }
+            );
             drop(archive);
             std::fs::remove_file(path)?;
         }

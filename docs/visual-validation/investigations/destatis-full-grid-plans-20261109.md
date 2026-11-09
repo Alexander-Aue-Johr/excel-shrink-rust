@@ -109,3 +109,35 @@ attempt. The first used a stale executable without the object-check argument.
 The second used stale JavaScript assets without the matching operation. Rebuilding
 the diagnostic executable and using the current checkout's assets resolved both.
 Neither failed setup supplied visual evidence or changed production runtime files.
+
+## Finite band plan and deliberate-change control
+
+The new band rule avoids assuming that different fill IDs or color references
+are equal. With gridlines hidden and all inherited fills flat and borderless,
+the planner retains every finite row/column transition, serialized cell and a
+sample of the repeating tail. CF and unsupported layouts keep the fallback.
+Coverage records explicitly mark `background_tail_sampling`.
+
+The retained rebuilt pair now selects `Jahr!A1:V619` and `Titelseite!A1:I61`
+before live geometry partitioning. The XML-only inspection took 0.72 seconds
+and selected 11 internal grid tiles. The normal native comparison partitioned
+these into four captures per state, completed in 34.713 seconds, and found no
+changed pixels. Its report hash is
+`b7c09aa2ba58be8c91f1523072ee400749c6374f68e97301ded5681c9cca305f`.
+
+A separate control changed the sole indexed-9 foreground in the original's
+styles part to opaque cyan. Every other archive member retained its bytes.
+The resulting input hash is
+`872ce74ed8e6ca235b727390fc542db045685d9d232567620f0f082d4f745f05`.
+The ordinary candidate selector and native comparison detected changed pixels
+in all three selected `Jahr` regions, completing in 37.692 seconds. Its report
+hash is `d1af5904c7dfea1d33b9dd3d458ac72167acf3351f4cdd14162650046bdff625`.
+The unchanged title sheet needed no capture in that control. The normal attempt
+first failed before Excel because its test group directory was absent. That
+setup failure remains retained separately.
+
+These bounded controls establish behavior for this rule and fixture. They do
+not establish corpus-wide recall. The running study still uses its previously
+frozen executable until a separately verified runtime deployment. Failed
+whole-grid corpus attempts must be retried after that deployment, with their
+earlier evidence preserved.
