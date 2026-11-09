@@ -39,6 +39,8 @@ impl Worker {
         )?;
         let temporary = root.join("temp");
         fs::create_dir_all(&temporary)?;
+        // .NET Framework's compiler rejects extended-length paths in TEMP.
+        let temporary = crate::shell::power_shell_path(&temporary)?;
         command.env("TEMP", &temporary).env("TMP", &temporary);
         command.stdout(Stdio::from(File::create(directory.join("stdout.log"))?));
         command.stderr(Stdio::from(File::create(directory.join("stderr.log"))?));
