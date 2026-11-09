@@ -97,3 +97,45 @@ under `G:\SheetShrink-Night-20261109\cp-recovery`. Prepared cache entries still
 require their subsequent visual comparison. These recovery observations classify
 opening failures without changing workbook-defined names or certifying the
 Check Performance transformation itself.
+
+## Recovery using the visual study's normalized originals
+
+The visual study had already prepared workbook-only repaired baselines for all
+165 Name Conflict cases. The CP preparation above had instead used raw corpus
+inputs. A separate recovery therefore reused `original.xlsx` from each visual
+preparation bundle, preserving the raw occurrence identity and recording the
+normalized baseline hash separately. It never used the SheetShrink output as
+the CP input.
+
+For every one of these 165 copies, the source hash and visual baseline hash
+were verified against the original manifests and visual records. Comparison of
+all decompressed ZIP members confirmed that only `xl/workbook.xml` changed.
+The source identity set matched exactly the 165 Name Conflict occurrences.
+The first three controls prepared successfully in 21.5851082 seconds. A separate
+165-input campaign reused those three results and finished in 1,375.7888475
+seconds with 163 prepared and two failed inputs.
+
+The failures were `erbringung-dienstleistungen-2090440197005.xlsx`, where the
+opening monitor could not read an exclusively held progress file, and
+`kohortensterbetafeln-5126101209005.xlsx`, where Excel rejected setting
+`Application.Interactive`. A fresh two-input retry finished in 25.9264608 seconds.
+The first input then prepared successfully, while the second reproduced the
+Interactive error. Thus 164 of the 165 original Name Conflict cases have a
+prepared CP result after normalization and retries. The previously separate
+Umsatzsteuer Interactive failure remains unresolved as well.
+
+Raw evidence, baseline copies, per-input visual preparation metadata and frozen
+source manifests remain under `cp-recovery/normalized-baselines-failed165`,
+`normalized-baseline-probe` and `normalized-last-two-retry` beneath the night-run
+root. Earlier raw-baseline failures remain retained. Reports must distinguish
+raw-input preparation from preparation on normalized visual baselines.
+
+The workbook repair matches legacy aliases to `_xlnm.` built-in names with the
+same raw `localSheetId`, for Print_Area, Print_Titles, _FilterDatabase and
+Database. It retains the canonical entry and removes the legacy alias. It does
+not prove equality of their formulas or absence of references to the alias.
+Actual retained files contain differing legacy and canonical definitions,
+including differing print areas and a Database alias paired with `#REF!`.
+Successful opening after repair is not proof of semantic equivalence of these
+definitions. This recovery therefore records preprocessing explicitly rather
+than claiming lossless repair or CP validation.
