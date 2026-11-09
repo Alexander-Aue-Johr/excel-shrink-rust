@@ -608,6 +608,16 @@ remain open.
 
 ## 14 Write and review complete first manuscript drafts
 
+Five controlled comparator pairs now also have explicit reference observations
+independent of the selector. All five completed, with a pixel-equal identical
+control and differences in the four deliberately changed pairs. Continuous
+256-row reference tiling localized the visible B2000 and J2099 changes and kept
+the hidden B3000 tile equal. The experiment records its supplied area limits,
+producer/source hashes, deadlines, raw images and the initial failed path attempt
+in `../visual-validation/experiments/independent-reference/comparator-pilot-20261109.md`.
+These are controlled pair-level checks. The real-world seeded sample, broader
+mutation matrix, pixel-coverage scoring and matched cost experiments remain open.
+
 - [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.
 
 Write substantive scientific English for every planned section, including the abstract, introduction, problem and scope, contributions, method, evaluation, Related Work, limitations, and conclusion as appropriate to each design. Include the planned figures, captions, tables, bibliography, and artifact descriptions. Adjust the structures when deeper research or results justify a change. Mark missing measurements and unresolved claims explicitly in the working drafts and their evidence checklist.
