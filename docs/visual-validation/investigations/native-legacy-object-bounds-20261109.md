@@ -71,6 +71,16 @@ are retained under `G:\deltasieve-work\abwasser-line-controls-20261109`.
 Object qualification was disabled because the reference object guard currently
 accepts images and charts, with no qualified line envelope.
 
+A subsequent bounded native inventory returned both lines as `GeometricShape`,
+each with `(left, top, width, height) = (0, 25.5, 781.5, 0)` points and zero
+rotation. The XML transform agrees exactly at 12,700 EMU per point. The inventory
+operation itself took about 34.6 milliseconds. The reference guard rejected
+`Line 1` as an unsupported kind, retaining its inventory before cleanup. This
+expected rejection is separate from the successful pixel mutation control.
+Its receipt is retained in `native-line-inventory/reference.json` beneath the
+same experiment root. Native geometric height alone therefore cannot supply
+the missing stroke envelope.
+
 The Elterngeld workbook's retained measured plan contains 104,836 shared
 capture regions, including many near row one million on `Erläuterung`. That
 worksheet has only 18 serialized cells and dimension `A3:I6`. Its visible PDF
