@@ -763,7 +763,15 @@ try {
     $hostOutput = Join-Path $session 'host-output'
     [void][IO.Directory]::CreateDirectory($hostOutput)
     $configPath = Join-Path $stage 'host.json'
-    [IO.File]::WriteAllText($configPath, (@{port=$port; web=$webStage; output=$hostOutput; session=$session; launcher_token=$launcherToken} | ConvertTo-Json), $utf8)
+    $hostSettings = @{
+        port=$port
+        web=$webStage
+        output=$hostOutput
+        session=$session
+        launcher_token=$launcherToken
+        probe_access_log=($env:EXCEL_SHRINK_PROBE_ACCESS_LOG -eq '1')
+    }
+    [IO.File]::WriteAllText($configPath, ($hostSettings | ConvertTo-Json), $utf8)
     $arguments = 'capture-host resident ' + (Quote-Argument $configPath)
     $hostProcess = Start-Process -FilePath $hostExecutable -ArgumentList $arguments -WorkingDirectory $stage -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $session 'host.stdout.log') -RedirectStandardError (Join-Path $session 'host.stderr.log')

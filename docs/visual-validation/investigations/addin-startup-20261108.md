@@ -170,3 +170,43 @@ remained after completion. The readiness times were 13.916/12.016 seconds for
 attempt 14 and 14.185/14.927 seconds for attempt 15. This checks concurrent slot
 assignment and ordinary cleanup for two small comparisons. It does not reproduce
 the earlier four-group visible-reset/upload stress scenario or establish a speedup.
+
+## Fresh readiness failures during the November 9 Destatis run
+
+Later native reference attempts stopped reaching add-in readiness while the
+already running Abwasser and Elterngeld residents continued returning captures.
+Both fresh-process and exclusively leased warm-worker attempts timed out. A
+traffic workbook reference attempt therefore cannot yet establish a new pixel
+verdict or validate a candidate cleanup fix.
+
+A separate 1,340-byte seed workbook isolates the startup symptom from the
+traffic workbook. Its only sheet is `Conversion`; the independently supplied
+reference area is `A1:B2`. Using the exact running production executable
+SHA-256 `56fbbbdf25e120a9dca85fd1dfdd76d95fe6cac7c805836275c5a930b163faf5`
+and two exclusively leased idle workers still reached the 45-second
+`open_batch` timeout. The production runtime and instrumented retry are retained
+under `minimal-addon-startup-20261109` in the private experiment directory.
+
+The instrumented retry enables the existing request counters through the new
+opt-in resident environment flag. Both initialized `probe-access.json` receipts
+retain zero taskpane GET, zero config GET and zero ready POST requests at the
+deadline. This establishes absence of these requests at the new host. It does
+not distinguish cached taskpane content, Office manifest resolution, WebView
+startup or other host-side failures. It supplies no proof of a workbook defect.
+Owned helper cleanup completed and the pool returned both test slots as ready,
+unleased and without cleanup errors. The four workers of the two long corpus
+attempts stayed leased and continued capturing.
+
+Direct Windows HTTP HEAD checks returned 200 in 0.27 seconds for the actual
+Office.js CDN URL and 0.36 seconds for the older Microsoft CDN URL. These checks
+do not establish connectivity or script execution inside the affected WebView.
+A later read-only developer-registry inventory found ten own capture entries,
+four positively missing manifest paths and no access errors. That small inventory
+does not reproduce the earlier hundreds-of-entries accumulation or establish
+the cause of the new failures.
+
+Microsoft also documents host-level runtime logging for manifest/load diagnostics.
+It applies to all add-ins on the machine and has a performance cost. It was not
+enabled during these active corpus comparisons. The bounded HTTP counters remain
+the only new runtime instrumentation used in this investigation.
+[Microsoft runtime-logging documentation](https://learn.microsoft.com/en-us/office/dev/add-ins/testing/runtime-logging).

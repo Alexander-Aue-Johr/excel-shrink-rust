@@ -1202,6 +1202,8 @@ production injection policy. The optional resident-host `probe_access_log`
 setting observes only taskpane GET, config GET and ready POST, with counts,
 timestamps and status codes. It is disabled by default and excludes query
 strings. Readiness requires a successful Office.js workbook identity query.
+Ordinary resident launches can opt in through `EXCEL_SHRINK_PROBE_ACCESS_LOG=1`.
+The launcher passes that setting into the existing bounded host instrumentation.
 Workbook visibility alone does not establish add-in readiness. Native startup
 timings include process and add-in initialization, distinct from warm COM open
 timings. See the dated add-in startup investigation for measured controls.
