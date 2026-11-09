@@ -2,6 +2,19 @@
 
 ## Full local night queue requested on 2026-11-09
 
+A later live check confirmed 745 completed Destatis comparisons, ten skipped
+inputs and 397 remaining, with four live groups. Long Elterngeld and Abwasser
+attempts continued returning successful capture batches. An offline check of
+the current source planner against the retained Mikrozensus final-results
+`OR-rebuilt.xlsx` still produced whole-grid visual bounds for `12211-03`, despite
+content bounds of `A1:E50` and no conditional-formatting blocks. Inspection of
+`xl/worksheets/sheet8.xml` found column styles extending through XFD and a
+sheet view with default visible gridlines. The background-band rule requires
+hidden gridlines, so the newer CF exclusion alone does not resolve this case.
+Investigate a bounded representation with explicit gridline and formatting
+controls before changing production coverage. Preserve the raw long-attempt
+evidence and avoid treating a runtime update as a demonstrated solution.
+
 The user requested complete SheetShrink-only comparisons sequentially for
 Destatis, Data.gov and then the supplied Enron v2 extraction. The private queue
 uses four comparison groups, geometry batches of 256, capture batches of eight

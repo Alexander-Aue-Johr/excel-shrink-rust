@@ -127,3 +127,20 @@ receipt and logs are retained under
 Data.gov ZIP distributed with the offline package. This acceptance proves full
 source acquisition and hash verification. Native comparison outcomes are tracked
 independently by the sequential night queue.
+
+## Corrected portable runtime acceptance
+
+The separately packaged `runtime-1f72e78b` contains 114 verified files. Its
+DeltaSieve executable SHA-256 is
+`6cd1fa9eb0d5afb72b4bd6a8b3f2183607dcfdf535038e3c5b72a915874e80b7`.
+An ordinary native chart control completed in 11.8597733 seconds and retained
+the expected deliberate difference. Both image hashes matched the previously
+retained control. The acceptance receipt SHA-256 is
+`201abc1ec15b183c3a1fa431593ccca69e02b23553277f0a02e789d23e98856f`.
+
+A private runtime-only update ZIP was checked for ZIP CRC integrity and every
+packaged file's size and SHA-256. It contains no corpus or personal starters.
+Its SHA-256 is
+`dddc4b6b05911da2be0756f364d9b662544518512172466da4b3412298d09682`.
+The existing night comparisons continue using their pinned `0ad30f53` runtime.
+This acceptance does not prove existing-study migration compatibility.
