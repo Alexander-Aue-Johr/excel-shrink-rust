@@ -128,6 +128,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool, application: Appl
         .route("/api/study/resume", post(resume_study))
         .route("/api/study/start", post(start_study))
         .route("/api/study/ready", get(study_ready))
+        .route("/api/corpora", get(corpus_catalog))
         .route("/api/open", post(open_report))
         .route("/api/export", post(export_report))
         .route("/api/preparation/preview", post(preparation::preview))
@@ -205,6 +206,13 @@ fn allowed_headers(headers: &HeaderMap, port: u16) -> bool {
     headers
         .get("sec-fetch-site")
         .is_none_or(|value| value != "cross-site")
+}
+
+async fn corpus_catalog() -> ApiResult {
+    let catalog = tokio::task::spawn_blocking(crate::validation_corpora::catalog)
+        .await
+        .map_err(anyhow::Error::from)??;
+    Ok(Json(catalog))
 }
 
 async fn session(State(room): State<Arc<Room>>) -> ApiResult {
@@ -785,5 +793,14 @@ mod tests {
         headers.insert(header::HOST, "127.0.0.1:1234".parse().unwrap());
         headers.insert("sec-fetch-site", "cross-site".parse().unwrap());
         assert!(!allowed_headers(&headers, 1234));
+    }
+
+    #[tokio::test]
+    async fn corpus_catalog_exposes_compact_embedded_identities() {
+        let response = corpus_catalog().await.unwrap().0;
+        assert_eq!(response["version"], 1);
+        assert_eq!(response["profiles"].as_array().unwrap().len(), 2);
+        assert_eq!(response["profiles"][0]["workbook_count"], 9117);
+        assert!(response["profiles"][0].get("workbooks").is_none());
     }
 }

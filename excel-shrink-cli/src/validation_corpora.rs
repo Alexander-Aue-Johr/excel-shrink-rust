@@ -8,7 +8,16 @@ use std::{collections::BTreeSet, fs, path::Path};
 struct Profile {
     version: u32,
     id: String,
+    name: String,
+    archive: Archive,
     workbooks: Vec<Workbook>,
+}
+
+#[derive(Deserialize, serde::Serialize)]
+struct Archive {
+    url: String,
+    sha256: String,
+    bytes: u64,
 }
 
 #[derive(Deserialize)]
@@ -30,6 +39,16 @@ fn profile(id: &str) -> Result<Profile> {
         profile.version == 1 && profile.id == id,
         "Invalid corpus profile identity"
     );
+    ensure!(!profile.name.trim().is_empty(), "Missing corpus display name");
+    let url: axum::http::Uri = profile.archive.url.parse()?;
+    ensure!(
+        url.scheme_str() == Some("https") && url.host().is_some(),
+        "Corpus archive requires an absolute HTTPS URL"
+    );
+    ensure!(
+        profile.archive.bytes > 0 && valid_sha256(&profile.archive.sha256),
+        "Invalid corpus archive identity"
+    );
     let mut names = BTreeSet::new();
     let mut indices = BTreeSet::new();
     for workbook in &profile.workbooks {
@@ -39,13 +58,32 @@ fn profile(id: &str) -> Result<Profile> {
             "Duplicate corpus member identity"
         );
         ensure!(
-            workbook.sha256.len() == 64
-                && workbook.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            valid_sha256(&workbook.sha256),
             "Invalid workbook checksum"
         );
     }
     ensure!(!profile.workbooks.is_empty(), "Empty corpus profile");
     Ok(profile)
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// Expose the embedded profile identities without reading local files or downloading.
+pub(crate) fn catalog() -> Result<Value> {
+    let mut profiles = Vec::new();
+    for id in ["datagov", "destatis"] {
+        let profile = profile(id)?;
+        profiles.push(json!({
+            "id": profile.id,
+            "name": profile.name,
+            "archive": profile.archive,
+            "workbook_count": profile.workbooks.len(),
+            "workbook_bytes": profile.workbooks.iter().map(|item| item.bytes).sum::<u64>(),
+        }));
+    }
+    Ok(json!({"version": 1, "profiles": profiles}))
 }
 
 /// Report missing or changed inputs without downloading, replacing, or starting Excel.
@@ -109,6 +147,15 @@ mod tests {
         assert_eq!(profile("destatis")?.workbooks.len(), 1182);
         assert_eq!(profile("datagov")?.workbooks.len(), 9117);
         assert!(profile("unknown").is_err());
+        let catalog = catalog()?;
+        assert_eq!(catalog["profiles"][0]["id"], "datagov");
+        assert_eq!(catalog["profiles"][0]["workbook_count"], 9117);
+        assert_eq!(catalog["profiles"][1]["workbook_count"], 1182);
+        assert!(catalog["profiles"][0]["archive"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://"));
+        assert!(catalog["profiles"][0].get("workbooks").is_none());
         Ok(())
     }
 
@@ -122,6 +169,12 @@ mod tests {
         let profile = Profile {
             version: 1,
             id: "fixture".into(),
+            name: "Fixture".into(),
+            archive: Archive {
+                url: "https://example.org/fixture.zip".into(),
+                sha256: hash.clone(),
+                bytes: 4,
+            },
             workbooks: ["equal.xlsx", "missing.xlsx", "changed.xlsx"]
                 .into_iter()
                 .enumerate()

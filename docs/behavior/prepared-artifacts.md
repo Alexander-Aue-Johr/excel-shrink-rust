@@ -10,6 +10,19 @@ controls for source manifests. Full visual browser acceptance remains open.
 
 ## Source identity and selection
 
+`deltasieve corpus-list` and the local configurator's `GET /api/corpora` expose
+the same embedded, versioned Data.gov and Destatis profiles. The catalog includes
+each corpus ID, display name, workbook count, total workbook bytes and pinned
+archive URL, byte length and SHA-256. Catalog generation validates those identities
+and reads no local workbook or network source. The web endpoint uses the existing
+local-request checks. Full workbook manifests remain embedded in the executable;
+they are omitted from this compact selection response.
+
+`deltasieve corpus-inspect --profile <id> --artifacts <directory>` verifies the
+extracted originals. Catalog discovery and inspection do not yet download or
+repair missing files. Automatic acquisition and profile-driven study creation
+remain integration work.
+
 A preparation input has a stable source ID, a logical display name, a local
 baseline path and its SHA-256. A known raw source additionally records its hash,
 format and corpus-member reference. Corpus studies reuse their existing

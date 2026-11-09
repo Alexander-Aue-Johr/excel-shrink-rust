@@ -86,6 +86,8 @@ enum Command {
     Open { report: PathBuf },
     /// Copy a completed report into a new, publishable static website directory.
     Export { report: PathBuf, output: PathBuf },
+    /// List embedded corpus profiles and their pinned archive identities without downloading.
+    CorpusList,
     /// Verify extracted originals against a versioned corpus manifest without Excel.
     CorpusInspect {
         #[arg(long)]
@@ -592,6 +594,11 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
             println!("{}", serde_json::to_string_pretty(&RunConfig::default())?);
             Ok(())
         }
+        Some(Command::CorpusList) => {
+            let catalog = crate::validation_corpora::catalog()?;
+            println!("{}", serde_json::to_string_pretty(&catalog)?);
+            Ok(())
+        }
         Some(Command::CorpusInspect {
             profile,
             artifacts,
@@ -703,6 +710,12 @@ pub(crate) fn open_browser(target: &OsStr) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corpus_catalog_requires_no_local_input_configuration() {
+        let parsed = Cli::try_parse_from(["deltasieve", "corpus-list"]).unwrap();
+        assert!(matches!(parsed.command, Some(Command::CorpusList)));
+    }
 
     #[test]
     fn observatory_study_configuration_is_a_prefill_argument() {
