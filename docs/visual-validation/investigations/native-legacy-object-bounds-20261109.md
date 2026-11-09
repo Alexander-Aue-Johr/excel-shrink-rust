@@ -71,3 +71,16 @@ package interpretation. Missing previews, links, mismatched identities,
 unsupported effects and unaccounted objects must retain explicit fallback.
 Moved-frame and changed-preview controls are required before enabling this in
 production. Zero-area geometric shapes require a separate visibility proof.
+
+## Schema references for the implementation gate
+
+The `objectPr` element describes visual, positional and cell-linkage properties
+and contains its object anchor. This supports inspecting its from/to markers
+separately from the hidden DrawingML compatibility placeholder observed in these
+files. [Microsoft EmbeddedObjectProperties documentation](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.embeddedobjectproperties?view=openxml-3.0.1)
+
+The `oleObject` shape ID identifies its DrawingML counterpart, and its
+relationship identifies the persisted object part. Automatic loading and linked
+object updates have distinct schema attributes. The local observations above
+do not establish a general guarantee about arbitrary linked or automatically
+loaded objects. [Microsoft OleObject documentation](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.oleobject?view=openxml-3.0.1)
