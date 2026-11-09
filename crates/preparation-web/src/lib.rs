@@ -2,4 +2,4 @@
 #[cfg(windows)]
 mod server;
 #[cfg(windows)]
-pub use server::{serve, Defaults};
+pub use server::{serve, serve_sheetshrink, Defaults};

@@ -8,6 +8,7 @@ import type {
 
 export interface PackageSizes {
   file_bytes: number;
+  uncompressed_payload_bytes?: number;
   worksheets: {
     part: string;
     compressed_bytes: number;
@@ -26,6 +27,20 @@ export interface Job {
   after: PackageSizes | null;
   source_bytes: number | null;
   error: string | null;
+  sheet_names?: Record<string, string> | null;
+}
+
+export interface WorkTask {
+  id: number;
+  workbook_id: string;
+  sheet: string;
+  worker: number | null;
+  phase: "initial" | "finalize" | "chunk";
+  chunk_index: number | null;
+  chunk_count: number;
+  range: string | null;
+  started_ms: number;
+  ended_ms: number | null;
 }
 
 export interface Configuration {
@@ -36,11 +51,14 @@ export interface Configuration {
   reserve_mib: number | null;
   source_manifest: string | null;
   reuse_from: string | null;
+  max_active_workbooks?: number | null;
+  parallel_range_chunk_size?: number | null;
 }
 
 interface NativeEvent {
   event_type: string;
   elapsed_millis: number;
+  elapsed_micros?: number;
   workbook_id: string | null;
   worker_index: number | null;
   payload: {
@@ -53,12 +71,19 @@ interface NativeEvent {
       converted?: PackageSizes;
     };
     error?: string;
+    sheet_names?: Record<string, string>;
+    task_id?: number;
+    sheet?: string;
+    phase?: WorkTask["phase"];
+    chunk_index?: number;
+    chunk_count?: number;
+    range?: string;
   };
 }
 
 export interface Update {
   run_id: string;
-  operation: "xlsx-convert" | "check-performance";
+  operation: "xlsx-convert" | "check-performance" | "sheet-shrink";
   status: string;
   error: string | null;
   defaults: Configuration;
@@ -66,6 +91,7 @@ export interface Update {
   next: number;
   reset: boolean;
   jobs: Job[] | null;
+  tasks?: WorkTask[] | null;
   counts: {
     total: number;
     prepared: number;
@@ -102,6 +128,7 @@ export function applyUpdate(previous: Job[], update: Update): Job[] {
     if (!job) continue;
     if (event.event_type === "workbook.metadata") {
       job.before = event.payload.package ?? null;
+      job.sheet_names = event.payload.sheet_names ?? null;
       job.source_bytes = event.payload.file_bytes ?? null;
     }
     if (
@@ -128,12 +155,61 @@ export function applyUpdate(previous: Job[], update: Update): Job[] {
   return retained;
 }
 
-/** Adapt measured workbook jobs to the demo's renderer contract without inventing sheet jobs. */
+export function applyTasks(previous: WorkTask[], update: Update): WorkTask[] {
+  if (update.reset) return update.tasks ?? [];
+  const tasks = new Map(previous.map((task) => [task.id, { ...task }]));
+  for (const { event } of update.events) {
+    const id = event.payload?.task_id;
+    if (id === undefined) continue;
+    const time =
+      event.elapsed_micros === undefined
+        ? event.elapsed_millis
+        : event.elapsed_micros / 1000;
+    if (
+      event.event_type === "work.started" &&
+      event.workbook_id &&
+      event.payload.sheet &&
+      event.payload.phase
+    ) {
+      tasks.set(id, {
+        id,
+        workbook_id: event.workbook_id,
+        sheet: event.payload.sheet,
+        phase: event.payload.phase,
+        worker: event.worker_index,
+        chunk_index: event.payload.chunk_index ?? null,
+        chunk_count: event.payload.chunk_count ?? 1,
+        range: event.payload.range ?? null,
+        started_ms: time,
+        ended_ms: null,
+      });
+    }
+    if (event.event_type === "work.finished") {
+      const task = tasks.get(id);
+      if (task) task.ended_ms = time;
+    }
+  }
+  const retained = [...tasks.values()];
+  while (retained.length > 4096) {
+    const position = retained.findIndex((task) => task.ended_ms !== null);
+    if (position < 0) break;
+    retained.splice(position, 1);
+  }
+  return retained;
+}
+
+/** Adapt measured work to the demo's renderer contract. */
 export function scenes(
   update: Update,
   jobs: Job[],
+  tasks: WorkTask[] = [],
 ): { snapshot: Snapshot; run: DemoRun } {
   const time = update.elapsed_ms / 1000;
+  const chunks = new Map<string, number>();
+  for (const task of tasks) {
+    const key = `${task.workbook_id}:${task.sheet}`;
+    chunks.set(key, Math.max(chunks.get(key) ?? 1, task.chunk_count));
+  }
   const books: WorkbookState[] = jobs.map((job, index) => {
     const after = new Map(
       job.after?.worksheets.map((sheet) => [sheet.part, sheet]) ?? [],
@@ -143,11 +219,11 @@ export function scenes(
         id: `${job.id}:${sheet.part}`,
         workbookId: job.id,
         index: sheetIndex + 1,
-        name: sheet.part,
+        name: job.sheet_names?.[sheet.part] ?? sheet.part,
         originalBytes: sheet.uncompressed_bytes,
         cleanedBytes: after.get(sheet.part)?.uncompressed_bytes ?? null,
-        chunkCount: 1,
-        hue: (sheetIndex * 43) % 360,
+        chunkCount: chunks.get(`${job.id}:${sheet.part}`) ?? 1,
+        hue: (155 + sheetIndex * 67) % 360,
         done: job.status === "prepared",
       }),
     );
@@ -165,7 +241,7 @@ export function scenes(
       progress: job.ended_ms === null ? 0 : 1,
     };
   });
-  const visible: VisibleJob[] = jobs.map((job, index) => ({
+  const workbookJobs: VisibleJob[] = jobs.map((job, index) => ({
     id: job.id,
     workbookId: job.id,
     sheetId: job.id,
@@ -191,6 +267,33 @@ export function scenes(
     },
   }));
   const sheets = books.flatMap((book) => book.sheets);
+  const sheetsById = new Map(sheets.map((sheet) => [sheet.id, sheet]));
+  const booksById = new Map(books.map((book) => [book.id, book]));
+  const visible: VisibleJob[] =
+    update.operation === "sheet-shrink"
+      ? tasks.flatMap((task) => {
+          const book = booksById.get(task.workbook_id);
+          const sheet = sheetsById.get(`${task.workbook_id}:${task.sheet}`);
+          if (!book || !sheet || task.worker === null) return [];
+          return [
+            {
+              id: `task-${task.id}`,
+              workbookId: task.workbook_id,
+              sheetId: sheet.id,
+              workerIndex: task.worker,
+              workbookIndex: book.index,
+              workbookName: book.name,
+              startAt: task.started_ms / 1000,
+              endAt: (task.ended_ms ?? update.elapsed_ms) / 1000,
+              visibleEnd: (task.ended_ms ?? update.elapsed_ms) / 1000,
+              chunkIndex: task.chunk_index ?? 0,
+              chunkCount: task.chunk_count,
+              done: task.ended_ms !== null,
+              sheet,
+            },
+          ];
+        })
+      : workbookJobs;
   const snapshot: Snapshot = {
     time,
     workbooks: books,
@@ -200,7 +303,7 @@ export function scenes(
     activeJobs: visible.filter((job) => !job.done),
     completedBooks: jobs.filter((job) => job.status === "prepared").length,
     knownBooks: books.filter((book) => book.known).length,
-    processingBooks: visible.filter((job) => !job.done).length,
+    processingBooks: jobs.filter((job) => job.ended_ms === null).length,
     completedSheets: sheets.filter((sheet) => sheet.done).length,
     beforeBytes: update.counts.before_bytes,
     afterBytes: update.counts.after_bytes,
@@ -224,4 +327,32 @@ export function scenes(
     sheetCount: sheets.length,
   };
   return { snapshot, run };
+}
+
+/** Atlas frame and sheet columns share the same uncompressed ZIP byte scale. */
+export function atlasSnapshot(snapshot: Snapshot, jobs: Job[]): Snapshot {
+  const sources = new Map(jobs.map((job) => [job.id, job]));
+  return {
+    ...snapshot,
+    workbooks: snapshot.workbooks.map((book) => {
+      const source = sources.get(book.id);
+      return {
+        ...book,
+        originalBytes: source?.before
+          ? (source.before.uncompressed_payload_bytes ??
+            book.sheets.reduce(
+              (total, sheet) => total + sheet.originalBytes,
+              0,
+            ))
+          : null,
+        cleanedBytes: source?.after
+          ? (source.after.uncompressed_payload_bytes ??
+            book.sheets.reduce(
+              (total, sheet) => total + (sheet.cleanedBytes ?? 0),
+              0,
+            ))
+          : null,
+      };
+    }),
+  };
 }

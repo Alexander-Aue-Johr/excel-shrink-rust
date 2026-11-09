@@ -17,6 +17,7 @@ mod process_job;
 mod metadata_store;
 mod machine_environment;
 mod pipeline;
+pub mod observed_cleanup;
 mod profiling;
 mod regression;
 mod visual_profile;

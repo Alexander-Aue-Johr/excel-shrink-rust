@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import SceneViewport from "./components/SceneViewport";
+import SheetDetails from "./components/SheetDetails";
+import { buildWorkbookScene } from "./lib/workbook-scene";
 import { buildWorkerScene } from "./lib/worker-scene";
 import { buildDistributionScene } from "./lib/chart-scene";
 import { fmtBytes } from "./lib/scene";
 import {
   applyUpdate,
+  applyTasks,
+  atlasSnapshot,
   scenes,
   type Configuration,
   type Job,
   type Update,
+  type WorkTask,
 } from "./live";
 import "./app/globals.css";
 import "./styles.css";
@@ -46,6 +51,7 @@ async function command(path: string, body: unknown = {}) {
 function Observatory() {
   const [update, setUpdate] = useState<Update | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [tasks, setTasks] = useState<WorkTask[]>([]);
   const [config, setConfig] = useState<Configuration | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -86,6 +92,7 @@ function Observatory() {
           status: next.status,
         };
         setJobs((previous) => applyUpdate(previous, next));
+        setTasks((previous) => applyTasks(previous, next));
         setUpdate(next);
         if (!initialized.current) {
           setConfig(next.defaults);
@@ -105,20 +112,24 @@ function Observatory() {
   }, []);
 
   const rendering = useMemo(
-    () => (update ? scenes(update, jobs) : null),
-    [update, jobs],
+    () => (update ? scenes(update, jobs, tasks) : null),
+    [update, jobs, tasks],
   );
   const workerScene = useMemo(
     () =>
       rendering
         ? buildWorkerScene(rendering.snapshot, rendering.run, {
-            stepHeight: 0,
+            stepHeight: update?.operation === "sheet-shrink" ? 0.14 : 0,
             labelMode: "name",
             jobStyle: "blocks",
-            windowSeconds: 120,
+            windowSeconds:
+              update?.operation === "sheet-shrink"
+                ? Math.max(0.05, Math.min(70, (update.elapsed_ms / 1000) * 1.2))
+                : 120,
             overview: false,
             selectedWorkbookId: selected,
-            workUnit: "workbook",
+            workUnit:
+              update?.operation === "sheet-shrink" ? "worksheet" : "workbook",
           })
         : null,
     [rendering, selected],
@@ -143,6 +154,20 @@ function Observatory() {
         : null,
     [rendering],
   );
+  const atlas = useMemo(
+    () =>
+      rendering
+        ? buildWorkbookScene(atlasSnapshot(rendering.snapshot, jobs), {
+            resultStyle: "split",
+            labelMode: "name",
+            view: "recent",
+            sort: "time",
+            recentCount: 3,
+            selectedWorkbookId: selected,
+          })
+        : null,
+    [rendering, selected, jobs],
+  );
 
   if (!update || !config || !rendering || !workerScene || !distributions)
     return (
@@ -151,8 +176,13 @@ function Observatory() {
         {error && <p role="alert">{error}</p>}
       </main>
     );
-  const optimizing = update.operation === "check-performance";
-  const title = optimizing ? "Excel Check Performance" : "XLSX Convert";
+  const detailed = update.operation === "sheet-shrink";
+  const optimizing = update.operation !== "xlsx-convert";
+  const title = detailed
+    ? "SheetShrink"
+    : optimizing
+      ? "Excel Check Performance"
+      : "XLSX Convert";
   const active = activeStates.has(update.status);
   const completed = update.counts.prepared + update.counts.failed;
   const seconds = update.elapsed_ms / 1000;
@@ -161,6 +191,9 @@ function Observatory() {
   const eta =
     perHour > 0 ? `${Math.ceil((remaining / perHour) * 60)} min` : "—";
   const focused = jobs.find((job) => job.id === selected) ?? jobs.at(-1);
+  const activeWorkers = new Set(
+    rendering.snapshot.activeJobs.map((job) => job.workerIndex),
+  ).size;
   const change = <K extends keyof Configuration>(
     key: K,
     value: Configuration[K],
@@ -201,16 +234,22 @@ function Observatory() {
       <main>
         <section className="page-heading" id="overview">
           <div>
-            <div className="eyebrow">NATIVE EXCEL-VERARBEITUNG</div>
+            <div className="eyebrow">
+              {detailed
+                ? "SHEETSHRINK / RUST-VERARBEITUNG"
+                : "NATIVE EXCEL-VERARBEITUNG"}
+            </div>
             <h1>
               {optimizing
                 ? "Bereinigen. Nachvollziehen."
                 : "Konvertieren. Nachvollziehen."}
             </h1>
             <p>
-              {optimizing
-                ? "Workbooks parallel mit Excel Check Performance optimieren."
-                : "XLS und XLSX als separate XLSX-Dateien mit Excel speichern."}
+              {detailed
+                ? "Workbooks mit SheetShrink bereinigen und die parallele Verarbeitung der Sheets und Chunks nachvollziehen."
+                : optimizing
+                  ? "Workbooks parallel mit Excel Check Performance optimieren."
+                  : "XLS und XLSX als separate XLSX-Dateien mit Excel speichern."}
             </p>
           </div>
         </section>
@@ -244,7 +283,7 @@ function Observatory() {
               onChange={(event) => change("output", event.target.value || null)}
             />
           </label>
-          {optimizing && (
+          {optimizing && !detailed && (
             <>
               <label>
                 Quellmanifest · optional
@@ -269,19 +308,53 @@ function Observatory() {
             </>
           )}
           <label>
-            Parallele Worker
+            {detailed ? "Rayon-Threads" : "Parallele Worker"}
             <input
               aria-label="Parallele Worker"
               type="number"
               min="1"
               max="256"
               required
+              disabled={detailed && active}
               value={config.workers}
               onChange={(event) =>
                 change("workers", Number(event.target.value))
               }
             />
           </label>
+          {detailed && (
+            <>
+              <label>
+                Gleichzeitig aktive Workbooks
+                <input
+                  aria-label="Aktive Workbooks"
+                  type="number"
+                  min="1"
+                  disabled={active}
+                  value={config.max_active_workbooks ?? 2}
+                  onChange={(event) =>
+                    change("max_active_workbooks", Number(event.target.value))
+                  }
+                />
+              </label>
+              <label>
+                Maximale Chunkgröße · Bytes
+                <input
+                  aria-label="Chunkgröße"
+                  type="number"
+                  min="0"
+                  disabled={active}
+                  value={config.parallel_range_chunk_size ?? 16777216}
+                  onChange={(event) =>
+                    change(
+                      "parallel_range_chunk_size",
+                      Number(event.target.value),
+                    )
+                  }
+                />
+              </label>
+            </>
+          )}
           <label>
             RAM- und Commit-Reserve · MiB
             <input
@@ -319,7 +392,7 @@ function Observatory() {
             <button
               className="button subtle"
               type="button"
-              disabled={update.status !== "running" || busy}
+              disabled={detailed || update.status !== "running" || busy}
               onClick={() =>
                 void act("/api/workers", { workers: config.workers })
               }
@@ -336,9 +409,12 @@ function Observatory() {
             </button>
           </div>
           <p className="wide form-note">
-            Ergebnisse und Quellkopien liegen im Ausgabeverzeichnis. Das
-            Ereignisprotokoll liegt daneben als .events.jsonl. Ein neuer Lauf
-            braucht ein neues Ausgabeverzeichnis.
+            {detailed
+              ? "Ergebnisse und Stapelbericht"
+              : "Ergebnisse und Quellkopien"}{" "}
+            liegen im Ausgabeverzeichnis. Das Ereignisprotokoll liegt daneben
+            als .events.jsonl. Ein neuer Lauf braucht ein neues
+            Ausgabeverzeichnis.
           </p>
         </form>
         {(error || update.error) && (
@@ -364,7 +440,7 @@ function Observatory() {
           />
           <Metric
             label="Worker"
-            value={`${rendering.snapshot.activeJobs.length} / ${update.defaults.workers}`}
+            value={`${activeWorkers} / ${update.defaults.workers}`}
             note={`${Math.round(seconds)} s bisher`}
           />
         </section>
@@ -373,7 +449,11 @@ function Observatory() {
             <div className="panel-header">
               <div>
                 <div className="section-index">01 / PROZESS</div>
-                <h2>Parallele Workbooks</h2>
+                <h2>
+                  {detailed
+                    ? "Parallele Sheets und Chunks"
+                    : "Parallele Workbooks"}
+                </h2>
               </div>
             </div>
             <SceneViewport
@@ -381,11 +461,20 @@ function Observatory() {
               renderer="auto"
               title="Worker-Zeitleiste"
               className="worker-viewport"
-              onSelect={(hit) => setSelected(hit.id)}
+              onSelect={(hit) =>
+                setSelected(
+                  detailed
+                    ? (tasks.find((task) => `task-${task.id}` === hit.id)
+                        ?.workbook_id ?? null)
+                    : hit.id,
+                )
+              }
             />
             <p className="view-note">
-              Zeit × Worker · ein Rechteck pro Workbook · {update.history_limit}{" "}
-              letzte Jobs im Arbeitsspeicher
+              {detailed
+                ? "Zeit × Worker × Workbook · Sheets und Chunks · "
+                : "Zeit × Worker · ein Rechteck pro Workbook · "}
+              {update.history_limit} letzte Jobs im Arbeitsspeicher
             </p>
           </section>
           <aside className="panel focus-panel">
@@ -399,7 +488,10 @@ function Observatory() {
                   {names[focused.status] ?? focused.status}
                 </p>
                 <p>
-                  Worker {(focused.worker ?? 0) + 1} ·{" "}
+                  {detailed
+                    ? "Workbook"
+                    : `Worker ${(focused.worker ?? 0) + 1}`}{" "}
+                  ·{" "}
                   {(
                     ((focused.ended_ms ?? update.elapsed_ms) -
                       focused.started_ms) /
@@ -420,6 +512,40 @@ function Observatory() {
             )}
           </aside>
         </div>
+        {detailed && atlas && (
+          <section className="panel atlas-panel">
+            <div className="panel-header">
+              <h2>Workbook-Atlas</h2>
+              <span>
+                Die letzten drei Workbooks · unkomprimierte ZIP-Bytes · Original
+                und Ergebnis
+              </span>
+            </div>
+            <SceneViewport
+              scene={atlas}
+              renderer="auto"
+              title="Workbook-Atlas"
+              className="atlas-viewport"
+              onSelect={(hit) =>
+                setSelected(
+                  jobs.find(
+                    (job) =>
+                      hit.id === `book:${job.id}` ||
+                      hit.id.startsWith(`sheet:${job.id}:`),
+                  )?.id ?? null,
+                )
+              }
+            />
+          </section>
+        )}
+        {detailed && focused && (
+          <SheetDetails
+            key={focused.id}
+            job={focused}
+            tasks={tasks}
+            now={update.elapsed_ms}
+          />
+        )}
         {optimizing && (
           <section id="distributions">
             <div className="section-heading">
@@ -494,7 +620,7 @@ function Observatory() {
                       </button>
                       {job.error && <p className="failure">{job.error}</p>}
                     </td>
-                    <td>{(job.worker ?? 0) + 1}</td>
+                    <td>{job.worker === null ? "—" : job.worker + 1}</td>
                     <td>{names[job.status]}</td>
                     <td>
                       {(

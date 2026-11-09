@@ -197,6 +197,9 @@ impl BatchProgress {
     }
 
     fn start_file(&self, input: &Path, output: &Path) -> XlsxProgress {
+        excel_shrink_core::work_events::with_observer(|observer| {
+            observer.workbook_started(input, output);
+        });
         let xlsx = input.display().to_string();
         let files_active = self.files_active.fetch_add(1, Ordering::Relaxed) + 1;
         let files_completed = self.files_completed.load(Ordering::Relaxed);
@@ -254,6 +257,15 @@ impl XlsxProgress {
                 "file_skipped" | "file_skipped_unsupported_namespace" => Status::Skipped,
                 _ => Status::Failed,
             };
+            excel_shrink_core::work_events::with_observer(|observer| {
+                observer.workbook_finished(
+                    &self.input,
+                    &self.output,
+                    output_written,
+                    event,
+                    self.failure.as_deref(),
+                );
+            });
             if status == Status::Failed {
                 self.batch.files_failed.fetch_add(1, Ordering::Relaxed);
             }
@@ -682,7 +694,9 @@ fn extract_sheet_name_and_rid_in_order(workbook_xml: &[u8]) -> Vec<(String, Stri
     pairs
 }
 
-fn extract_sheet_id_name_and_rid_in_order(workbook_xml: &[u8]) -> Vec<(String, String, String)> {
+pub(crate) fn extract_sheet_id_name_and_rid_in_order(
+    workbook_xml: &[u8],
+) -> Vec<(String, String, String)> {
     let mut triples = Vec::new();
     let re = regex::bytes::Regex::new(r#"(?s)<(?:[A-Za-z_][\w.-]*:)?sheet\b[^>]*>"#).unwrap();
 
@@ -704,7 +718,7 @@ fn extract_sheet_id_name_and_rid_in_order(workbook_xml: &[u8]) -> Vec<(String, S
     triples
 }
 
-fn extract_rid_to_target(workbook_rels_xml: &[u8]) -> HashMap<String, String> {
+pub(crate) fn extract_rid_to_target(workbook_rels_xml: &[u8]) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let re = regex::bytes::Regex::new(
         r#"(?s)<(?:[A-Za-z_][\w.-]*:)?Relationship\b[^>]*\bId="([^"]+)"[^>]*\bTarget="([^"]+)"[^>]*>"#,
@@ -1942,6 +1956,19 @@ impl InitialSheetProcessor {
             handoff,
         } = task;
         handoff.finish();
+        let _observed = excel_shrink_core::work_events::TaskGuard::start(
+            &params.xlsx_file_path,
+            &params.zip_info_filename,
+            excel_shrink_core::work_events::TaskKind::SheetInitial,
+        );
+        if excel_shrink_core::work_events::should_stop() {
+            return Err(FailedSheet {
+                params,
+                zip_index,
+                abort_output: true,
+                unsupported_namespace: false,
+            });
+        }
         let _profile = profiling::phase(
             "sheet_initial_cleanup",
             &params.xlsx_file_path,
@@ -1993,6 +2020,7 @@ impl InitialSheetProcessor {
                     excel_shrink_core::error::ShrinkError::UnexpectedEof
                         | excel_shrink_core::error::ShrinkError::InvalidRootNode
                         | excel_shrink_core::error::ShrinkError::UnsupportedNamespace
+                        | excel_shrink_core::error::ShrinkError::Interrupted
                 );
                 error!(event = "sheet_clean_failed", xlsx = %params.xlsx_file_path, sheet = %params.zip_info_filename, error = %error, abort_output,
                     "Failed to clean sheet XML");
@@ -2596,6 +2624,11 @@ impl SheetFinalizer<'_> {
         let Some(mut sheet) = self.cleaned_sheet_or_queue_original(result) else {
             return;
         };
+        let _observed = excel_shrink_core::work_events::TaskGuard::start(
+            &sheet.params.xlsx_file_path,
+            &sheet.params.zip_info_filename,
+            excel_shrink_core::work_events::TaskKind::SheetFinalize,
+        );
         profiling::drop_value(
             "sheet.buffered_bytes",
             std::mem::take(&mut sheet.buffered_bytes),
@@ -3245,6 +3278,9 @@ fn process_file(
     let input_display = input.display().to_string();
     let _profile = profiling::phase("workbook_orchestration", &input_display, "");
     let workbook_permit = workbook_limiter.acquire(&input_display);
+    if excel_shrink_core::work_events::should_stop() {
+        return;
+    }
     let file_start = Instant::now();
     let active_tasks = active_tasks.clone();
     let mut file_progress = batch_progress.start_file(input, out_path);
@@ -3559,9 +3595,15 @@ fn process_file(
 }
 
 pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()> {
+    process_file_pairs(batch_paths(input_files, cli)?, cli)
+}
+
+pub(crate) fn process_file_pairs(
+    input_files: Vec<(PathBuf, PathBuf)>,
+    cli: &Cli,
+) -> anyhow::Result<()> {
     let _profile = profiling::phase("batch", "", "");
     let started = Instant::now();
-    let input_files = batch_paths(input_files, cli)?;
     // A study worker runs several profiles in one process. Give each cleanup
     // its own Rayon pool so the thread count belongs to this invocation.
     let rayon_pool = cli
@@ -3730,6 +3772,9 @@ fn run_input_files(
     analysis_tx: Option<mpsc::Sender<AnalysisCsvRow>>,
 ) {
     let process = |(input, output): &(PathBuf, PathBuf)| {
+        if excel_shrink_core::work_events::should_stop() {
+            return;
+        }
         process_file(
             input,
             output,

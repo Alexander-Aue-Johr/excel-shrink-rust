@@ -115,6 +115,56 @@ native sessions after changing the target from one to two. Both dashboards
 were visually inspected in the browser. This testing also exposed and fixed
 extended-length TEMP paths rejected by the .NET Framework helper compiler.
 
+### SheetShrink's detailed Observatory
+
+`sheetshrink.exe --web` opens the shared configuration server. A bare
+`sheetshrink.exe` or `sheetshrink.exe observatory` selects this interface too.
+The existing positional cleanup CLI and validation subcommands remain available.
+Web options include `--input`, `--output`, `--workers` (Rayon threads),
+`--max-active-workbooks`, `--parallel-range-chunk-size`, `--reserve-mib`,
+`--recursive` and `--port`. The normal SheetShrink cleanup policy supplies all
+other defaults.
+
+The app passes an in-process executor to `preparation-web`. The existing cleanup
+pipeline runs with its ordinary workbook limiter, sheet prioritization, chunk
+scheduling and writer pool. An optional, scoped `work_events` observer in the
+core publishes initial sheet phases, finalization phases and real range chunks
+from their executing Rayon threads. Workbook events surround actual input/output
+processing. Event timestamps additionally retain microseconds for submillisecond
+jobs, with compatibility for older logs containing only milliseconds.
+
+The detailed interface shows workbook levels on the worker timeline, a recent
+workbook atlas, per-sheet sizes and selectable phase/chunk details. Initial sheet
+phases can encompass parallel chunk spans. These are elapsed phase durations,
+not CPU accounting. Each chunk keeps its real zero-based worker and chunk index,
+planned chunk count and range kind. The atlas uses uncompressed ZIP payload bytes
+for both workbook frames and sheet columns. The other workbook size chart and
+overall reduction continue to use physical XLSX file bytes.
+
+Rayon threads and the workbook/chunk limits are fixed for one run and can be
+changed before the next run. Stop and memory guards act cooperatively at
+workbook, sheet and chunk boundaries. Active work may need to reach a boundary
+before returning. The observer permits one observed cleanup per process and is
+removed after the writer and Rayon work have joined. Unobserved cleanup checks
+an inactive atomic flag at these coarse boundaries.
+
+Outputs are grouped under `input-000000/<source-name>.xlsx`, avoiding collisions
+between different directories. Duplicate selections of the exact same input path
+are rejected. `preparation.json` uses SheetShrink's existing batch-report schema
+with source/output paths and terminal outcomes. The adjacent event log holds the
+detailed timeline. The live projection retains 4096 recent phases/chunks and 256
+workbooks, while full events remain on disk. Sheet display names are resolved
+from bounded workbook/relationship metadata, with ZIP part names as fallback.
+
+Functional acceptance used three generated XLSX files with two sheets each,
+two Rayon threads, two active workbooks and 65,536-byte range chunks. The run
+recorded six initial phases, six finalizations and 58 real chunk tasks. The
+redundant-style fixture decreased from 194,678 to 131,448 bytes. Every ZIP member
+of its observed output matched a normal unobserved CLI run byte for byte. A stop
+test published neither of the two active outputs and left the third workbook
+unstarted. An excessive memory reserve was rejected before creating an output
+directory. These are small functional checks rather than throughput benchmarks.
+
 Build the Windows entry points with a configured build directory on a working
 drive, then package their outputs into a new directory. Python 3.9 or newer and
 Git are required by the packaging tool. The resulting runtime requires Windows

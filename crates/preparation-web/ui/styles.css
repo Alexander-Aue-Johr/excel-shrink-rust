@@ -98,6 +98,26 @@
 .selected-job {
   background: #233b38;
 }
+.sheet-details {
+  margin: 24px 0;
+}
+.sheet-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.sheet-detail-grid small {
+  display: block;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.sheet-detail-grid .job-table {
+  border-right: 1px solid var(--border);
+}
+@media (max-width: 1000px) {
+  .sheet-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
 @media (max-width: 760px) {
   .preparation-form {
     grid-template-columns: 1fr;

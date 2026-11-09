@@ -23,6 +23,8 @@ pub struct Event {
     pub version: u32,
     pub sequence: u64,
     pub elapsed_millis: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_micros: Option<u64>,
     pub operation: Operation,
     pub event_type: String,
     pub workbook_id: Option<String>,
@@ -102,15 +104,20 @@ impl Events {
             .sequence
             .lock()
             .map_err(|_| anyhow::anyhow!("Event sequence lock poisoned"))?;
+        let elapsed = self.started.elapsed();
         let event = Event {
             version: 1,
             sequence: *sequence,
-            elapsed_millis: self
-                .started
-                .elapsed()
+            elapsed_millis: elapsed
                 .as_millis()
                 .try_into()
                 .context("Event clock overflow")?,
+            elapsed_micros: Some(
+                elapsed
+                    .as_micros()
+                    .try_into()
+                    .context("Event clock overflow")?,
+            ),
             operation: self.operation,
             event_type: event_type.to_owned(),
             workbook_id: workbook_id.map(str::to_owned),

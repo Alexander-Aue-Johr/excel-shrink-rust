@@ -58,6 +58,8 @@ fn main() -> anyhow::Result<()> {
                 reserve_mib: command.reserve_mib,
                 source_manifest: command.source_manifest,
                 reuse_from: command.reuse_from,
+                max_active_workbooks: None,
+                parallel_range_chunk_size: None,
             },
             command.port,
         );

@@ -9,9 +9,10 @@ const result = await build({
   platform: "node",
   format: "esm",
 });
-const { applyUpdate, scenes } = await import(
+const { applyUpdate, applyTasks, scenes, atlasSnapshot } = await import(
   `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString("base64")}`
 );
+
 const packageSize = (fileBytes, sheetBytes) => ({
   file_bytes: fileBytes,
   worksheets: [
@@ -118,4 +119,65 @@ test("reconnection replaces stale jobs and retains interrupted outcomes", () => 
   assert.equal(jobs.length, 1);
   assert.equal(snapshot.activeJobs.length, 0);
   assert.equal(snapshot.completedBooks, 0);
+});
+
+test("SheetShrink projects real chunk workers, submillisecond times and consistent atlas units", () => {
+  const update = {
+    ...base,
+    operation: "sheet-shrink",
+    reset: false,
+    events: [
+      {
+        event: {
+          event_type: "work.started",
+          workbook_id: "book",
+          worker_index: 1,
+          elapsed_millis: 0,
+          elapsed_micros: 125,
+          payload: {
+            task_id: 3,
+            sheet: "xl/worksheets/sheet1.xml",
+            phase: "chunk",
+            chunk_index: 2,
+            chunk_count: 4,
+            range: "cells_range",
+          },
+        },
+      },
+      {
+        event: {
+          event_type: "work.finished",
+          workbook_id: "book",
+          worker_index: 1,
+          elapsed_millis: 0,
+          elapsed_micros: 875,
+          payload: { task_id: 3 },
+        },
+      },
+    ],
+  };
+  const tasks = applyTasks([], update);
+  const before = { ...packageSize(20, 1000), uncompressed_payload_bytes: 2000 };
+  const after = { ...packageSize(10, 500), uncompressed_payload_bytes: 1500 };
+  const jobs = [
+    {
+      id: "book",
+      name: "book.xlsx",
+      worker: null,
+      started_ms: 0,
+      ended_ms: 2,
+      status: "prepared",
+      before,
+      after,
+      sheet_names: { "xl/worksheets/sheet1.xml": "Measurements" },
+    },
+  ];
+  const { snapshot } = scenes(update, jobs, tasks);
+  assert.equal(snapshot.jobs[0].workerIndex, 1);
+  assert.equal(snapshot.jobs[0].chunkIndex, 2);
+  assert.equal(snapshot.jobs[0].chunkCount, 4);
+  assert.equal(snapshot.jobs[0].sheet.name, "Measurements");
+  assert.equal(tasks[0].ended_ms - tasks[0].started_ms, 0.75);
+  assert.equal(atlasSnapshot(snapshot, jobs).workbooks[0].originalBytes, 2000);
+  assert.equal(snapshot.workbooks[0].originalBytes, 20);
 });

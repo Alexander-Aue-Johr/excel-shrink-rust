@@ -38,6 +38,26 @@ pub struct Defaults {
     pub reserve_mib: Option<u64>,
     pub source_manifest: Option<PathBuf>,
     pub reuse_from: Option<PathBuf>,
+    #[serde(default)]
+    pub max_active_workbooks: Option<usize>,
+    #[serde(default)]
+    pub parallel_range_chunk_size: Option<usize>,
+}
+
+type ShrinkRunner = Arc<dyn Fn(Defaults, RunContext) -> Result<()> + Send + Sync>;
+
+#[derive(Clone, Serialize)]
+struct WorkTask {
+    id: u64,
+    workbook_id: String,
+    sheet: String,
+    worker: Option<usize>,
+    phase: String,
+    chunk_index: Option<usize>,
+    chunk_count: usize,
+    range: Option<String>,
+    started_ms: f64,
+    ended_ms: Option<f64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -52,6 +72,7 @@ struct Job {
     after: Option<PackageSizes>,
     source_bytes: Option<u64>,
     error: Option<String>,
+    sheet_names: Value,
 }
 
 #[derive(Default, Serialize)]
@@ -71,6 +92,7 @@ struct RunState {
     defaults: Defaults,
     counts: Counts,
     jobs: VecDeque<Job>,
+    tasks: VecDeque<WorkTask>,
     events: VecDeque<Value>,
     next: u64,
     started: Instant,
@@ -87,6 +109,7 @@ impl RunState {
             defaults,
             counts: Counts::default(),
             jobs: VecDeque::new(),
+            tasks: VecDeque::new(),
             events: VecDeque::new(),
             next: 0,
             started: Instant::now(),
@@ -100,6 +123,44 @@ impl RunState {
     }
 
     fn accept(&mut self, event: &Event) {
+        let task_time = event
+            .elapsed_micros
+            .map(|micros| micros as f64 / 1000.0)
+            .unwrap_or(event.elapsed_millis as f64);
+        if let Some(id) = &event.workbook_id {
+            if event.event_type == "work.started" {
+                while self.tasks.len() >= 4096 {
+                    let Some(position) = self.tasks.iter().position(|task| task.ended_ms.is_some())
+                    else {
+                        break;
+                    };
+                    self.tasks.remove(position);
+                }
+                self.tasks.push_back(WorkTask {
+                    id: event.payload["task_id"].as_u64().unwrap(),
+                    workbook_id: id.clone(),
+                    sheet: event.payload["sheet"].as_str().unwrap().into(),
+                    worker: event.worker_index,
+                    phase: event.payload["phase"].as_str().unwrap().into(),
+                    chunk_index: event.payload["chunk_index"]
+                        .as_u64()
+                        .map(|index| index as usize),
+                    chunk_count: event.payload["chunk_count"].as_u64().unwrap_or(1) as usize,
+                    range: event.payload["range"].as_str().map(str::to_owned),
+                    started_ms: task_time,
+                    ended_ms: None,
+                });
+            }
+        }
+        if event.event_type == "work.finished" {
+            if let Some(task) = self
+                .tasks
+                .iter_mut()
+                .find(|task| Some(task.id) == event.payload["task_id"].as_u64())
+            {
+                task.ended_ms = Some(task_time);
+            }
+        }
         if event.event_type == "run.started" {
             self.counts.total = event.payload["total"].as_u64().unwrap_or(0) as usize;
             self.status = if self.status == "stopping" {
@@ -132,11 +193,13 @@ impl RunState {
                     after: None,
                     source_bytes: None,
                     error: None,
+                    sheet_names: Value::Null,
                 });
             }
             if let Some(job) = self.jobs.iter_mut().find(|job| job.id == *id) {
                 match event.event_type.as_str() {
                     "workbook.metadata" => {
+                        job.sheet_names = event.payload["sheet_names"].clone();
                         job.before = serde_json::from_value(event.payload["package"].clone()).ok();
                         job.source_bytes = event.payload["file_bytes"].as_u64();
                     }
@@ -188,6 +251,7 @@ struct App {
     token: String,
     authority: String,
     run: Arc<Mutex<RunState>>,
+    shrink_runner: Option<ShrinkRunner>,
 }
 
 struct RunObserver {
@@ -206,6 +270,28 @@ impl Observer for RunObserver {
 }
 
 pub fn serve(operation: Operation, defaults: Defaults, port: u16) -> Result<()> {
+    serve_inner(operation, defaults, port, None)
+}
+
+pub fn serve_sheetshrink(
+    defaults: Defaults,
+    port: u16,
+    runner: impl Fn(Defaults, RunContext) -> Result<()> + Send + Sync + 'static,
+) -> Result<()> {
+    serve_inner(
+        Operation::SheetShrink,
+        defaults,
+        port,
+        Some(Arc::new(runner)),
+    )
+}
+
+fn serve_inner(
+    operation: Operation,
+    defaults: Defaults,
+    port: u16,
+    shrink_runner: Option<ShrinkRunner>,
+) -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -219,6 +305,7 @@ pub fn serve(operation: Operation, defaults: Defaults, port: u16) -> Result<()> 
                 token: uuid::Uuid::new_v4().to_string(),
                 authority: authority.clone(),
                 run: Arc::new(Mutex::new(RunState::new(defaults))),
+                shrink_runner,
             };
             let routes = Router::new()
                 .route("/", get(index))
@@ -272,7 +359,14 @@ async fn check_host(
 }
 
 async fn index(State(app): State<App>) -> Response {
-    let html = include_str!("../assets/index.html").replace("__TOKEN__", &app.token);
+    let title = match app.operation {
+        Operation::SheetShrink => "SheetShrink",
+        Operation::XlsxConvert => "XLSX Convert",
+        Operation::CheckPerformance => "Excel Check Performance",
+    };
+    let html = include_str!("../assets/index.html")
+        .replace("__TOKEN__", &app.token)
+        .replace("__APPLICATION__", title);
     ([(header::CACHE_CONTROL, "no-store"),
       (header::CONTENT_SECURITY_POLICY, "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'")], Html(html)).into_response()
 }
@@ -313,6 +407,7 @@ async fn state(State(app): State<App>, Query(cursor): Query<Cursor>) -> Response
             "defaults": if reset { Some(&run.defaults) } else { None }, "workers": run.defaults.workers,
             "counts": run.counts, "elapsed_ms": elapsed_ms,
         "next": run.next, "reset": reset, "jobs": if reset { Some(&run.jobs) } else { None }, "events": events,
+            "tasks": if reset { Some(&run.tasks) } else { None },
         "history_limit": JOB_LIMIT,
     }))).into_response()
 }
@@ -360,6 +455,19 @@ async fn start(
     if defaults.workers == 0 || defaults.workers > 256 {
         return rejected("Choose between 1 and 256 workers");
     }
+    if matches!(app.operation, Operation::SheetShrink) {
+        let logical = std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1);
+        if defaults.workers > logical {
+            return rejected(format!(
+                "SheetShrink supports up to {logical} Rayon threads"
+            ));
+        }
+        if defaults.max_active_workbooks == Some(0) {
+            return rejected("Active workbook limit must be positive");
+        }
+    }
     if let Some(mib) = defaults.reserve_mib {
         if let Err(error) = MemoryReserve::from_mib(mib) {
             return rejected(error);
@@ -380,10 +488,10 @@ async fn start(
     if !defaults.inputs.is_empty() && defaults.source_manifest.is_some() {
         return rejected("Choose either input paths or a source manifest");
     }
-    if matches!(app.operation, Operation::XlsxConvert)
+    if !matches!(app.operation, Operation::CheckPerformance)
         && (defaults.source_manifest.is_some() || defaults.reuse_from.is_some())
     {
-        return rejected("Conversion accepts input paths and a new output directory");
+        return rejected("This operation accepts input paths and a new output directory");
     }
     let mut log_name = output.as_os_str().to_os_string();
     log_name.push(".events.jsonl");
@@ -414,8 +522,12 @@ async fn start(
     drop(run);
     tokio::spawn(async move {
         let operation = app.operation;
-        let result =
-            tokio::task::spawn_blocking(move || execute(operation, defaults, context)).await;
+        let runner = app.shrink_runner.clone();
+        let result = tokio::task::spawn_blocking(move || match runner {
+            Some(runner) => runner(defaults, context),
+            None => execute(operation, defaults, context),
+        })
+        .await;
         let mut run = app.run.lock().unwrap();
         run.elapsed_ms = run.started.elapsed().as_millis() as u64;
         let stopped = run
@@ -441,6 +553,9 @@ async fn start(
             job.status = "interrupted".into();
         }
         run.stop = None;
+        for task in run.tasks.iter_mut().filter(|task| task.ended_ms.is_none()) {
+            task.ended_ms = Some(elapsed as f64);
+        }
     });
     Json(json!({"accepted": true})).into_response()
 }
@@ -504,6 +619,9 @@ async fn workers(
     headers: HeaderMap,
     Json(request): Json<Workers>,
 ) -> Response {
+    if matches!(app.operation, Operation::SheetShrink) {
+        return rejected("Rayon threads are configured before a SheetShrink run");
+    }
     if let Err(error) = authorize(&app, &headers) {
         return rejected(error);
     }
@@ -542,7 +660,10 @@ mod tests {
                 reserve_mib: None,
                 source_manifest: None,
                 reuse_from: None,
+                max_active_workbooks: None,
+                parallel_range_chunk_size: None,
             }))),
+            shrink_runner: None,
         }
     }
 
@@ -551,6 +672,7 @@ mod tests {
             version: 1,
             sequence,
             elapsed_millis: sequence,
+            elapsed_micros: None,
             operation: Operation::XlsxConvert,
             event_type: kind.into(),
             workbook_id: Some(id.into()),
@@ -591,5 +713,27 @@ mod tests {
         assert!(authorize(&app, &headers).is_ok());
         headers.insert(header::HOST, "unrelated.example".parse().unwrap());
         assert!(authorize(&app, &headers).is_err());
+    }
+
+    #[test]
+    fn chunk_events_retain_fractional_millisecond_times_without_counting_workbooks() {
+        let app = app();
+        let mut state = app.run.lock().unwrap();
+        let mut start = event(0, "work.started", "book");
+        start.elapsed_micros = Some(125);
+        start.payload = json!({"task_id": 7, "sheet": "xl/worksheets/sheet1.xml", "phase": "chunk", "chunk_index": 2, "chunk_count": 4});
+        state.accept(&start);
+        let mut end = event(1, "work.finished", "book");
+        end.elapsed_micros = Some(875);
+        end.payload = json!({"task_id": 7});
+        state.accept(&end);
+        assert_eq!(state.tasks.len(), 1);
+        assert_eq!(
+            state.tasks[0].ended_ms.unwrap() - state.tasks[0].started_ms,
+            0.75
+        );
+        assert_eq!(state.tasks[0].chunk_index, Some(2));
+        assert_eq!(state.counts.prepared, 0);
+        assert!(state.jobs.is_empty());
     }
 }

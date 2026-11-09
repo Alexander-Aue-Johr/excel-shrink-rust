@@ -1401,7 +1401,9 @@ name = "sheetshrink"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "excel-shrink-cli",
+ "preparation-web",
 ]
 
 [[package]]

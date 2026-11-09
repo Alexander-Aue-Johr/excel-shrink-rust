@@ -34,7 +34,12 @@ export function buildWorkerScene(
   run: DemoRun,
   options: WorkerSceneOptions,
 ): SceneSpec {
-  const duration = Math.max(12, options.windowSeconds || 70);
+  const duration = Math.max(
+    options.workUnit === "worksheet" ? 0.05 : 12,
+    options.windowSeconds || 70,
+  );
+  const timeLabel = (seconds: number) =>
+    duration < 2 ? `${(seconds * 1000).toFixed(1)} ms` : fmtTime(seconds);
   const leftTime = options.overview
     ? 0
     : Math.max(0, snapshot.time - duration * 0.86);
@@ -77,7 +82,7 @@ export function buildWorkerScene(
     pitch: 0.82,
     footer: options.overview
       ? "Gesamter bisheriger Verlauf"
-      : `${fmtTime(leftTime)}–${fmtTime(rightTime)} · Kamera folgt dem Betrachtungszeitpunkt`,
+      : `${timeLabel(leftTime)}–${timeLabel(rightTime)} · Kamera folgt dem Betrachtungszeitpunkt`,
   };
   const batches = new Map<string, Shape>();
   const add = (shape: Shape) => {
@@ -164,7 +169,7 @@ export function buildWorkerScene(
     scene.labels.push({
       id: `time-${t}`,
       position: [x, -0.02, depth + 0.71],
-      text: fmtTime(t),
+      text: timeLabel(t),
       size: 9,
       muted: true,
       color: "#7a8c93",
@@ -393,7 +398,7 @@ export function buildWorkerScene(
   scene.labels.push({
     id: "cursor-time",
     position: [cursorX, curtainTop + 0.2, depth + 0.3],
-    text: fmtTime(snapshot.time),
+    text: timeLabel(snapshot.time),
     size: 10,
     color: "#c8eddb",
     pill: true,

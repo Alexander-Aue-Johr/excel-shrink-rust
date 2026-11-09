@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.102"
 excel-shrink-cli = { path = "../../excel-shrink-cli" }
+preparation-web = { path = "../../crates/preparation-web" }
+clap = { version = "4.4", features = ["derive"] }
