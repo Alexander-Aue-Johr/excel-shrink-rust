@@ -3,6 +3,8 @@ use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 pub(crate) mod package;
 pub(crate) mod imported;
+mod directory;
+pub(crate) use directory::directory_inputs;
 pub(crate) const PREPARATION_CONTROLS: [&str; 3] = [
     "original-saved.xlsx", "before-optimization.xlsx", "after-optimization.xlsx",
 ];

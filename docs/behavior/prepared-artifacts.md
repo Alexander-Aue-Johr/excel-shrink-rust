@@ -8,6 +8,16 @@ through the CLI, including explicit baseline adoption and generation selection.
 The local web configurator exposes package transfer and native preparation-job
 controls for source manifests. Full visual browser acceptance remains open.
 
+The Check Performance preparation form also accepts an XLSX directory directly.
+An optional Data.gov or Destatis profile verifies the complete expected originals
+and assigns the same archive-hash/member-index/name identities as the corpus
+runner. Custom directories retain relative-path occurrence IDs and file hashes.
+Non-XLSX workbook inputs require conversion first and fail explicitly. Directory
+selection and source-manifest selection are mutually exclusive. Both paths freeze
+an ordinary source manifest in the job receipt directory before native workers
+start. Existing manifest clients retain their request format. Source originals
+are read-only inputs to private baseline copies.
+
 ## Source identity and selection
 
 `deltasieve corpus-list` and the local configurator's `GET /api/corpora` expose

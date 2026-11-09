@@ -2,10 +2,42 @@ export function preparationJobRequest(form) {
   const value = name => form.elements.namedItem(name).value.trim();
   const workers = Number(value('workers'));
   if (!Number.isSafeInteger(workers) || workers < 1) throw new Error('Choose a positive integer worker count.');
-  const sourceManifest = value('source_manifest');
   const output = value('output');
-  if (!sourceManifest || !output) throw new Error('Choose a source manifest and a new preparation directory.');
-  return { source_manifest: sourceManifest, output, workers, reuse_from: value('reuse_from') || null };
+  if (!output) throw new Error('Choose a new preparation directory.');
+  const request = { output, workers, reuse_from: value('reuse_from') || null };
+  const kind = form.elements.namedItem('source_kind')?.value || 'manifest';
+  if (kind === 'directory') {
+    const directory = value('source_directory');
+    if (!directory) throw new Error('Choose an XLSX originals directory.');
+    return { ...request, source_manifest: null, source_directory: directory, corpus_profile: value('corpus_profile') || null };
+  }
+  if (kind !== 'manifest') throw new Error('Choose a supported input selection.');
+  const sourceManifest = value('source_manifest');
+  if (!sourceManifest) throw new Error('Choose a source manifest.');
+  return { ...request, source_manifest: sourceManifest };
+}
+
+export function installPreparationSources({ api, message }) {
+  const byId = id => document.getElementById(id);
+  const form = byId('performance-job');
+
+  function selectSourceKind() {
+    const directory = byId('performance-source-kind').value === 'directory';
+    byId('performance-directory-fields').hidden = !directory;
+    byId('performance-manifest-field').hidden = directory;
+    form.elements.namedItem('source_directory').required = directory;
+    form.elements.namedItem('source_manifest').required = !directory;
+  }
+  byId('performance-source-kind').addEventListener('change', selectSourceKind);
+  selectSourceKind();
+  api('/api/corpora').then(catalog => {
+    for (const profile of catalog.profiles.filter(profile => profile.acquisition_ready !== false)) {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      byId('performance-corpus-profile').append(option);
+    }
+  }).catch(error => message(`Preparation corpus profiles unavailable. ${error.message}`, true));
 }
 
 export function installPerformancePreparation({ api, message }) {

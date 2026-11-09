@@ -49,7 +49,32 @@
       <h2>Prepare Check Performance variants</h2>
       <p class="help">Uses a continuously refilled pool of private Excel processes. This prepares files for later comparison and does not start visual validation. Memory admission keeps a 512 MiB reserve.</p>
       <fieldset id="performance-job-fields" class="grid">
-        <label class="wide">Selected XLSX sources manifest<span class="path"><input id="performance-job-sources" name="source_manifest" required><button type="button" data-browse="performance-job-sources" data-kind="file">Browse…</button></span></label>
+        <label class="wide">Input selection
+          <select id="performance-source-kind" name="source_kind">
+            <option value="directory">XLSX directory</option>
+            <option value="manifest">Existing source manifest</option>
+          </select>
+        </label>
+        <div id="performance-directory-fields" class="grid wide">
+          <label class="wide">XLSX originals directory
+            <span class="path">
+              <input id="performance-job-directory" name="source_directory" required>
+              <button type="button" data-browse="performance-job-directory">Browse…</button>
+            </span>
+          </label>
+          <label class="wide">Corpus identity, optional
+            <select id="performance-corpus-profile" name="corpus_profile">
+              <option value="">Custom directory</option>
+            </select>
+          </label>
+          <p class="help wide">A corpus profile verifies the complete listed originals and preserves their corpus member identities. Custom directories include all supported workbooks and require prior conversion to XLSX.</p>
+        </div>
+        <label id="performance-manifest-field" class="wide" hidden>Selected XLSX sources manifest
+          <span class="path">
+            <input id="performance-job-sources" name="source_manifest">
+            <button type="button" data-browse="performance-job-sources" data-kind="file">Browse…</button>
+          </span>
+        </label>
         <label class="wide">New preparation directory<input name="output" required></label>
         <label class="wide">Previous preparation, optional<span class="path"><input id="performance-job-reuse" name="reuse_from"><button type="button" data-browse="performance-job-reuse">Browse…</button></span><span class="help">Copy compatible completed inputs into the new directory. The previous preparation stays intact.</span></label>
         <label>Parallel Check Performance workers<input name="workers" type="number" min="1" step="1" value="2" required></label>

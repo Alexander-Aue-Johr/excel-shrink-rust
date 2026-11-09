@@ -22,6 +22,20 @@ test('preparation workers are independent and can exceed logical cores', () => {
   assert.throws(() => preparationJobRequest(form), /new preparation directory/);
 });
 
+test('directory preparation binds an optional corpus without a custom manifest', () => {
+  const values = { source_kind: 'directory', source_directory: ' V:/originals ', corpus_profile: 'destatis',
+    output: ' V:/prepared ', workers: '16', reuse_from: '' };
+  const form = { elements: { namedItem: name => ({ value: values[name] }) } };
+  assert.deepEqual(preparationJobRequest(form), {
+    source_manifest: null, source_directory: 'V:/originals', corpus_profile: 'destatis',
+    output: 'V:/prepared', workers: 16, reuse_from: null,
+  });
+  values.source_directory = '';
+  assert.throws(() => preparationJobRequest(form), /XLSX originals directory/);
+  values.source_kind = 'invalid';
+  assert.throws(() => preparationJobRequest(form), /input selection/);
+});
+
 test('job status distinguishes request counts from workers and exposes terminal errors', () => {
   const fields = ['performance-job', 'performance-job-fields', 'performance-job-observation',
     'performance-job-status', 'performance-job-progress', 'performance-job-detail',

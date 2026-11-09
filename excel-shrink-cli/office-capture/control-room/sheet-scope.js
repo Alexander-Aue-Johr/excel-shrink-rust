@@ -5,7 +5,7 @@ import { createTargetedPanel } from '/observatory-assets/targeted-panel.js';
 import { optionValue, setOption } from '/observatory-assets/processor-options.js';
 import { installStudyConfiguration } from '/observatory-assets/study-configuration.js';
 import { installPreparationPackages } from '/observatory-assets/preparation-packages.js';
-import { installPerformancePreparation } from '/observatory-assets/performance-preparation.js';
+import { installPerformancePreparation, installPreparationSources } from '/observatory-assets/performance-preparation.js';
 import { installCorpusAcquisition } from '/observatory-assets/corpus-acquisition.js';
 
 const byId = id => document.getElementById(id);
@@ -658,6 +658,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     installStudyConfiguration({ api, message, defaults: session.study_defaults, logicalProcessors, session });
     installPreparationPackages({ api, message, onImported: populate });
     preparationJobView = installPerformancePreparation({ api, message });
+    installPreparationSources({ api, message });
     installCorpusAcquisition({ api, message, session })
       .then(view => { corpusJobView = view; })
       .catch(error => message(`Corpus profiles unavailable. ${error.message}`, true));

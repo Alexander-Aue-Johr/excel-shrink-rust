@@ -5,7 +5,9 @@ use serde::Serialize;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct StartRequest {
-    source_manifest: PathBuf,
+    source_manifest: Option<PathBuf>,
+    source_directory: Option<PathBuf>,
+    corpus_profile: Option<String>,
     output: PathBuf,
     workers: usize,
     reuse_from: Option<PathBuf>,
@@ -124,7 +126,20 @@ pub(super) async fn start(
 /// Freeze absolute baseline paths so editing or moving the submitted manifest cannot change a job.
 fn freeze_job(request: StartRequest) -> Result<Job> {
     ensure!(request.workers > 0, "Preparation workers must be positive");
-    let inputs = crate::validation_preparation::read(&request.source_manifest)?;
+    let inputs = match (&request.source_manifest, &request.source_directory) {
+        (Some(path), None) => {
+            ensure!(
+                request.corpus_profile.is_none(),
+                "A corpus profile applies to directory inputs"
+            );
+            crate::validation_preparation::read(path)?
+        }
+        (None, Some(path)) => crate::validation_preparation::directory_inputs(
+            path,
+            request.corpus_profile.as_deref(),
+        )?,
+        _ => anyhow::bail!("Choose either an XLSX directory or a source manifest"),
+    };
     let output = std::path::absolute(request.output)?;
     let parent = fs::canonicalize(
         output
@@ -274,7 +289,9 @@ mod tests {
         Ok((
             root.clone(),
             StartRequest {
-                source_manifest: manifest,
+                source_manifest: Some(manifest),
+                source_directory: None,
+                corpus_profile: None,
                 output: root.join("output"),
                 workers: 32,
                 reuse_from: None,
@@ -285,7 +302,7 @@ mod tests {
     #[test]
     fn job_freezes_selection_and_persists_independent_worker_settings() -> Result<()> {
         let (root, request) = request()?;
-        let submitted = request.source_manifest.clone();
+        let submitted = request.source_manifest.clone().unwrap();
         let job = freeze_job(request)?;
         assert!(!job.output.exists());
         assert_eq!(job.workers, 32);
@@ -324,6 +341,30 @@ mod tests {
         fs::create_dir(&request.output)?;
         assert!(freeze_job(request).is_err());
         assert!(!root.join(".preparation-jobs").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn directory_selection_is_frozen_and_ambiguous_sources_are_rejected() -> Result<()> {
+        let (root, mut request) = request()?;
+        request.source_directory = Some(root.clone());
+        assert!(freeze_job(request).is_err());
+        assert!(!root.join(".preparation-jobs").exists());
+        let (root, mut request) = self::request()?;
+        fs::write(root.join("baseline.xlsx"), b"original bytes")?;
+        request.source_manifest = None;
+        request.source_directory = Some(root.clone());
+        let job = freeze_job(request)?;
+        let inputs = crate::validation_preparation::read(&job.source_manifest)?;
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].source_id, "directory:baseline.xlsx");
+        assert_eq!(
+            inputs[0].expected_sha256,
+            Some(crate::validation_sources::hash_file(
+                &root.join("baseline.xlsx")
+            )?)
+        );
+        assert_eq!(inputs[0].raw_source.as_ref().unwrap().format, "xlsx");
         Ok(())
     }
 }
