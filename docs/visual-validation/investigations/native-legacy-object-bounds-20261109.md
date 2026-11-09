@@ -141,3 +141,18 @@ preview target and hash also agree with the worksheet object's cached preview.
 This checks these two observations only. Namespace resolution, supported-property
 validation, DrawingML anchor agreement, native-frame agreement and all-object
 accounting remain required for the bounded reference qualification rule.
+
+## Zero-area text-box visibility controls
+
+The same retained workbook has three zero-size `Text 1` shapes on Deutschland,
+West and Ost VZ sheets, linked through drawings 2, 3 and 4. Relationship-resolved
+removal controls found zero changed pixels on all three independently supplied
+areas. Deliberately expanded controls found 1,531, 1,737 and 1,487 changed pixels,
+respectively. The expanded images were inspected and contain a visible framed
+text box. Their exact areas, identities, timings and an initial sheet/part mapping
+error are retained in the [mutation control experiment](../experiments/ole-frame-controls/README.md#zero-area-text-box-controls).
+
+These observations apply to the retained clipped, rectangular zero-size shapes.
+They do not justify ignoring every zero-area shape, nor do they close the native
+object coverage gate. The experiment leaves production files and selection rules
+unchanged.
