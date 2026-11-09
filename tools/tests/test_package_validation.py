@@ -11,6 +11,16 @@ spec.loader.exec_module(package)
 
 
 class RuntimePackageTests(unittest.TestCase):
+    def test_existing_schema_one_packages_remain_verifiable_without_starters(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository, binaries, tracked = self.fixture(root)
+            tracked = [name for name in tracked if Path(name).parent != Path("tools")]
+            output = root / "legacy-release"
+            manifest = package.package(repository, binaries, output, tracked, {})
+            self.assertNotIn("start-deltasieve.cmd", manifest["files"])
+            self.assertEqual(package.verify(output), manifest)
+
     def test_cleanup_application_is_included_when_built(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

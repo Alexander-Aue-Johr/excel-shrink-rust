@@ -87,6 +87,30 @@ confirmed by both native tests. The private receipts are
 `cp-fresh-native-acceptance.json` and `cp-pane-query-acceptance.json` beside the
 scratch test roots. Full 16-worker corrected-corpus acceptance remains open.
 
+## Portable release web start
+
+The optimized binaries built from `121a4622` were packaged with the generic
+starter and matching runtime assets at `d78e9957`. All 111 package members
+passed integrity verification before and after the test. The packaged starter
+was launched with Cargo absent from PATH and its inherited runtime overrides
+cleared. It selected adjacent executables and capture assets and placed default
+downloads, temporary files and logs in the sibling `deltasieve-data` directory.
+The first idle host was inspected and closed before the native UI test.
+
+Through the ordinary web configuration, three identical source copies with
+distinct names were selected as a custom directory and processed with target
+one. The release job completed all three in 57.28 seconds, with confirmed
+optimization, distinct Excel PIDs and `fresh-excel-per-input` measurements.
+The pool confirmed stopped before the completed test host was closed. The
+1,182-input development host was kept separate throughout this acceptance.
+This test establishes the local packaged web-to-native path for the bounded
+fixture. Other-machine and full corrected-corpus acceptance remain open.
+
+For the already optimized fixture, every before/after control pair differed
+only in the modification timestamp in `docProps/core.xml`. Its receipt is
+`cp-no-work-query-acceptance.json`. The packaged web job and startup paths are
+retained under `portable-starter-acceptance-20261109` in private evidence.
+
 The corpus remains an incomplete acceptance attempt until the defect and its
 affected outcomes have been resolved. Later attempts must retain the prior
 generation, failures and attribution rather than rewriting their receipts.
