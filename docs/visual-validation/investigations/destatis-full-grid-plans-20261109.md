@@ -281,3 +281,27 @@ Both leases were released, and the pool health check confirmed their workers
 available without cleanup errors. The four workers of the two ongoing corpus
 comparisons remained leased and continued capturing. This does not establish
 the cause of the add-in readiness failure.
+
+The subsequent exact full-image pass resolved the 32 white-exterior cases more
+strongly. All 24,061 flagged retained pairs in those workbooks consist entirely
+of opaque white or fully transparent pixels. The pass uses the same per-pixel
+definition as `blank_edge_fingerprint`, verifies the retained report hashes and
+caches decode results by complete encoded-image SHA-256. The final private
+receipt is `strict-cached-white-extent-classifications.jsonl`. Two earlier
+interrupted analysis outputs are separate and are not the final receipt. The
+production raw verdicts remain intact. No continuous non-white border or fill
+appears in this 32-workbook subset.
+
+All 27 overlap-change baselines were separately cleaned through the optimized
+normal SheetShrink entry point. Six resulting archives have changed XML payloads.
+A seventh differs only in ZIP representation, with identical decompressed member
+contents. The other 20 archives are byte-identical to their historical outputs.
+The run took 11.60 seconds with one Rayon thread in this observational invocation.
+Its `output-changes.json` retains both archive hashes and changed member sizes.
+Changed cleanup output alone does not establish a repaired visual regression.
+The already validated merged-text case is among the six payload changes.
+
+The retained formula diagnostics for the 27 overlap-change reports contain zero
+changed value cells, zero volatile dependency paths and zero exclusively explained
+causes. These files cannot be assigned to a volatile-formula category from those
+diagnostics. Their text, border and layout differences still require investigation.
