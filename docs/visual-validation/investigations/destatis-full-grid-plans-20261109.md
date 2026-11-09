@@ -142,6 +142,40 @@ frozen executable until a separately verified runtime deployment. Failed
 whole-grid corpus attempts must be retried after that deployment, with their
 earlier evidence preserved.
 
+## Visible-gridline Mikrozensus tail observations
+
+The final-results Mikrozensus workbook has a `12211-03` sheet whose retained
+rebuilt content extent is `A1:E50`. Column styles extend through XFD. Style 75
+has a solid indexed-9 foreground and no borders. Style 2 has no fill or borders.
+The sheet view omits `showGridLines`, so its default is visible. The existing
+background-band eligibility rule rejects this view and keeps whole-grid bounds.
+The current CF exclusion does not help because this sheet has no CF blocks.
+
+Two bounded same-input native references used the preserved profile original,
+SHA-256 `3947034b0125e388e9c4fe08db667ac3d4395383dae29cd419ff87e15b572566`,
+and producer `6cd1fa9eb0d5afb72b4bd6a8b3f2183607dcfdf535038e3c5b72a915874e80b7`.
+Both copies were independently rebuilt and saved by Excel before capture.
+
+| Areas | Image dimensions | Hash shared by all six images | Elapsed seconds |
+| --- | --- | --- | ---: |
+| `A804:N810`, `A10000:N10006`, `A1000000:N1000006` | 1442 by 120 | `f8b32e22382ea9c0223e152af15594386e643be0055d42cbb58f8f0e2b3a7c02` | 14.4202622 |
+| `M804:Q810`, `M10000:Q10006`, `M1000000:Q1000006` | 321 by 120 | `d73cdc151672cdbfac323ccc827ec72d8fcfac8487673adf24414d6c5efabbf1` | 14.2300723 |
+
+The second set crosses the filled/unfilled column transition. Both representative
+images were visually inspected and are entirely white, including the transition
+capture. Thus these retained images do not demonstrate visible gridline ink.
+They establish repetition of these six supplied areas in this rendering path.
+A deliberate changed-fill or changed-layout control remains necessary before
+extending the production eligibility rule. No production rule was changed.
+
+Evidence is retained under the private
+`G:\deltasieve-work\gridline-tail-controls-20261109` directory. The transition
+reference receipt SHA-256 is
+`bc79baa49a4a18fc2a4486faaf73a0766e1cd7b1f1629d9a2f3ec5b08e58ced2`.
+The initial invocation used rebuilt artifacts that normal completed-attempt
+retention had already removed. It failed before launching Excel. The controls
+were then run against the preserved profile original instead.
+
 ## Optimized deployment acceptance
 
 The optimized `0ad30f53` package passed the same native fixture with four
