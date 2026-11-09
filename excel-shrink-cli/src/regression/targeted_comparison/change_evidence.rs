@@ -31,7 +31,8 @@ pub(super) fn write(directory: &Path, index: usize, changes: &[XmlChange]) -> Re
         .write(true)
         .create_new(true)
         .open(&pending)?;
-    let mut output = GzEncoder::new(BufWriter::new(file), Compression::fast());
+    // JSON serialization emits many small writes. Batch them before compression.
+    let mut output = BufWriter::new(GzEncoder::new(BufWriter::new(file), Compression::fast()));
     serde_json::to_writer(
         &mut output,
         &serde_json::json!({"schema":1,"contexts":ordered,
@@ -53,7 +54,8 @@ pub(super) fn write(directory: &Path, index: usize, changes: &[XmlChange]) -> Re
         )?;
         output.write_all(b"\n")?;
     }
-    let mut writer = output.finish()?;
+    let encoder = output.into_inner().map_err(|error| error.into_error())?;
+    let mut writer = encoder.finish()?;
     writer.flush()?;
     writer.get_ref().sync_all()?;
     drop(writer);
