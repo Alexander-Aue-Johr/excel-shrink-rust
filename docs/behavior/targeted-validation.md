@@ -650,6 +650,12 @@ Completed corpus comparisons remove temporary upload-pool links after both repor
 
 ### Embedded authentication dialogs
 
+The targeted resident classifies an owned dialog titled `Name Conflict` or
+`Namenskonflikt` as `name_conflict`. It follows the same early-failure evidence
+and owned-process cleanup path as other known opening blockers. It does not
+choose a replacement name or accept the prompt. The standalone conversion and
+Check Performance preparation pool still requires equivalent blocker monitoring.
+
 During opening and outstanding Excel commands, the native host inspects visible dialogs belonging to the exact owned Excel PID. This includes modal `BasicEmbeddedBrowser` windows, which do not use Excel's classic dialog classes. Accessible labels from these browsers are read by a disposable helper with a four-second process deadline and a five-second repeat interval. Editable fields and password values are excluded; email addresses in labels are redacted.
 
 An observed Microsoft sign-in request is recorded as `authentication_required`; `AADSTS50020` or an explicit missing-tenant-account message is recorded as `tenant_access_denied`. The session retains `blocking-dialog.json` with the phase, PID, process birth time and observed labels. The existing early-failure cleanup closes the owned processes and the workbook remains an unverified skip. An empty or still-loading embedded browser does not establish an authentication error. A nonblocking external-links security bar likewise does not establish denied access.

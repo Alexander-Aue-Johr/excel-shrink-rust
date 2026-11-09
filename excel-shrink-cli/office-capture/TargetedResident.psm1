@@ -111,6 +111,7 @@ function Get-TargetedOpeningDialogKind {
     <# .SYNOPSIS Classify visible dialog text; worksheet protection or security bars are not dialogs. #>
     param([string[]]$Names, [bool]$HasPasswordInput = $false)
     $text = $Names -join " "
+    if (@($Names | Where-Object { $_ -match '^(?:Name Conflict|Namenskonflikt)$' }).Count -gt 0) { return 'name_conflict' }
     if ($text -match 'AADSTS50020|does not exist in tenant') { return 'tenant_access_denied' }
     if ($text -match '\bAADSTS\d+\b|trouble signing you in|sign in to (?:your account|access)' -or
         @($Names | Where-Object { $_ -match '^(?:Microsoft\s+)?(?:Sign in|Anmelden)$' }).Count -gt 0) { return 'authentication_required' }

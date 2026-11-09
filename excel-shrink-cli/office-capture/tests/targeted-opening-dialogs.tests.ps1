@@ -6,6 +6,8 @@ $module=Get-Module TargetedResident
         if((Get-TargetedOpeningDialogKind @($name)) -ne 'repair_required'){throw 'Repair prompt not recognized.'}
     }
     $cases = @(
+        @{text='Name Conflict';kind='name_conflict'},
+        @{text='Namenskonflikt';kind='name_conflict'},
         @{text='Password required';kind='password_required'},
         @{text='AADSTS50020: User account does not exist in tenant EPA';kind='tenant_access_denied'},
         @{text='Sorry, but we are having trouble signing you in. AADSTS50076';kind='authentication_required'},
