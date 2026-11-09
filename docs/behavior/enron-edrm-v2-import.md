@@ -54,6 +54,30 @@ Import and full reconstruction are still implementation work.
    files without repeating the multi-day download/extraction work. Keep missing,
    changed, failed and verified artifacts distinct.
 
+## Receiving-side acceptance on 2026-11-09
+
+The supplied handover contains 34,065 distinct candidate payloads totaling
+8,469,579,995 bytes, with 156,753 direct candidate locations. The full receiving
+verification reread every candidate and matched its SHA-256 and size. It also
+matched the frozen pipeline code hashes and snapshot candidate counts, with no
+pending or working inspection entries. All 159 declared archive URLs, sizes,
+SHA-1 and MD5 values match the versioned source profile. The source archives
+themselves were not included or locally reread.
+
+The five supplied `test_prepare_enron.py` tests passed locally after installing
+their missing dependencies in an isolated environment. This bounded acceptance
+does not reproduce the full extraction. Three tests initially failed dependency
+preflight because `olefile` was unavailable. The rerun used the declared versions
+of olefile, oletools, psutil, pywin32 and pypdf. Transitive dependencies were
+resolved locally and are not a byte-identical reproduction of the source runtime.
+
+The inventory declares 5,297 `legacy_excel` and 28,768 `ole` candidates. Review
+states and unresolved extraction cases remain part of the selection provenance.
+Receiving-side hash verification establishes transfer integrity. Openability,
+conversion acceptance and complete upstream extraction coverage require their
+own evidence. Import into the ordinary runner and reconstruction integration
+remain open.
+
 ## Evaluation states
 
 For an XLS original, the Excel-generated XLSX is the saved baseline. Apply

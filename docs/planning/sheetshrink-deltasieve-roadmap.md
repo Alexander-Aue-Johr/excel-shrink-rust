@@ -60,11 +60,13 @@ The paper sources were updated and
 pushed separately as `2bba218` and `c28f9b0`, with rebuilt and rendered drafts.
 The user supplied the Enron v2 extraction handover on 2026-11-09. It declares
 34,065 unique candidate payloads, 8,469,579,995 bytes and 156,753 direct candidate
-locations. Full receiving-side hash verification has started. Candidate records
+locations. Full receiving-side hash verification passed for all 34,065 payloads,
+including code receipts and snapshot counts. The 159 declared source archive
+identities match the versioned profile. Candidate records
 include unresolved OLE content and retain review states. They are not all proven
 openable Excel workbooks. Initial receiving-side extraction tests hit a missing
-`olefile` dependency. Their reported source-machine success remains distinct
-from local acceptance until the dependencies and rerun are verified.
+`olefile` dependency. After installing isolated dependencies, all five bounded
+tests passed locally. Full reconstruction and ordinary runner import remain open.
 
 ## Earlier Enron and web-start checkpoint on 2026-11-09
 
