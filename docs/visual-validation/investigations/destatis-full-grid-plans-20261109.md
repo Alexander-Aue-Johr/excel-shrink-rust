@@ -257,3 +257,27 @@ A separate native reference attempt timed out at `open_batch` after 60 seconds.
 It supplies no new successful image comparison or causal attribution. Its
 earlier invocation failed before opening Excel because an incorrect packaged
 asset path was supplied. Both attempts remain separate from corpus outcomes.
+
+The evidence-path error was subsequently traced to `bautaetigkeit-2050100217005.xlsx`,
+sheet `1.1-Graf2`. Its native chart exports contain PNG data with `.image`
+filenames. The diagnostic accepted only `.png`, although both files were inside
+the correct workbook evidence directory. It now accepts either retained suffix
+and explicitly decodes PNG content, preserving the workbook confinement check.
+
+`retained_bautaetigkeit_chart_has_one_changed_pixel` ran explicitly against the
+actual historical report through the Rust diagnostic entry point. Both images
+are 516 by 356 pixels. Exactly one overlapping pixel differs, at
+`[182,47,183,48)`, with a maximum channel delta of 28. Zero regions remain
+unmeasured in this report. All seven ordinary pixel-diagnostic tests also passed.
+The source image SHA-256 identities are
+`8bd85e39a70e6d556fb4d69b84abcb828a1cf2ab01a9544c4d6e4f40780c59cf`
+and `a80b982126854af7a9501245cf6f4236a1473c7908e828dea7ec4d8c05a3c852`.
+This resolves the missing measurement. Rendering variation remains a hypothesis
+until a repeated native capture can test it. The original finding is retained.
+
+A later traffic reference invocation borrowed two exclusively leased idle
+workers from the live pool. It also reached the 60-second `open_batch` timeout.
+Both leases were released, and the pool health check confirmed their workers
+available without cleanup errors. The four workers of the two ongoing corpus
+comparisons remained leased and continued capturing. This does not establish
+the cause of the add-in readiness failure.

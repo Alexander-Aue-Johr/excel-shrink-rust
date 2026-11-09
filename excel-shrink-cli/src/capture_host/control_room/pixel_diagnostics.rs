@@ -109,8 +109,8 @@ fn inspect_report(
                     let left = evidence_path(study, id, left)?;
                     let right = evidence_path(study, id, right)?;
                     let (metrics, overlay) = compare_pixels(
-                        &image::open(left)?.to_rgba8(),
-                        &image::open(right)?.to_rgba8(),
+                        &read_png(&left)?,
+                        &read_png(&right)?,
                         selected.is_some(),
                     );
                     let mut metrics = metrics;
@@ -165,10 +165,19 @@ fn evidence_path(study: &Path, id: &str, relative: &str) -> Result<PathBuf> {
         relative.to_owned()
     };
     anyhow::ensure!(
-        relative.starts_with(&format!("evidence/{id}/")) && relative.ends_with(".png"),
+        relative.starts_with(&format!("evidence/{id}/"))
+            && (relative.ends_with(".png") || relative.ends_with(".image")),
         "Pixel diagnostics require retained evidence from this workbook"
     );
     confined_path(study, &relative)
+}
+
+/// Native chart exports use a `.image` filename but still contain PNG bytes.
+fn read_png(path: &Path) -> Result<RgbaImage> {
+    let source = std::io::BufReader::new(std::fs::File::open(path)?);
+    Ok(image::ImageReader::with_format(source, image::ImageFormat::Png)
+        .decode()?
+        .to_rgba8())
 }
 
 #[derive(Default, serde::Serialize)]
@@ -370,6 +379,45 @@ mod tests {
         assert!(evidence_path(&root, "one", "evidence/two/image.png").is_err());
         assert!(evidence_path(&root, "one", "evidence/one/../image.png").is_err());
         assert!(evidence_path(&root, "one", "file:///image.png").is_err());
+        assert!(evidence_path(&root, "one", "evidence/two/chart.image").is_err());
+    }
+
+    /// bautaetigkeit-2050100217005.xlsx, 1.1-Graf2, retained native PNG export.
+    #[test]
+    fn chart_exports_decode_by_png_content_with_image_suffix() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("chart-pixels-{}", uuid::Uuid::new_v4()));
+        let path = root.join("evidence/one/chart.image");
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut bytes).write_image(
+            &[12, 34, 56, 255], 1, 1, image::ExtendedColorType::Rgba8,
+        )?;
+        std::fs::write(&path, bytes)?;
+        let confined = evidence_path(&root, "one", "evidence/one/chart.image")?;
+        assert_eq!(read_png(&confined)?.get_pixel(0, 0).0, [12, 34, 56, 255]);
+        std::fs::write(&path, b"not a PNG")?;
+        assert!(read_png(&confined).is_err());
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    /// bautaetigkeit-2050100217005.xlsx, 1.1-Graf2, one changed retained pixel.
+    #[test]
+    #[ignore = "Requires PIXEL_DIAG_STUDY, PIXEL_DIAG_REPORT and a new PIXEL_DIAG_CACHE path"]
+    fn retained_bautaetigkeit_chart_has_one_changed_pixel() -> Result<()> {
+        let study = PathBuf::from(std::env::var("PIXEL_DIAG_STUDY")?);
+        let report: Value = serde_json::from_slice(&std::fs::read(
+            std::env::var("PIXEL_DIAG_REPORT")?,
+        )?)?;
+        let cache = PathBuf::from(std::env::var("PIXEL_DIAG_CACHE")?);
+        anyhow::ensure!(!cache.exists(), "Diagnostic integration cache must be new");
+        let result = inspect_report(
+            &study, "7f0cb9e6d16fcad38e68", "retained-chart", &cache, report, None,
+        )?;
+        assert_eq!(result["summary"]["changed_pixels"], 1);
+        assert_eq!(result["summary"]["unmeasured_regions"], 0);
+        assert_eq!(result["summary"]["max_channel_delta"], 28);
+        Ok(())
     }
 
     #[test]

@@ -1419,6 +1419,11 @@ directory. A path outside that workbook remains an error. This compatibility
 does not alter raw reports or comparison verdicts. Missing measurements must
 remain distinguishable from zero changed pixels.
 
+Native chart exports can retain the `.image` suffix. Diagnostics accept this
+suffix inside the same confined workbook evidence directory and explicitly
+decode PNG content. The filename suffix does not bypass image decoding or allow
+references to another workbook.
+
 ### Native-qualified horizontal lines and background tails
 
 A saved or rebuilt state with a full-grid visual extent can qualify a closed
