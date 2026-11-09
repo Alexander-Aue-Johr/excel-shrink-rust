@@ -359,6 +359,14 @@ hidden and default gridline settings are supported. Missing views, unknown
 gridline settings, unresolved CF, inherited borders, patterned
 fills, unknown styles or unsupported markup retain the previous fallback.
 
+Drawing envelope guards inspect XML tags and attributes through the byte reader.
+An explicit line width, rotation, effect list, effect graph or alternate-content
+branch retains the unmodeled-object fallback independently of namespace prefix,
+attribute order, quote style or whitespace around attribute assignments. Matching
+words inside an object's name do not constitute such properties. A geometric
+line with zero height can still have a visible stroke. A future bounded-line rule
+must account for that stroke before enabling finite background-tail coverage.
+
 A standard CF catalogue consisting entirely of `cellIs equal` rules with
 nonempty literal text operands cannot format unserialized blank cells. Such a
 catalogue does not extend the content envelope to its whole application area.

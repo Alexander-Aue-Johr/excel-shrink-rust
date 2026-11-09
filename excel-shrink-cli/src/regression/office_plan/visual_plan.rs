@@ -3,7 +3,6 @@ mod streaming_sheet;
 
 use super::visual_xml::{decimal, decode_attr, decode_sheet_name, Kind, Reader};
 use anyhow::{ensure, Context, Result};
-use memchr::memmem;
 use serde::Serialize;
 use std::{collections::HashMap, fs::File, io::Read, path::Path};
 use zip::ZipArchive;
@@ -372,15 +371,23 @@ fn anchor_marker(anchor: &[u8], wanted: &[u8]) -> Result<Option<Coordinate>> {
 }
 
 fn anchor_has_unmodeled_visuals(raw: &[u8]) -> bool {
-    [
-        b"rot=".as_slice(),
-        b"effectLst".as_slice(),
-        b"effectDag".as_slice(),
-        b"AlternateContent".as_slice(),
-        b":ln w=".as_slice(),
-    ]
-    .iter()
-    .any(|needle| memmem::find(raw, needle).is_some())
+    let inspect = || -> Result<bool> {
+        let mut reader = Reader::<128>::new(raw)?;
+        while let Some(tag) = reader.next()? {
+            if tag.kind == Kind::End {
+                continue;
+            }
+            if matches!(tag.local(), b"effectLst" | b"effectDag" | b"AlternateContent")
+                || tag.attr(b"rot")?.is_some()
+                || (tag.local() == b"ln" && tag.attr(b"w")?.is_some())
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    };
+    // Malformed drawing markup cannot establish a bounded visual envelope.
+    inspect().unwrap_or(true)
 }
 
 fn parse_drawing(bytes: &[u8]) -> Result<DrawingSummary> {
@@ -772,6 +779,27 @@ mod tests {
         let plan = parse_drawing(drawing).unwrap();
         assert_eq!((plan.max_row, plan.max_column), (40, 10));
         assert!(!plan.fallback_required);
+    }
+
+    #[test]
+    fn drawing_envelope_guards_ignore_xml_attribute_spelling() {
+        for raw in [
+            br#"<a:ln cap="rnd" w="10795"/>"#.as_slice(),
+            b"<d:ln\n w = '10795'/>",
+            b"<ln w='10795'/>",
+            b"<a:xfrm rot = '60000'/>",
+            b"<a:effectLst/>",
+            b"<a:effectDag/>",
+            b"<mc:AlternateContent/>",
+        ] {
+            assert!(anchor_has_unmodeled_visuals(raw), "{raw:?}");
+        }
+        assert!(!anchor_has_unmodeled_visuals(
+            br#"<a:xfrm><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm>"#
+        ));
+        assert!(!anchor_has_unmodeled_visuals(
+            br#"<xdr:cNvPr name="effectLst rot= :ln w="/>"#
+        ));
     }
 
     #[test]
