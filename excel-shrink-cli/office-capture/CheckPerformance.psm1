@@ -33,10 +33,19 @@ function Get-PerformancePaneState {
     Resolves a unique performance pane and reads its action and completion text.
     #>
     param($Root)
-    # Locate native panes in one provider query before walking the selected pane's controls.
-    $condition = [Windows.Automation.PropertyCondition]::new(
-        [Windows.Automation.AutomationElement]::ClassNameProperty, 'MsoWorkPane')
-    $panes = @($Root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object {
+    # Native child handles avoid expanding Excel's potentially enormous sheet UIA tree.
+    $current = $Root.Current
+    $handles = @([NativeWindow]::FindOwnedDescendants(
+        [IntPtr]$current.NativeWindowHandle, $current.ProcessId, 'MsoWorkPane'))
+    $candidates = if ($handles.Count -gt 0) {
+        @($handles | ForEach-Object { [Windows.Automation.AutomationElement]::FromHandle($_) })
+    } else {
+        # Some Office providers expose a pane without its own native child window.
+        $condition = [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::ClassNameProperty, 'MsoWorkPane')
+        @($Root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition))
+    }
+    $panes = @($candidates | Where-Object {
         $_.Current.Name -match '^(Workbook Performance|Arbeitsmappenleistung|Leistung der Arbeitsmappe)$'
     })
     if ($panes.Count -ne 1) { return $null }
@@ -66,6 +75,7 @@ function Get-PerformancePaneState {
         $_.name -match '^(No optimization needed|No optimizations needed|Nothing to optimize|Keine Optimierung erforderlich|Keine Optimierungen erforderlich|Keine Optimierung notwendig)$'
     })
     return @{buttons=$buttons; completion=$completion; noWork=$noWork;
+        lookup_method=$(if ($handles.Count -gt 0) { 'owned_native_handles' } else { 'accessibility_fallback' });
         text=@($controls | ForEach-Object name | Where-Object { $_ })}
 }
 
@@ -120,6 +130,7 @@ function Invoke-WorkbookPerformanceOptimization {
     while ([DateTime]::UtcNow -lt $deadline) {
         $state = Get-PerformancePaneState $root
         if (-not $observed -and $null -ne $state) {
+            Write-PerformanceTrace ('Pane lookup ' + $state.lookup_method)
             Write-PerformanceTrace ($state.text -join ' | ')
             $observed = $true
         }

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class NativeWindow
 {
     private const uint LeftButtonDown = 2;
@@ -19,6 +21,35 @@ public static class NativeWindow
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+
+    private delegate bool WindowVisitor(IntPtr window, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr parent, WindowVisitor visitor, IntPtr parameter);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);
+
+    /// <summary>Locate native child hosts without traversing their accessibility providers.</summary>
+    public static IntPtr[] FindOwnedDescendants(IntPtr owner, int pid, string className)
+    {
+        uint actualPid;
+        GetWindowThreadProcessId(owner, out actualPid);
+        if (actualPid != pid)
+            throw new InvalidOperationException("Window does not belong to the expected Excel process.");
+        var matches = new List<IntPtr>();
+        EnumChildWindows(owner, (child, unused) => {
+            GetWindowThreadProcessId(child, out actualPid);
+            if (actualPid == pid && GetAncestor(child, RootAncestor) == owner)
+            {
+                var name = new StringBuilder(256);
+                if (GetClassName(child, name, name.Capacity) > 0 && name.ToString() == className)
+                    matches.Add(child);
+            }
+            return true;
+        }, IntPtr.Zero);
+        return matches.ToArray();
+    }
 
     [DllImport("user32.dll")]
     private static extern bool SetCursorPos(int x, int y);

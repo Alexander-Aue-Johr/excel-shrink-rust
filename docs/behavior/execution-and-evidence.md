@@ -250,6 +250,14 @@ The native adapter operates on the group's existing Excel copy/private desktop.
 It is distinct from the normal Office.js workbook command API. Excel build,
 localization, UI availability and native adapter support can affect this phase.
 
+Pane discovery first enumerates native child windows of the exact owned Excel
+root, checking their process identity and root ancestor. Only `MsoWorkPane`
+handles are converted to accessibility elements before matching the localized
+performance-pane title. This avoids traversing the whole worksheet accessibility
+tree merely to locate a native pane. Providers without native pane handles retain
+the accessibility lookup fallback. The selected pane's bounded control traversal,
+unique-action requirement and positive completion requirement remain unchanged.
+
 Office.js handles ordinary save, calculation, cell captures and row-height work.
 The current workbook calculation endpoint uses `CalculationType.fullRebuild`,
 waits for calculation completion with an internal bound, then saves.
