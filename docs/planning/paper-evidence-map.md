@@ -85,3 +85,41 @@ Keep the live Enron counter out of static manuscript results until a dated cutof
 is frozen. Counts of completed attempts, successfully compared workbooks,
 unchanged packages and skipped files have separate denominators. Replay and
 interface polish do not substitute for selector coverage or cleanup correctness.
+
+## Verified manuscript refresh on 2026-11-09
+
+Paper commit `10acc6d` updates both independent evaluation sections with the
+imported Enron input frame and the completed initial Destatis Check Performance
+preparation. The Enron import contains 34,065 distinct candidate hashes and
+8,469,579,995 payload bytes, with externally generated extraction provenance.
+The import archive hash is
+`cd7c91e28c833a2a7b78673ece21223317c30379d37009ebfc95f9fef1f47c22`.
+Candidate recognition, conversion and visual outcomes remain separate stages.
+
+The initial Check Performance preparation attempted 1,182 inputs, retaining
+1,016 prepared outputs and 166 failed entries. Its receipt hash is
+`619553532d01a784657b6c2f49367ae9cfe669cd3a59a666d1013785de523887`.
+These counters describe preparation, with visual baseline validation still open.
+The source investigation tracks subsequent diagnostic recovery independently.
+
+DeltaSieve's draft additionally reports the fixed-area OLE frame/preview controls
+and the corrected three-sheet zero-area text-box controls. Their exact source,
+mutation and reference identities are recorded in the versioned experiments.
+They support bounded development observations. Independent corpus-level detection
+and matched selected/full-reference cost experiments remain open.
+
+Both projects compiled twice without undefined-reference or overfull-box warnings.
+All ten rendered pages were visually inspected. The SheetShrink working draft
+has four pages and DeltaSieve has six. These manuscript updates leave Task 14's
+evaluation freeze, full claim audit and author revision gates open.
+
+Follow-up paper commit `652e7ac` incorporates the completed recovery classification
+for all 166 failed preparation source identities. It records 165 Name Conflict
+observations, the recurring Interactive-property automation error and a successful
+separate positive control. Both PDFs were rebuilt twice and re-rendered. The six
+unchanged page images matched the previously inspected versions, and all four
+changed pages were inspected. Final PDF hashes for this checkpoint are
+`5fa5e6a1100fae189c7e29996ec243ef84c3309a9ba0ed46562f6a2ba4eb07a7`
+for SheetShrink and
+`62c7e73a597a1ad49f3398b9c60906ee20e3cacc569845d6fb7a382a3b3b714e`
+for DeltaSieve.

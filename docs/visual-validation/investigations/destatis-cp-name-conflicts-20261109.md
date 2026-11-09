@@ -53,3 +53,47 @@ the existing dead-code warnings.
 The conflicting name remains unidentified. Early classification avoids a long
 generic timeout but does not establish that a workbook-only cleanup is safe or
 that the workbook has been optimized. Such files remain failed preparation inputs.
+
+## Full-corpus preparation and identity-matched recovery
+
+The original frozen preparation finished after attempting all 1,182 Destatis
+inputs. Its receipt contains 1,016 prepared outputs and 166 failures, consisting
+of 165 generic opening timeouts and one Interactive-property automation failure.
+The preparation receipt SHA-256 is
+`619553532d01a784657b6c2f49367ae9cfe669cd3a59a666d1013785de523887`.
+Its initial 16-worker setting was reduced during execution, so the complete
+elapsed duration is an observational campaign measurement.
+
+After terminal state was confirmed, its idle host was replaced by the separately
+verified optimized `runtime-2d72e076` package. All 114 package files were checked.
+The successful corpus outputs and original receipts were preserved. The visual
+night queue continued independently with four comparison groups.
+
+Three original failed inputs were frozen by their existing source identities and
+baseline hashes and submitted through the ordinary preparation API. This batch
+completed in 13.213105 seconds with two workers and reported three Name Conflict
+blockers. The remaining 163 original failures were then retried with two workers
+and completed in 442.761273 seconds. They produced 162 Name Conflict blockers and
+the same Interactive-property automation failure. The latter input is
+`statistischer-bericht-umsatzsteuer-2140810227005.xlsx`.
+
+Set reconciliation verified that the two recovery batches contain exactly the
+166 distinct failed source identities from the original campaign. All 165 former
+opening timeouts now have an explicit Name Conflict observation. Conflicting-name
+contents remain unresolved, and the baseline files were preserved.
+
+A separate positive control, `01011970_Auszug_GV.xlsx`, prepared successfully in
+8.114378 seconds and retained its before-optimization, original-saved and
+after-optimization workbooks. It remains separate from corpus outcome totals.
+Its receipt hash is
+`4cdf214ce4955ccfa0dd6351216d07e4ec16ec73e053bf6d89b216d7082b56bd`.
+The three-case probe receipt hash is
+`78b51f72d6bf017b3fe441e9416c42792adbe9e60e6b213769ee4f96531caf36`,
+and the 163-case receipt hash is
+`5b021eb595ff31f898e49f22f2f0135c0c460fd8bebdcf2eb79425ab61b815da`.
+
+All raw attempts and the source-identity reconciliation are retained privately
+under `G:\SheetShrink-Night-20261109\cp-recovery`. Prepared cache entries still
+require their subsequent visual comparison. These recovery observations classify
+opening failures without changing workbook-defined names or certifying the
+Check Performance transformation itself.
