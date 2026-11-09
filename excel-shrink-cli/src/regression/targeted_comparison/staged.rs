@@ -8,7 +8,7 @@ use super::{
     execution_plan::StateDecision,
     heights::{self, HeightCheck, HeightRun},
     telemetry::{LaneId, Lifecycle, Phase, StepStatus},
-    xml_changes::{cell_candidates, Snapshot, Transition},
+    xml_changes::{cell_candidates, AuditTimings, Snapshot, Transition},
     Candidate, Comparison,
 };
 use anyhow::{ensure, Context, Result};
@@ -333,17 +333,23 @@ impl Workflow<'_, '_> {
     }
 
     fn audit(&mut self, label: &str, before: &Path, after: &Path) -> Result<()> {
+        let total_started = Instant::now();
         self.comparison.telemetry.update(|state| {
             for &id in self.states.keys() {
                 state.lane(id).capture_selection_complete = false;
             }
         })?;
+        let read_started = Instant::now();
         let a = self.comparison.snapshots.read(before)?;
         let b = self.comparison.snapshots.read(after)?;
+        let read_snapshots = read_started.elapsed().as_millis() as u64;
+        let differences_started = Instant::now();
         self.content_bounds.include(&a);
         self.content_bounds.include(&b);
         let (mut changes, skipped_outside_content_cell_changes) = a.content_changes(&b)?;
+        let differences = differences_started.elapsed().as_millis() as u64;
         self.publish_candidate_count()?;
+        let attribution_started = Instant::now();
         if label == "original opening/saving control" {
             self.original_save_keys = changes.iter().map(change_key).collect::<Result<_>>()?;
         }
@@ -351,11 +357,14 @@ impl Workflow<'_, '_> {
             change.also_in_original_open_save =
                 self.original_save_keys.contains(&change_key(change)?);
         }
+        let attribution = attribution_started.elapsed().as_millis() as u64;
+        let write_started = Instant::now();
         let changes_file = super::change_evidence::write(
             &self.comparison.args.output,
             self.comparison.report.transitions.len(),
             &changes,
         )?;
+        let write_evidence = write_started.elapsed().as_millis() as u64;
         self.comparison.report.transitions.push(Transition {
             label: label.into(),
             before_file: before.into(),
@@ -363,7 +372,17 @@ impl Workflow<'_, '_> {
             change_count: changes.len(),
             changes_file,
             skipped_outside_content_cell_changes,
+            timings_ms: Some(AuditTimings {
+                read_snapshots,
+                differences,
+                attribution,
+                write_evidence,
+                total: total_started.elapsed().as_millis() as u64,
+            }),
         });
+        self.comparison.telemetry.update(|state| {
+            state.report = self.comparison.report.telemetry_summary();
+        })?;
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { openingMetrics, processTimings, relativeCost } from '../process-metrics-model.js';
+import { openingMetrics, processTimings, relativeCost, xmlAuditTimings } from '../process-metrics-model.js';
 
 test('rebuilt cards use the one actual opening observation', () => {
   const sample = {startup_seconds: 2, startup_memory_working_set_bytes: 1024};
@@ -9,6 +9,18 @@ test('rebuilt cards use the one actual opening observation', () => {
   assert.equal(relativeCost(4, 2).tone, 'high');
   assert.equal(relativeCost(2, 4).tone, 'lower');
   assert.equal(relativeCost(1, 0), null);
+});
+
+test('shared XML audits retain measurements and do not invent historical durations', () => {
+  assert.deepEqual(xmlAuditTimings({}), []);
+  assert.deepEqual(xmlAuditTimings({report: {xml_audits: [{label: 'old'}]}}), []);
+  const audit = {label: 'original save', change_count: 100,
+    timings_ms: {total: 500, read_snapshots: 100, differences: 200,
+      attribution: 100, write_evidence: 90}};
+  assert.deepEqual(xmlAuditTimings({report: {xml_audits: [audit]}}), [audit]);
+  assert.deepEqual(xmlAuditTimings({report: {xml_audits: [
+    {...audit, timings_ms: {total: -1}},
+  ]}}), []);
 });
 
 test('live clocks aggregate the same process across rebuild without inventing sheet timings', () => {

@@ -66,6 +66,15 @@ pub(super) struct XmlChange {
 }
 
 #[derive(Serialize)]
+pub(super) struct AuditTimings {
+    pub read_snapshots: u64,
+    pub differences: u64,
+    pub attribution: u64,
+    pub write_evidence: u64,
+    pub total: u64,
+}
+
+#[derive(Serialize)]
 pub(super) struct Transition {
     pub label: String,
     pub before_file: std::path::PathBuf,
@@ -73,6 +82,7 @@ pub(super) struct Transition {
     pub change_count: usize,
     pub changes_file: std::path::PathBuf,
     pub skipped_outside_content_cell_changes: BTreeMap<String, usize>,
+    pub timings_ms: Option<AuditTimings>,
 }
 
 fn cell_digest(cell: super::cell_stream::Cell) -> String {
@@ -915,6 +925,7 @@ mod tests {
             change_count: count,
             changes_file: path.clone(),
             skipped_outside_content_cell_changes: BTreeMap::new(),
+            timings_ms: None,
         };
         assert!(serde_json::to_vec(&transition)?.len() < 1024);
         assert!(std::fs::metadata(path)?.len() < 1_000_000);

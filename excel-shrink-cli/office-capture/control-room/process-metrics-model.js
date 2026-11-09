@@ -63,3 +63,9 @@ export function processTimings(comparison, laneId, now = Date.now()) {
 export function seconds(milliseconds) {
   return `${(milliseconds / 1000).toFixed(milliseconds < 10000 ? 2 : 1)} s`;
 }
+
+/** XML audits belong to the comparison and are shared by both process cards. */
+export function xmlAuditTimings(comparison) {
+  return (comparison.report?.xml_audits || []).filter(audit =>
+    Number.isFinite(audit.timings_ms?.total) && audit.timings_ms.total >= 0);
+}

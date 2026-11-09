@@ -152,7 +152,47 @@ impl Report {
             "before_differences": count(LaneId::O, LaneId::SD).or_else(|| self.input_identity.identical().then_some(0)),
             "after_differences": count(LaneId::OR, LaneId::SDR),
             "original_recalc_drift": count(LaneId::O, LaneId::OR),
+            "xml_audits": self.transitions.iter().filter_map(|transition| {
+                transition.timings_ms.as_ref().map(|timings| json!({
+                    "label":transition.label,
+                    "change_count":transition.change_count,
+                    "timings_ms":timings,
+                }))
+            }).collect::<Vec<_>>(),
         })
+    }
+}
+
+#[cfg(test)]
+mod audit_timing_tests {
+    use super::*;
+    use crate::regression::targeted_comparison::xml_changes::{AuditTimings, Transition};
+
+    #[test]
+    fn audit_summary_exposes_measured_durations_without_paths_or_invented_history() {
+        let mut report = new_report();
+        report.transitions.push(Transition {
+            label: "saved original".into(),
+            before_file: "private-before.xlsx".into(),
+            after_file: "private-after.xlsx".into(),
+            changes_file: "private-audit.jsonl.gz".into(),
+            change_count: 12,
+            skipped_outside_content_cell_changes: BTreeMap::new(),
+            timings_ms: None,
+        });
+        assert_eq!(report.telemetry_summary()["xml_audits"], json!([]));
+        report.transitions[0].timings_ms = Some(AuditTimings {
+            read_snapshots: 10,
+            differences: 20,
+            attribution: 30,
+            write_evidence: 40,
+            total: 110,
+        });
+        let summary = report.telemetry_summary();
+        assert_eq!(summary["xml_audits"][0]["change_count"], 12);
+        assert_eq!(summary["xml_audits"][0]["timings_ms"]["write_evidence"], 40);
+        assert_eq!(summary["xml_audits"][0]["timings_ms"]["total"], 110);
+        assert!(!summary.to_string().contains("private-"));
     }
 }
 

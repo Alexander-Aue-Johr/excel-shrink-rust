@@ -1116,6 +1116,15 @@ Geometry, image rendering and upload have separate measured durations when the
 worker reports them. Shared batch timings are not multiplied across images.
 Overlapping durations must not be added to estimate total elapsed time.
 
+Completed XML audit transitions record separate millisecond durations for reading
+snapshots, detecting differences including content-bound updates, attributing
+changes to the original save control, and writing durable compressed evidence.
+Their total includes orchestration overhead and can exceed the component sum.
+Compact telemetry exposes only the transition label, change count and durations.
+Both process cards display these as shared comparison work. Historical audits
+without these measurements do not acquire invented durations. An in-progress
+audit retains the existing phase clock until its completed breakdown is available.
+
 `Capture regions` loads at most 100 addresses per explicit request. An atomic
 JSONL index records the coalesced plan before geometry measurement and the final
 measured partition afterward. The index is separate from live status snapshots.

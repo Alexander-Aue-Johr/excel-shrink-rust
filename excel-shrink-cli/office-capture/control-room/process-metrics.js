@@ -1,4 +1,4 @@
-import { openingMetrics, processFamily, processTimings, relativeCost, seconds } from './process-metrics-model.js';
+import { openingMetrics, processFamily, processTimings, relativeCost, seconds, xmlAuditTimings } from './process-metrics-model.js';
 
 const node = (tag, className = '', text) => {
   const element = document.createElement(tag);
@@ -82,9 +82,25 @@ export function createProcessMetrics() {
       }
       const elapsed = kind => timings.operations.filter(item => item.operation === kind)
         .reduce((total, item) => total + item.elapsed_ms, 0);
+      const audits = xmlAuditTimings(comparison);
+      for (const [index, audit] of audits.entries()) {
+        const duration = audit.timings_ms;
+        values.push({
+          key: `xml-audit/${index}`,
+          label: `Shared XML audit · ${audit.label}`,
+          text: `${seconds(duration.total)} · ${audit.change_count.toLocaleString()} changes`
+            + ` · snapshots ${seconds(duration.read_snapshots)}`
+            + ` · differences ${seconds(duration.differences)}`
+            + ` · attribution ${seconds(duration.attribution)}`
+            + ` · evidence write ${seconds(duration.write_evidence)}`,
+        });
+      }
       summary.textContent = timings.operations.length
         ? `Timings · geometry ${seconds(elapsed('measure_batch'))} · captures ${seconds(elapsed('capture_many'))}`
         : 'Timings · awaiting operation measurements';
+      if (audits.length) {
+        summary.textContent += ` · shared XML ${seconds(audits.reduce((total, audit) => total + audit.timings_ms.total, 0))}`;
+      }
       const keys = new Set(values.map(item => item.key));
       for (const [key, row] of entries) if (!keys.has(key)) { row.remove(); entries.delete(key); }
       for (const item of values) {
