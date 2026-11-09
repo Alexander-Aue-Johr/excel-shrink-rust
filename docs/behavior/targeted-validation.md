@@ -1330,6 +1330,15 @@ qualify rendering effects, account for every other object, establish native-fram
 agreement or certify pixel equality. The native reference object guard and
 production capture policy retain their previous supported-object requirements.
 
+VML observations additionally recognize a closed Office picture-template subset.
+It requires the standard type-75 path and formula sequence, known namespace
+bindings and attributes, explicit positive point geometry, and complete unique
+picture/anchor properties. Shadows on the shape or inherited from its type,
+cropping, rotation, external image-source attributes, unknown elements and
+missing/repeated properties remain unsupported. `recognized_template` concerns
+this VML subset only. OLE activation properties, native-frame agreement and
+all-object accounting still require their own checks before coverage can change.
+
 ## Capture job list and pinned details
 
 Warm-pool startup verifies that the deployed capture directory has its sibling

@@ -240,6 +240,32 @@ and `9c1d7c5f1ada439b7271fa815d8b17dc6a1263ca5f8a69c943277dc0b77293ff`.
 This step leaves full property validation, native-frame qualification and
 all-object accounting open. The production runtime was not replaced.
 
+## Guarded VML picture-template observations
+
+The VML scanner now recognizes a closed Office-generated type-75 picture family.
+The check covers its complete part structure, namespaces, template attributes,
+standard formula sequence and unique required picture properties. Explicit
+point frames must have positive dimensions. Unknown elements or attributes,
+duplicate/missing properties, cropping and rotation remain unsupported.
+
+Checking only the shape's immediate children would miss inherited effects.
+Microsoft documents that shadows can occur in either a shape or its shape type,
+and that image data can include cropping and color transformations. The new
+guard rejects these additions at both levels. OLE automatic loading is a
+separate behavior and is not established by a recognized VML template.
+[Microsoft VML shadow documentation](https://learn.microsoft.com/en-us/windows/win32/vml/web-workshop---how-to-use-vml-on-web-pages-----shadow--element),
+[Microsoft VML image-data documentation](https://learn.microsoft.com/en-us/windows/win32/vml/msdn-online-vml-imagedata-element),
+[Microsoft OLE AutoLoad documentation](https://learn.microsoft.com/en-us/office/vba/api/excel.oleobject.autoload).
+
+Sixteen focused OLE tests passed. XML-only checks recognized the real Word and
+PDF VML parts while correctly leaving their DrawingML parts not applicable to
+this VML-specific guard. The retained diagnostic receipt SHA-256 identities are
+`cfa6a0ab15c47fb00673d864094755a37ccb5f2485b0e2bf2134183b8601fcfd`
+for Word and
+`8084cd89562f4465ccc2765630765410db963e781038c53bf13f17ef9a60dfca`
+for PDF. This step preserves the existing native reference qualification and
+production capture rules.
+
 ## Zero-area text-box visibility controls
 
 The same retained workbook has three zero-size `Text 1` shapes on Deutschland,

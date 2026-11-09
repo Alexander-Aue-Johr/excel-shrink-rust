@@ -1,7 +1,8 @@
 //! Retain DrawingML/VML identities alongside worksheet OLE records.
 //! Resolve identity-subtree namespaces without qualifying supported rendering frames.
 use super::{
-    attributes, hash_local_parts, namespaces, read_relationships, vml_geometry, Relationship,
+    attributes, hash_local_parts, namespaces, read_relationships, vml_geometry, vml_picture,
+    Relationship,
 };
 use crate::regression::xml_views::{Kind, Reader};
 use anyhow::{ensure, Context, Result};
@@ -18,6 +19,7 @@ pub(super) struct Representation {
     namespace_declarations: BTreeMap<String, Vec<String>>,
     pub(super) shapes: Vec<Shape>,
     pub(super) relationships: BTreeMap<String, Relationship>,
+    vml_picture_template: vml_picture::Observation,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,6 +107,13 @@ pub(super) fn read(part: String, bytes: &[u8]) -> Result<Representation> {
             }
             _ => {}
         }
+    }
+    if result
+        .shapes
+        .iter()
+        .any(|shape| shape.qualified_name == "v:shape")
+    {
+        result.vml_picture_template = vml_picture::observe(bytes);
     }
     Ok(result)
 }

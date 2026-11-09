@@ -20,6 +20,7 @@ mod correspondence;
 mod namespaces;
 mod representations;
 mod vml_geometry;
+mod vml_picture;
 
 #[derive(Debug, Default, Serialize)]
 pub(super) struct Catalogue {

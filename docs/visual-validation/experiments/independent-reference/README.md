@@ -63,6 +63,13 @@ with a concrete reason. Package relationship elements must have the expected
 namespace, and preview targets and SHA-256 identities must agree. This field
 does not change native-object qualification or production capture coverage.
 
+VML parts with picture shapes also retain `vml_picture_template`. The recognized
+subset has a closed type-75 picture definition, the exact standard formula
+sequence, known attributes and namespace bindings, positive absolute point
+geometry and one complete set of required picture properties per shape. Unknown
+effects and properties remain unsupported. The template observation does not
+by itself qualify an OLE object or its activation behavior.
+
 A qualification failure describes this guard's supported object model. It does
 not establish that the workbook is invalid or the range renderer omits the
 object. Bounded native controls have rendered embedded Word and PDF previews
