@@ -28,6 +28,7 @@ impl Fixture {
                 name: name.into(),
                 bytes: content.len() as u64,
                 sha256: hash_file(&source)?,
+                crc32: crc32fast::hash(content.as_bytes()),
             });
         }
         writer.finish()?;

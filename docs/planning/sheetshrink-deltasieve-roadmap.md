@@ -1,5 +1,23 @@
 # SheetShrink and DeltaSieve delivery plan
 
+## User-directed Enron stop and replacement on 2026-11-09
+
+The user explicitly stopped the previous Enron run after the warm-pool speed
+investigation and selected the Internet Archive EDRM Enron v2 XML collection for
+the next evaluation. The old runner's stop API completed with running=false,
+phase=stopped, working_groups=0, open_groups=0 and cleanup_groups=0. Keep its
+results, prepared files and identities. Do not automatically resume this old run
+after tests or because an earlier checkpoint asks to keep it advancing.
+
+The confirmed source is `https://archive.org/details/edrm.enron.email.data.set.v2.xml`.
+Its current metadata lists 159 source ZIPs, including split custodian archives.
+The user is completing recursive extraction on another machine and will provide
+scripts and resulting artifacts together. Prepare the source profile and import
+contract while waiting. Local re-extraction of the full collection is deferred.
+Imported artifacts must retain their external-generation provenance and verified
+file identities. A converted XLSX is the saved baseline for an XLS original.
+SheetShrink and Check Performance preparations remain distinct producers.
+
 ## Active Enron and web-start checkpoint on 2026-11-09
 
 Enron is running under the explicitly selected v10 warm-worker implementation
@@ -343,8 +361,12 @@ returned 9,117 missing originals in a 570-byte job snapshot; the separate test
 host was stopped afterward. Focused verification and the interrupted broad smoke
 selection are documented in
 `../visual-validation/experiments/corpus-profile-acquisition-20261109.md`.
-Full browser acceptance, profile-driven study creation and distributed rehearsal
-remain open. No Task 06 completion box is changed.
+Profile-backed study creation and the web source-acquisition handoff are now
+implemented. The real Destatis offline preparation verified 1,182 originals;
+selection-only runs from its ZIP and directory produced identical source
+fingerprints and size plans, selecting 295 files for partition 1/4. Native web
+handoff, full browser acceptance and distributed rehearsal remain open. No Task
+06 completion box is changed.
 
 ## 07 Verify conversion and environment-dependent formulas
 

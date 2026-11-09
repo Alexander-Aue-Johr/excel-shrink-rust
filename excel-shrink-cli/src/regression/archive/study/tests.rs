@@ -539,6 +539,7 @@ fn stable_ids_are_explicit_and_legacy_ids_are_unchanged() -> Result<()> {
         url: "C:/one/archive.zip".into(),
         id: None,
         total_workbooks: None,
+        profile: None,
     };
     assert_eq!(
         corpus_id(&corpus)?,

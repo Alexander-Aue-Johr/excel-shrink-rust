@@ -58,5 +58,33 @@ production Enron process was not stopped or reconfigured for these checks.
 
 The utility does not automatically start a corpus study. Acquisition status is
 retained for the configurator server lifetime, while verified originals survive
-restart and are rechecked on reuse. Study creation from materialized profile
-members, partition integration and the multi-machine rehearsal remain required.
+restart and are rechecked on reuse.
+
+## Profile-backed study integration
+
+The study form now accepts a profile with originals and cache directories. It
+waits for the exact background acquisition job to finish successfully and release
+admission before creating the study. Creation rechecks the sources and freezes a
+directory-backed profile request. An empty profile retains the ZIP workflow.
+
+Two small tests prove catalog fingerprint and size-plan equivalence, including
+non-workbook ZIP members and reordered manifest entries, plus private-copy hash
+checking before processing. Eight study-configuration tests, eleven existing
+selection tests and the original ZIP extraction test pass. Seven profile tests
+also pass. Seven JavaScript tests cover configuration, source acquisition and
+the handoff gate. A new configuration test initially compared extended Windows
+paths with unprefixed paths; it now compares the canonical parent consistently.
+
+An additional offline acceptance used the already retained, pinned Destatis ZIP.
+The debug executable restored and verified all 1,182 originals, totaling
+2,364,066,555 workbook bytes. The observed debug preparation wall time was 286.22
+seconds; this is an integrity check, not a throughput benchmark. No source ZIP
+was downloaded for this acceptance. Selection-only invocations then generated
+plans from the directory and ZIP with the same corpus ID and size partition 1/4.
+Their complete source descriptors, fingerprint and selection matched. Both
+selected 295 of 1,182 members. These commands did not start Excel comparisons.
+
+The private preparation and selection receipts are under
+`validation-temp/profile-study-20261109`, including `prepare.json` and
+`selection-acceptance.json`. Full visual-browser acceptance, a native profile
+study through its web handoff and the multi-machine rehearsal remain open.

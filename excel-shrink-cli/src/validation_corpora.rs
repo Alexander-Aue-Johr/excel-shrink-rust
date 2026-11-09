@@ -9,30 +9,31 @@ mod acquisition;
 pub(crate) use acquisition::{prepare, prepare_with_progress};
 
 #[derive(Clone, Deserialize)]
-struct Profile {
-    version: u32,
-    id: String,
-    name: String,
-    archive: Archive,
-    workbooks: Vec<Workbook>,
+pub(crate) struct Profile {
+    pub(crate) version: u32,
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) archive: Archive,
+    pub(crate) workbooks: Vec<Workbook>,
 }
 
 #[derive(Clone, Deserialize, serde::Serialize)]
-struct Archive {
-    url: String,
-    sha256: String,
-    bytes: u64,
+pub(crate) struct Archive {
+    pub(crate) url: String,
+    pub(crate) sha256: String,
+    pub(crate) bytes: u64,
 }
 
 #[derive(Clone, Deserialize)]
-struct Workbook {
-    index: usize,
-    name: String,
-    bytes: u64,
-    sha256: String,
+pub(crate) struct Workbook {
+    pub(crate) index: usize,
+    pub(crate) name: String,
+    pub(crate) bytes: u64,
+    pub(crate) sha256: String,
+    pub(crate) crc32: u32,
 }
 
-fn profile(id: &str) -> Result<Profile> {
+pub(crate) fn profile(id: &str) -> Result<Profile> {
     let source = match id {
         "destatis" => include_str!("../../profiles/corpora/destatis.json"),
         "datagov" => include_str!("../../profiles/corpora/datagov.json"),
@@ -187,6 +188,7 @@ mod tests {
                     name: name.into(),
                     bytes: 4,
                     sha256: hash.clone(),
+                    crc32: crc32fast::hash(b"same"),
                 })
                 .collect(),
         };

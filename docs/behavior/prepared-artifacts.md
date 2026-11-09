@@ -43,7 +43,27 @@ not cancel it. `/api/state` exposes the current phase, restored-file count, last
 member and terminal result or error. Missing-file name arrays are omitted from
 polling; full names remain available through `corpus-inspect --details`. Job status
 is in memory for this server lifetime; published originals remain reusable after
-a server restart. Profile-driven study creation remains integration work.
+a server restart.
+
+## Profile-backed study inputs
+
+The SheetShrink study configuration accepts `corpus_profile`, `originals_root`
+and `corpus_cache`. An empty profile retains the existing local-ZIP workflow.
+For a supported profile, `archive` is an optional offline source. Relative paths
+in configuration files resolve beside the configuration file. The web form
+performs source acquisition as an observed background operation before handing
+off to study creation. Creation independently rechecks originals through the
+same acquisition implementation. It freezes the profile ID, pinned archive hash,
+originals directory and workbook count in the normal request and receipt.
+
+Active profile sources are verified before the scheduler reuses previous results
+or preparation. Their logical corpus ID is the pinned archive SHA-256. Original
+ZIP member indices, names, CRCs and sizes preserve the archive catalog fingerprint
+and size partitions. Workers copy originals into private work and verify that
+copy against the profile's per-file SHA-256 before processing it. A missing hash,
+changed original or escaped path fails explicitly. A report-only invocation may
+still inspect retained reports without the original files. Multi-machine and full
+browser acceptance of this path remain required.
 
 A preparation input has a stable source ID, a logical display name, a local
 baseline path and its SHA-256. A known raw source additionally records its hash,

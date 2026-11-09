@@ -3,6 +3,7 @@ use super::*;
 
 mod control_room;
 mod execution;
+mod materialized;
 mod fallback;
 mod preparation;
 mod preparation_slots;
@@ -183,6 +184,9 @@ struct Corpus {
     /// Optional known total for offline corpora; an available archive takes precedence.
     #[serde(default)]
     total_workbooks: Option<u64>,
+    /// Embedded profile whose verified originals are stored in the URL directory.
+    #[serde(default)]
+    profile: Option<String>,
 }
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -200,6 +204,7 @@ struct Source {
     members: Vec<(usize, String)>,
     fingerprint: String,
     selection: selection::Plan,
+    member_sha256: std::collections::BTreeMap<usize, String>,
 }
 
 fn has_deferred_full_scan(record: &Value) -> bool {
@@ -250,6 +255,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             url: url.clone(),
             id: None,
             total_workbooks: None,
+            profile: None,
         }));
     request
         .corpora
@@ -258,6 +264,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             url: p[1].clone(),
             id: None,
             total_workbooks: None,
+            profile: None,
         }));
     ensure!(
         !request.corpora.is_empty(),
@@ -342,7 +349,18 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
             }
         }
     }
+    let mut materialized_sources = std::collections::BTreeMap::new();
     for (i, corpus) in request.corpora.iter().enumerate() {
+        if corpus.profile.is_some() {
+            if active[i] && !args.report_only {
+                startup.update("checking_catalog", &corpus.name, 0, None)?;
+                let source = materialized::load(corpus, &root, args.size_part)?;
+                corpus_info[i]["total_workbooks"] = json!(source.members.len());
+                expected_sources.insert(ids[i].clone(), source.fingerprint.clone());
+                materialized_sources.insert(i, source);
+            }
+            continue;
+        }
         let local = if corpus.url.starts_with("http") {
             resolve_path(&root, args.download_root.clone()).join(format!(
                 "{}.zip",
@@ -443,6 +461,9 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
         let id = corpus_info[i]["id"].as_str().unwrap().to_owned();
         startup.update("opening_archive", &corpus.name, 0, None)?;
         let loaded = (|| -> Result<Source> {
+            if corpus.profile.is_some() {
+                return materialized_sources.remove(&i).context("Missing verified profile source");
+            }
             let path = if corpus.url.starts_with("https://") || corpus.url.starts_with("http://") {
                 download::archive(&downloads, &corpus.url)?
             } else {
@@ -475,6 +496,7 @@ fn run_inner(args: StudyArgs, log_level: LogLevel) -> Result<()> {
                 members,
                 fingerprint,
                 selection: selection::Plan::new(sized, args.size_part)?,
+                member_sha256: Default::default(),
             })
         })();
         match loaded {

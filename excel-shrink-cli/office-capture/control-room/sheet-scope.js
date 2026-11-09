@@ -655,7 +655,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     processorSchema = session.processor_schema;
     shrinkPreset = session.shrink_preset;
     logicalProcessors = session.logical_processors;
-    installStudyConfiguration({ api, message, defaults: session.study_defaults, logicalProcessors });
+    installStudyConfiguration({ api, message, defaults: session.study_defaults, logicalProcessors, session });
     installPreparationPackages({ api, message, onImported: populate });
     preparationJobView = installPerformancePreparation({ api, message });
     installCorpusAcquisition({ api, message, session })

@@ -800,7 +800,7 @@ mod tests {
             "attempt_id":"resident-old","sequence":7,"status":"waiting_cleanup","active":true}],
             "waiting_groups":4,"cleanup_groups":1}))?;
         let source = Source { id:"source".into(), name:"Example".into(), path:PathBuf::new(),
-            members:vec![], fingerprint:"source".into(), selection:selection::Plan::new(vec![], None)? };
+            members:vec![], fingerprint:"source".into(), selection:selection::Plan::new(vec![], None)?, member_sha256:Default::default() };
         begin_serial(&output, &source, id, &mut record, JobMode::Compare, &json!({"run_id":"run"}))?;
         let queue = read_json(&room.join("queue.json")).unwrap();
         let group = &queue["groups"][0];

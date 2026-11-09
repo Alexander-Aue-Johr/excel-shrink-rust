@@ -95,6 +95,9 @@ pub(in crate::regression) fn run_worker(args: WorkerArgs, log_level: LogLevel) -
 }
 
 pub(super) fn extract(job: &MemberJob) -> Result<PathBuf> {
+    if job.archive.is_dir() {
+        return extract_materialized(job);
+    }
     let mut zip = ZipArchive::new(fs::File::open(&job.archive)?)?;
     let mut entry = zip.by_index(job.index)?;
     ensure!(
@@ -126,6 +129,47 @@ pub(super) fn extract(job: &MemberJob) -> Result<PathBuf> {
     ensure!(
         bytes <= job.max_workbook_bytes,
         "extracted XLSX exceeds size limit"
+    );
+    Ok(input)
+}
+
+/// Copy a manifest-backed original into private work and verify the copied bytes.
+fn extract_materialized(job: &MemberJob) -> Result<PathBuf> {
+    let expected = job
+        .run_manifest
+        .as_ref()
+        .and_then(|manifest| manifest["source_member_sha256"].as_str())
+        .context("Materialized original lacks its expected SHA-256")?;
+    let name = crate::validation_sources::relative_name(&job.name)?;
+    crate::validation_sources::require_regular_source(&job.archive)?;
+    let root = fs::canonicalize(&job.archive)?;
+    let source = root.join(name);
+    crate::validation_sources::require_regular_file(&source)?;
+    ensure!(
+        fs::canonicalize(&source)?.starts_with(&root),
+        "Original escapes its corpus directory"
+    );
+    ensure!(
+        fs::metadata(&source)?.len() <= job.max_workbook_bytes,
+        "Original exceeds workbook size limit"
+    );
+    let extension = if job.name.to_ascii_lowercase().ends_with(".xls") {
+        "xls"
+    } else {
+        "xlsx"
+    };
+    let input = job.work.join(format!("source.{extension}"));
+    let mut original = fs::File::open(&source)?;
+    let mut copied = fs::File::create(&input)?;
+    let bytes = std::io::copy(
+        &mut (&mut original).take(job.max_workbook_bytes.saturating_add(1)),
+        &mut copied,
+    )?;
+    drop(copied);
+    ensure!(
+        bytes <= job.max_workbook_bytes && crate::validation_sources::hash_file(&input)? == expected,
+        "Materialized original changed before extraction: {}",
+        job.name
     );
     Ok(input)
 }
@@ -762,6 +806,34 @@ mod tests {
         job.index = 0;
         job.max_workbook_bytes = 3;
         assert!(extract(&job).unwrap_err().to_string().contains("exceeds"));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn materialized_original_is_copied_and_hash_checked_before_processing() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("materialized-worker-{}", uuid::Uuid::new_v4()));
+        let originals = root.join("originals");
+        let work = root.join("work");
+        fs::create_dir_all(&originals)?;
+        fs::create_dir(&work)?;
+        let source = originals.join("a.xlsx");
+        fs::write(&source, b"1234")?;
+        let mut job: MemberJob = serde_json::from_value(json!({
+            "archive":originals,"index":7,"identity":"fixture:7:a.xlsx","name":"a.xlsx",
+            "work":work,"record":root.join("record.json"),"report_root":root,
+            "max_workbook_bytes":4,"run_manifest":{"source_member_sha256":artifact_cache::sha256(b"1234")}
+        }))?;
+        assert_eq!(fs::read(extract(&job)?)?, b"1234");
+        assert_eq!(fs::read(&source)?, b"1234");
+        fs::write(&source, b"5678")?;
+        assert!(extract(&job).unwrap_err().to_string().contains("changed before extraction"));
+        job.name = "../outside.xlsx".into();
+        assert!(extract(&job).is_err());
+        job.name = "a.xlsx".into();
+        job.run_manifest = None;
+        assert!(extract(&job).unwrap_err().to_string().contains("expected SHA-256"));
+        assert_eq!(fs::read(&source)?, b"5678");
         fs::remove_dir_all(root)?;
         Ok(())
     }

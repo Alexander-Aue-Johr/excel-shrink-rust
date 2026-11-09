@@ -1,4 +1,27 @@
 /* Archive-study configuration and a verified handoff to its own Observatory. */
+import { acquisitionStatus } from './corpus-acquisition.js';
+
+export async function prepareStudySource(api, configuration, onStatus) {
+  if (!configuration.corpus_profile) return;
+  const accepted = await api('/api/corpora/start', {
+    profile: configuration.corpus_profile, operation: 'prepare',
+    artifacts: configuration.originals_root, cache: configuration.corpus_cache,
+    archive: configuration.archive || null,
+  });
+  let job = accepted.job;
+  let active = job.status === 'running';
+  while (job.status === 'running' || active) {
+    onStatus(acquisitionStatus(job));
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const state = await api('/api/state');
+    if (state.corpus_job?.id !== accepted.job.id) throw new Error('The source acquisition job identity changed.');
+    job = state.corpus_job;
+    active = Boolean(state.active);
+  }
+  onStatus(acquisitionStatus(job));
+  if (job.status !== 'completed') throw new Error(job.error || 'Source acquisition did not complete.');
+  if (job.result?.inspection?.complete !== true) throw new Error('Corpus originals remain incomplete.');
+}
 
 export function configurationFromForm(form, defaults) {
   return Object.fromEntries(Object.entries(defaults).map(([name, initial]) => {
@@ -22,7 +45,7 @@ export function partitionChoices(count) {
   return Array.from({ length: count + 1 }, (_, index) => index);
 }
 
-export function installStudyConfiguration({ api, message, defaults, logicalProcessors }) {
+export function installStudyConfiguration({ api, message, defaults, logicalProcessors, session }) {
   const byId = id => document.getElementById(id);
   const form = byId('new-study');
   for (const [name, initial] of Object.entries(defaults)) {
@@ -34,6 +57,41 @@ export function installStudyConfiguration({ api, message, defaults, logicalProce
   for (const name of ['prepare_processes', 'shrink_threads']) {
     form.elements.namedItem(name).max = logicalProcessors;
   }
+
+  const profileSelect = byId('study-corpus-profile');
+  let profiles = [];
+  let suggestedOriginals = '';
+  const originals = form.elements.namedItem('originals_root');
+  const cache = form.elements.namedItem('corpus_cache');
+  if (!cache.value) cache.value = session.corpus_download_cache;
+  function selectProfile() {
+    const selected = profileSelect.value;
+    byId('study-profile-paths').hidden = !selected;
+    form.elements.namedItem('archive').required = !selected;
+    originals.required = Boolean(selected);
+    cache.required = Boolean(selected);
+    if (!selected) return;
+    const profile = profiles.find(item => item.id === selected);
+    if (!originals.value || originals.value === suggestedOriginals) {
+      suggestedOriginals = `${session.corpus_artifacts_root.replace(/[\\/]+$/, '')}/${selected}`;
+      originals.value = suggestedOriginals;
+    }
+    const name = form.elements.namedItem('name');
+    if (name.value === 'Corpus' && profile) name.value = profile.name;
+  }
+  profileSelect.addEventListener('change', selectProfile);
+  api('/api/corpora').then(catalog => {
+    profiles = catalog.profiles;
+    for (const profile of profiles) {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      profileSelect.append(option);
+    }
+    profileSelect.value = defaults.corpus_profile;
+    selectProfile();
+  }).catch(error => message(`Study corpus profiles unavailable. ${error.message}`, true));
+  selectProfile();
 
   function renderPartitions() {
     const selected = form.elements.namedItem('partition');
@@ -76,7 +134,9 @@ export function installStudyConfiguration({ api, message, defaults, logicalProce
     const button = byId('start-study');
     button.disabled = true;
     try {
-      const result = await api('/api/study/start', configurationFromForm(form, defaults));
+      const configuration = configurationFromForm(form, defaults);
+      await prepareStudySource(api, configuration, text => { byId('study-source-status').textContent = text; });
+      const result = await api('/api/study/start', configuration);
       await handoff(result, 'new-study-link');
     } catch (error) {
       message(error.message, true);

@@ -296,6 +296,7 @@ mod tests {
                 (2, "c.xlsx".into()),
             ],
             fingerprint: "catalog".into(),
+            member_sha256: Default::default(),
             selection: Plan::new(
                 (0..3)
                     .map(|i| CatalogMember {
@@ -393,7 +394,7 @@ mod tests {
         let source = Source {
             id: "example".into(), name: "Example".into(), path: PathBuf::from("unused.zip"),
             members: (0..16).map(|index| (index, format!("file-{index}.xlsx"))).collect(),
-            fingerprint: "catalog".into(), selection,
+            fingerprint: "catalog".into(), selection, member_sha256: Default::default(),
         };
         let records = vec![
             json!({"identity":"example:4:file-4.xlsx","complete":true,"status":"skipped"}),
@@ -432,6 +433,7 @@ mod tests {
                 .map(|member| (member.archive_index, member.member_name.clone()))
                 .collect(),
             fingerprint: "catalog".into(),
+            member_sha256: Default::default(),
             selection: Plan::new(catalog, Some("2/2".parse().unwrap()))?,
         };
         let before = serde_json::to_value(&source.selection)?;
@@ -518,6 +520,7 @@ mod tests {
                 url: name.into(),
                 id: None,
                 total_workbooks: None,
+                profile: None,
             })
             .collect();
         let active = active_corpora(&corpora, &["enron".into()])?;

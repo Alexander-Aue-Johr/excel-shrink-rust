@@ -154,7 +154,8 @@ pub(super) fn run_record(
             "targeted_skip_check_performance":run["options"]["targeted_skip_check_performance"],
             "chart_capture_mode":run["options"]["chart_capture_mode"],
             "retain_equal_images":run["options"]["retain_equal_images"],
-            "preparation_stage":run["options"]["preparation_stage"]}),
+            "preparation_stage":run["options"]["preparation_stage"],
+            "source_member_sha256":source.member_sha256.get(&index)}),
         ),
     };
     let path = work.join("job.json");

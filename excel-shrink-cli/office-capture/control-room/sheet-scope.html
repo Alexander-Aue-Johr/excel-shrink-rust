@@ -165,11 +165,18 @@
     <form id="new-study" class="panel grid" hidden>
       <h2>Start a corpus study</h2>
       <input type="hidden" name="version" value="1">
+      <label class="wide">Corpus source<select id="study-corpus-profile" name="corpus_profile"><option value="">Local ZIP archive</option></select></label>
       <label>Corpus name<input name="name" required></label>
       <label>Observatory port<input name="port" type="number" min="1024" max="65535" required></label>
       <label class="wide">Source ZIP archive
         <span class="path"><input id="study-archive" name="archive" required><button type="button" data-browse="study-archive" data-kind="file">File…</button></span>
       </label>
+      <div id="study-profile-paths" class="grid wide" hidden>
+        <label class="wide">Profile originals directory<span class="path"><input id="study-originals" name="originals_root"><button type="button" data-browse="study-originals">Browse…</button></span></label>
+        <label class="wide">Profile download cache<span class="path"><input id="study-corpus-cache" name="corpus_cache"><button type="button" data-browse="study-corpus-cache">Browse…</button></span></label>
+        <p class="help wide">Present originals are verified and reused. Missing originals are restored before starting the study. For a profile, the source ZIP field is an optional offline archive.</p>
+      </div>
+      <p id="study-source-status" class="help wide" role="status"></p>
       <label class="wide">New study directory
         <span class="path"><input id="study-output-root" name="output_root" required><button type="button" data-browse="study-output-root">Choose parent…</button></span>
       </label>

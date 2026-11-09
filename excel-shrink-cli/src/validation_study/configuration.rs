@@ -13,6 +13,9 @@ pub(crate) struct Configuration {
     pub version: u32,
     pub name: String,
     pub archive: PathBuf,
+    pub corpus_profile: String,
+    pub originals_root: PathBuf,
+    pub corpus_cache: PathBuf,
     pub output_root: PathBuf,
     pub comparison_groups: usize,
     pub prepare_processes: usize,
@@ -39,6 +42,9 @@ impl Default for Configuration {
             version: 1,
             name: "Corpus".into(),
             archive: PathBuf::new(),
+            corpus_profile: String::new(),
+            originals_root: PathBuf::new(),
+            corpus_cache: PathBuf::new(),
             output_root: PathBuf::new(),
             comparison_groups: 1,
             prepare_processes: 1,
@@ -64,7 +70,12 @@ impl Configuration {
         let path = fs::canonicalize(path)?;
         let mut configuration: Self = serde_json::from_slice(&fs::read(&path)?)?;
         let parent = path.parent().context("Study configuration parent")?;
-        for field in [&mut configuration.archive, &mut configuration.output_root] {
+        for field in [
+            &mut configuration.archive,
+            &mut configuration.output_root,
+            &mut configuration.originals_root,
+            &mut configuration.corpus_cache,
+        ] {
             if field.is_relative() && !field.as_os_str().is_empty() {
                 *field = parent.join(&*field);
             }
@@ -82,10 +93,22 @@ impl Configuration {
             !self.name.trim().is_empty() && !self.name.chars().any(char::is_control),
             "Corpus name must be nonempty and contain no control characters"
         );
-        ensure!(
-            self.archive.is_absolute() && self.archive.is_file(),
-            "Choose an existing absolute archive path"
-        );
+        if self.corpus_profile.is_empty() {
+            ensure!(
+                self.archive.is_absolute() && self.archive.is_file(),
+                "Choose an existing absolute archive path"
+            );
+        } else {
+            crate::validation_corpora::profile(&self.corpus_profile)?;
+            ensure!(
+                self.originals_root.is_absolute() && self.corpus_cache.is_absolute(),
+                "Profile originals and download cache require absolute paths"
+            );
+            ensure!(
+                self.archive.as_os_str().is_empty() || self.archive.is_absolute(),
+                "Optional profile archive requires an absolute path"
+            );
+        }
         ensure!(
             self.output_root.is_absolute() && !self.output_root.exists(),
             "A new study requires a new absolute output directory; use Resume for existing results"
@@ -181,12 +204,22 @@ impl Configuration {
     }
 }
 
-/// Freeze inputs, executable and launch contract for a new run. Existing runs
-/// retain their exact receipt and must use the separate resume operation.
-pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
-    configuration.validate()?;
-    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, configuration.port))
-        .context("Study Observatory port is occupied; choose another port")?;
+/// Resolve original identities before reserving a new study directory.
+fn resolve_corpus(configuration: &Configuration) -> Result<serde_json::Value> {
+    if !configuration.corpus_profile.is_empty() {
+        let profile = crate::validation_corpora::profile(&configuration.corpus_profile)?;
+        let archive = (!configuration.archive.as_os_str().is_empty())
+            .then_some(configuration.archive.as_path());
+        crate::validation_corpora::prepare(
+            &profile.id,
+            &configuration.originals_root,
+            &configuration.corpus_cache,
+            archive,
+        )?;
+        return Ok(json!({"name":configuration.name,"id":profile.archive.sha256,
+            "url":configuration.originals_root,"profile":profile.id,
+            "total_workbooks":profile.workbooks.len()}));
+    }
     let source_before = fs::metadata(&configuration.archive)?;
     let mut archive = zip::ZipArchive::new(fs::File::open(&configuration.archive)?)?;
     let mut workbooks = 0;
@@ -197,10 +230,7 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
             workbooks += 1;
         }
     }
-    ensure!(
-        workbooks > 0,
-        "Archive contains no direct XLS or XLSX workbooks"
-    );
+    ensure!(workbooks > 0, "Archive contains no direct XLS or XLSX workbooks");
     let archive_hash = deltasieve_engine::reuse::file_sha256(&configuration.archive)?;
     let source_after = fs::metadata(&configuration.archive)?;
     ensure!(
@@ -208,6 +238,17 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
             && source_before.modified()? == source_after.modified()?,
         "Source archive changed while its launch identity was being frozen"
     );
+    Ok(json!({"name":configuration.name,"id":archive_hash,
+        "url":configuration.archive,"total_workbooks":workbooks}))
+}
+
+/// Freeze inputs, executable and launch contract for a new run. Existing runs
+/// retain their exact receipt and must use the separate resume operation.
+pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
+    configuration.validate()?;
+    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, configuration.port))
+        .context("Study Observatory port is occupied; choose another port")?;
+    let corpus = resolve_corpus(&configuration)?;
     let request = configuration.output_root.join("request.json");
     let arguments = configuration.arguments(&request);
     crate::regression::RegressionCli::try_parse_from(
@@ -293,8 +334,7 @@ pub(crate) fn create(configuration: Configuration) -> Result<PathBuf> {
     write("control-room/control.json", &controls)?;
     write(
         "request.json",
-        &json!({"corpora":[{"name":configuration.name,
-        "id":archive_hash,"url":configuration.archive,"total_workbooks":workbooks}]}),
+        &json!({"corpora":[corpus]}),
     )?;
     let receipt = Receipt {
         executable,
@@ -403,6 +443,31 @@ mod tests {
         configuration.partition = 0;
         configuration.capture_batch_ranges = crate::capture_settings::MAX_CAPTURE_RANGES + 1;
         assert!(configuration.validate().is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn profile_configuration_resolves_storage_and_rejects_conflicts_before_launch() {
+        let (root, mut configuration) = fixture();
+        configuration.corpus_profile = "datagov".into();
+        configuration.archive = PathBuf::new();
+        configuration.originals_root = "originals".into();
+        configuration.corpus_cache = "cache".into();
+        let path = root.join("configuration.json");
+        fs::write(&path, serde_json::to_vec(&configuration).unwrap()).unwrap();
+        let resolved = Configuration::from_file(&path).unwrap();
+        let canonical = fs::canonicalize(&root).unwrap();
+        assert_eq!(resolved.originals_root, canonical.join("originals"));
+        assert_eq!(resolved.corpus_cache, canonical.join("cache"));
+        resolved.validate().unwrap();
+        fs::create_dir(&resolved.originals_root).unwrap();
+        let profile = crate::validation_corpora::profile("datagov").unwrap();
+        let conflict = resolved.originals_root.join(&profile.workbooks[0].name);
+        fs::write(&conflict, b"keep this local file").unwrap();
+        assert!(create(resolved.clone()).unwrap_err().to_string().contains("differ from the manifest"));
+        assert_eq!(fs::read(conflict).unwrap(), b"keep this local file");
+        assert!(!resolved.corpus_cache.exists());
+        assert!(!resolved.output_root.exists());
         fs::remove_dir_all(root).unwrap();
     }
 
