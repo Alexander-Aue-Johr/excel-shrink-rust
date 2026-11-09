@@ -17,6 +17,12 @@ types, missing inventory, rotated objects and objects outside the supplied area
 fail explicitly before reference images are captured. The native inventory stays
 in `reference.json`, including on qualification failure.
 
+A qualification failure describes this guard's supported object model. It does
+not establish that the workbook is invalid or the range renderer omits the
+object. Bounded native controls have rendered embedded Word and PDF previews
+whose shape type is `Unsupported`. Their unqualified samples remain separate
+from qualified references. See the native legacy-object bounds investigation.
+
 This qualification concerns reported object rectangles. Shadows, glows and other
 ink outside that model require a separate envelope. It does not certify that a
 supplied plan covers every rendering effect. Native image geometry uses the
