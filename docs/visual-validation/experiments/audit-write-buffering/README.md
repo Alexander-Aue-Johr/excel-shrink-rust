@@ -49,3 +49,24 @@ program with `100000` as its argument. Preserve the printed JSON lines.
 
 The original local result file is
 `G:\deltasieve-work\audit-write-buffering-20261109\results.jsonl`.
+
+## Native instrumentation acceptance
+
+Runtime `a50f2e18` passed the 114-file package verifier and one ordinary private-
+desktop targeted comparison of the existing direct-presentation pair. The pair
+has deliberately changed formatting. Its rebuilt comparison selected one
+region, `Data!A1:D4`, and detected overlapping pixel differences.
+
+All five completed audit transitions recorded their individual stage durations.
+Their observed total times were 7, 12, 9, 12 and 15 milliseconds. The compact
+telemetry's `report.xml_audits` matched the saved transition measurements.
+Sub-millisecond components legitimately recorded zero. The two owned Excel PIDs
+were confirmed absent after completion. Production Destatis retained four groups.
+This small acceptance verifies instrumentation flow, not a large-workbook speedup
+or a browser-rendering acceptance of the new timing rows.
+
+The receipt root is `G:\deltasieve-work\audit-timing-native-20261109`.
+`comparison/report.json` SHA-256 is
+`8f9046b7a141f8ad2d97c011a7a4e5bab62293425b56dc9ae0b0cab5c4b9fc66`.
+`comparison/telemetry.json` SHA-256 is
+`71399e74f733042bc207f514d8599215e19059bd3b3bc8d6024935f8492a37db`.

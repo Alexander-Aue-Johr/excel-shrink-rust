@@ -1105,6 +1105,17 @@ report does not itself run additional source analysis. See the
 
 ### Process timings and manual region inspection
 
+Before registering a capture add-in, missing-only cleanup examines GUID entries
+in the current user's WEF Developer key. Eligible paths use the known capture or
+legacy parallel-test naming under the user temp, process temp or current staging
+parent. Only positive file/directory absence qualifies. Existing manifests and
+unrelated entries are preserved. A flushed backup in the staging parent's
+`registry-backups` directory must precede deletion. Each value and missing path
+is checked again immediately before removal. Cleanup errors produce warnings
+without preventing the normal registration attempt. This automatic procedure
+does not remove existing abandoned manifests. The separate manual cleanup tool
+requires Excel to be closed for that broader operation.
+
 Process cards show the measured opening duration and the working set sampled at
 readiness, paired with the other workbook's measurement. The primary bar belongs
 to the current card. A ratio at least 2 is red, above 1.2 is amber, below 0.8 is

@@ -2,6 +2,19 @@
 
 ## Full local night queue requested on 2026-11-09
 
+The queued transition was subsequently advanced to verified `runtime-a50f2e18`,
+which also exposes the missing XML audit-stage measurements in saved reports,
+compact telemetry and shared process-card timing rows. Its executable SHA-256 is
+`60451a55e3bc6ccb13db4d475ca57fe5c28b0acf74b4929c75340373daa5c324`.
+All 114 runtime files were verified. Targeted tests passed 155 checks with fourteen
+ignored checks, and four focused Node checks passed. One small ordinary native
+formatting-change control produced the expected pixel finding and all five audit
+timing records, with matching telemetry fields and confirmed owned Excel exits.
+Browser rendering of the new timing rows remains unverified. Only the waiting
+transition supervisor was replaced after confirming it had no comparison child.
+The current Destatis runner stayed active. The completed-Destatis boundary and
+Data.gov/Enron transition remain pending.
+
 The later audit-buffering and missing-manifest cleanup runtime was built and
 packaged separately as `runtime-499b27d4`. All 114 package files passed the
 closed-package verifier. Its `deltasieve.exe` SHA-256 is
