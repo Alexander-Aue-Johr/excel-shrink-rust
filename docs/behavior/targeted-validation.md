@@ -69,6 +69,13 @@ until an explicit retrospective classification is performed.
 The stronger historical white-margin proof remains separately recorded by
 `blank_margin_ignored` and requires all nonblank pixels to match.
 
+If both complete worksheet images contain only opaque white or fully transparent
+pixels, differing origins or extents have no visible feature to displace. Such
+pairs also receive `blank_margin_ignored=true` after both images are decoded and
+validated. This exception does not apply to a uniform colored fill, a border,
+text, missing images or chart captures. Visible pairs with shifted origins retain
+their geometry difference. Historical raw findings remain retained for review.
+
 The required data/visual boundary includes values and formulas, plus empty cells
 with visible effective fill or borders, including inherited or conditional styles.
 White fill can be visible by suppressing gridlines. Use the union across relevant

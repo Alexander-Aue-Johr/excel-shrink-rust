@@ -53,6 +53,13 @@ impl ImageComparisons {
         self.statistics.clone()
     }
 
+    /// Empty images have no visible feature whose absolute origin could move.
+    pub fn both_blank(&mut self, left: &Path, right: &Path) -> Result<bool> {
+        let left = self.fingerprint(left)?.blank_edge_fingerprint;
+        let right = self.fingerprint(right)?.blank_edge_fingerprint;
+        Ok(left.0 == 0 && left.1 == 0 && right.0 == 0 && right.1 == 0)
+    }
+
     /// Compare only the common rectangle, without scaling either immutable image.
     /// The caller establishes the same measured capture origin.
     pub fn differ_in_overlap(&mut self, left: &Path, right: &Path) -> Result<bool> {

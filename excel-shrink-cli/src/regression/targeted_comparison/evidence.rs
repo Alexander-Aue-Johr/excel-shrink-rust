@@ -59,7 +59,13 @@ impl Evidence {
         let left_geometry: Geometry = serde_json::from_value(self.geometry.clone())?;
         let right_geometry: Geometry = serde_json::from_value(other.geometry.clone())?;
         let geometry_differs = left_geometry != right_geometry;
-        if geometry_differs && matching_content_origin(&self.geometry, &other.geometry) {
+        let blank_pair = match (&self.path, &other.path) {
+            (Some(left), Some(right)) if geometry_differs => comparisons.both_blank(left, right)?,
+            _ => false,
+        };
+        if geometry_differs
+            && (blank_pair || matching_content_origin(&self.geometry, &other.geometry))
+        {
             if let (Some(left), Some(right)) = (&self.path, &other.path) {
                 if !comparisons.differ_with_blank_edges(left, right)? {
                     return Ok(ContentVerdict {
@@ -410,6 +416,62 @@ mod tests {
 mod margin_tests {
     use super::*;
     use serde_json::json;
+
+    /// arbeitskraefte-2030218209005.xlsx, 0620T!ACC1070:AGX1166.
+    /// Both retained images are white despite different far-tail column origins.
+    #[test]
+    #[ignore = "Requires EVIDENCE_DIAG_INPUT with a retained finding and its image paths"]
+    fn retained_white_pair_ignores_far_tail_geometry() -> Result<()> {
+        let input = std::fs::read(std::env::var("EVIDENCE_DIAG_INPUT")?)?;
+        let finding: Value = serde_json::from_slice(&input)?;
+        let evidence = |side: &str| -> Result<Evidence> {
+            Ok(Evidence {
+                path: Some(PathBuf::from(
+                    finding[format!("{side}_png")].as_str().context("Missing image path")?,
+                )),
+                geometry: finding[format!("{side}_geometry")].clone(),
+            })
+        };
+        let result = evidence("left")?
+            .compare_content(&evidence("right")?, &mut ImageComparisons::default())?;
+        assert_eq!(result, ContentVerdict {
+            pixels_differ: false,
+            geometry_differs: false,
+            blank_margin_ignored: true,
+            capture_extent_ignored: false,
+        });
+        Ok(())
+    }
+
+    /// Destatis Arbeitskraefte and Baumschulerhebung retained thousands of
+    /// fully white pairs whose far-tail column coordinates had shifted.
+    #[test]
+    fn completely_blank_pairs_ignore_shifted_origins_but_visible_pairs_do_not() -> Result<()> {
+        let directory = crate::regression::artifact_cache::unique_path(
+            &std::env::temp_dir(), "blank-origin",
+        )?;
+        std::fs::create_dir_all(&directory)?;
+        for (index, color) in [image::Rgba([255; 4]), image::Rgba([240, 240, 240, 255])]
+            .into_iter().enumerate()
+        {
+            let left = directory.join(format!("{index}-left.png"));
+            let right = directory.join(format!("{index}-right.png"));
+            image::RgbaImage::from_pixel(10, 10, color).save(&left)?;
+            image::RgbaImage::from_pixel(20, 10, color).save(&right)?;
+            let a = Evidence { path: Some(left), geometry: json!({
+                "top":100,"left":200,"width":10,"height":10,
+            }) };
+            let b = Evidence { path: Some(right), geometry: json!({
+                "top":300,"left":400,"width":20,"height":10,
+            }) };
+            let result = a.compare_content(&b, &mut ImageComparisons::default())?;
+            assert_eq!(result.blank_margin_ignored, index == 0);
+            assert_eq!(result.geometry_differs, index != 0);
+            assert_eq!(result.pixels_differ, index != 0);
+        }
+        std::fs::remove_dir_all(directory)?;
+        Ok(())
+    }
 
     /// The extra blank row/column in Enron Deals A1:I7 and Top 100 Exposures
     /// may change size. Body geometry and overflow ink must remain observable.

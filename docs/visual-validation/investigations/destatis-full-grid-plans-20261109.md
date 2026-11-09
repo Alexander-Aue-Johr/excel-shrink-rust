@@ -206,3 +206,28 @@ The private sequential queue uses the new runtime for its subsequent Data.gov
 and Enron starts. The six-machine USB source remains untouched. Migration
 receipts, old launch/configuration/control files and before/stopped summaries
 remain under the night run's `runtime-migrations/0ad30f53` directory.
+
+## Entirely white far-tail captures
+
+The later Destatis report for `arbeitskraefte-2030218209005.xlsx` includes
+2,165 flagged region pairs with equal overlapping pixels and white exterior
+pixels. A retained pair on `0620T!ACC1070:AGX1166` has image sizes 7,312 × 1,810
+and 3,781 × 1,810. Both complete images were independently checked as opaque
+white. Their native left coordinates differ, 34,473.75 versus 22,985.25 points,
+so the earlier matching-origin gate retained a geometry difference.
+
+`retained_white_pair_ignores_far_tail_geometry` exercises these actual retained
+images through the production Evidence comparison. It passed with the new
+complete-blank-image exception and `blank_margin_ignored=true`. The ordinary
+unit control also shifts both origins and extents, and confirms that an opaque
+gray image remains a visible geometry/pixel difference. The broader targeted
+comparison suite passed with 156 tests and 15 ignored tests. The retained-image
+test was run explicitly in addition to that suite.
+
+The rule accepts only pairs whose complete decoded images are opaque white or
+fully transparent. Equal overlapping pixels plus a white exterior do not by
+themselves prove that this narrower rule applies. Uniform colored areas and
+continuous borders remain separate review cases. Historical production verdicts
+are preserved until explicit retrospective classification. The retained finding
+input and initial per-region measurements are under
+`G:\deltasieve-work\destatis-difference-triage-20261109`.
