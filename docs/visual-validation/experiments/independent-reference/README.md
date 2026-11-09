@@ -17,6 +17,14 @@ types, missing inventory, rotated objects and objects outside the supplied area
 fail explicitly before reference images are captured. The native inventory stays
 in `reference.json`, including on qualification failure.
 
+Object-qualified attempts also retain worksheet OLE observations in each native
+inventory receipt. A streaming byte scanner collects the OLE attributes, property
+records, namespace declarations and eight anchor coordinates. Referenced local
+payload and preview parts receive byte counts and SHA-256 identities. External
+targets remain recorded without fetching them. Missing relationships, missing
+local parts and malformed coordinates fail explicitly. These observations do
+not qualify OLE frames or change the supported Image/Chart coverage rule.
+
 A qualification failure describes this guard's supported object model. It does
 not establish that the workbook is invalid or the range renderer omits the
 object. Bounded native controls have rendered embedded Word and PDF previews

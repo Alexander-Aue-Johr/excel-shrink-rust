@@ -170,7 +170,7 @@ fn read_optional_zip_entry<R: Read + std::io::Seek>(
     }
 }
 
-fn resolve_part_target(source_part: &str, target: &str) -> Result<String> {
+pub(in crate::regression) fn resolve_part_target(source_part: &str, target: &str) -> Result<String> {
     let raw = if target.starts_with('/') {
         target.trim_start_matches('/').to_owned()
     } else {

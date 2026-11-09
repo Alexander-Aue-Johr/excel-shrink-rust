@@ -156,7 +156,13 @@ fn observe(
         &comparison.paths.default
     )?);
     if verify_objects {
-        objects::verify(host, regions, &comparison.telemetry, receipt)?;
+        objects::verify(
+            host,
+            regions,
+            &comparison.telemetry,
+            receipt,
+            [&comparison.paths.original, &comparison.paths.default],
+        )?;
         publish(&comparison.args.output, receipt)?;
     }
     for (index, region) in regions.iter().enumerate() {

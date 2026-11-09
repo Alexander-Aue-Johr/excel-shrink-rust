@@ -4,6 +4,7 @@ use anyhow::{ensure, Context, Result};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
+use std::path::Path;
 
 #[derive(Deserialize)]
 struct NativeObject {
@@ -18,10 +19,11 @@ pub(super) fn verify(
     regions: &[Candidate],
     telemetry: &Telemetry,
     receipt: &mut Value,
+    workbooks: [&Path; 2],
 ) -> Result<()> {
     receipt["object_coverage"] = json!([]);
     let sheets: BTreeSet<_> = regions.iter().map(|region| &region.sheet).collect();
-    for lane in [LaneId::O, LaneId::SD] {
+    for (index, lane) in [LaneId::O, LaneId::SD].into_iter().enumerate() {
         for sheet in &sheets {
             let areas: Vec<_> = regions
                 .iter()
@@ -37,6 +39,18 @@ pub(super) fn verify(
                 .push(json!({
                     "lane":lane.key(),"sheet":sheet,"inventory":inventory,"areas":measured[0],
                 }));
+            let observation = receipt["object_coverage"]
+                .as_array_mut()
+                .unwrap()
+                .last_mut()
+                .unwrap();
+            match super::ole_metadata::inspect(workbooks[index], sheet) {
+                Ok(metadata) => observation["ole_metadata"] = serde_json::to_value(metadata)?,
+                Err(error) => {
+                    observation["ole_metadata_error"] = json!(format!("{error:#}"));
+                    return Err(error.context("Read native reference OLE metadata"));
+                }
+            }
             validate(&inventory, &measured[0])?;
         }
     }

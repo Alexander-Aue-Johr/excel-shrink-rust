@@ -84,3 +84,28 @@ relationship identifies the persisted object part. Automatic loading and linked
 object updates have distinct schema attributes. The local observations above
 do not establish a general guarantee about arbitrary linked or automatically
 loaded objects. [Microsoft OleObject documentation](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.oleobject?view=openxml-3.0.1)
+## OLE metadata observation acceptance
+
+The reference guard now retains local OLE payload and cached-preview identities,
+worksheet anchors and Choice/Fallback object records beside the native inventory.
+The worksheet is scanned as bytes with the existing streaming scanner. This
+observation step leaves object qualification and production capture planning
+unchanged. Namespace declarations are diagnostic observations, without a claim
+of resolved markup-compatibility semantics.
+
+Three unit tests cover the retained metadata, external targets without access,
+missing relationships and malformed or duplicate coordinates. A debug build
+and three isolated native attempts completed under private desktops. Evidence
+is retained under `G:\deltasieve-work\native-object-bounds-20261109`.
+
+| Case | Seconds | Result | Reference receipt SHA-256 |
+| --- | ---: | --- | --- |
+| `word-metadata-observation` | 9.734 | Unsupported object rejected, two OLE records retained | `d93de9b8f620b51169ddb8d4ba6c3ce0b551e89b3ca246e2c11259deb973df1c` |
+| `pdf-metadata-observation` | 9.697 | Unsupported object rejected, two OLE records retained | `15a4ca58af213449b81cbe0f6bdd15ac676a16b1df61e9e4d340d25f5987565b` |
+| `chart-metadata-control` | 9.885 | Existing native chart reference completed | `26e2dee58ac1b1637eab97a0203d460dfca5418282f70dafa232a153d16c7459` |
+
+The Word and PDF payload and preview hashes matched the prior package inspection.
+Both receipts preserved all eight anchor fields and the separate fallback record.
+The successful chart control contained no OLE records. Bounded cached-OLE frame
+qualification still requires DrawingML/VML identity binding, supported metadata
+checks and negative native controls before any coverage expansion.
