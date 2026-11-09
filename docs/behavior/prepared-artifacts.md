@@ -421,8 +421,14 @@ Copy the complete verified runtime directory, including its executables,
 `office-capture`, cleanup helpers and release manifest, to the destination PC.
 Desktop Excel with Check Performance must be available on that producer PC.
 Keep working data and temporary files on a drive with sufficient free space.
-Run `deltasieve.exe observatory` from the runtime directory and use the local URL
-printed by the host. Port zero selects an available port.
+Double-click the packaged `start-deltasieve.cmd`. It uses the adjacent binaries
+and capture assets, starts the web configuration and creates a sibling
+`deltasieve-data` directory for temporary files and logs. No compiler is invoked
+in packaged mode. Copy the package to the intended working drive first.
+`-DataRoot` or `DELTASIEVE_DATA_DIR` overrides the working-data location, which
+must remain outside the verified runtime directory. Port zero selects an
+available port. The direct equivalent is `deltasieve.exe observatory` with the
+appropriate runtime and working-data environment already configured.
 
 In Configure validation, choose Prepare Check Performance variants, then XLSX
 directory. Select the originals folder, an optional matching corpus identity,

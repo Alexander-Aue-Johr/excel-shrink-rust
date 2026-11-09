@@ -19,6 +19,7 @@ class RuntimePackageTests(unittest.TestCase):
             output = root / "release"
             manifest = package.package(repository, binaries, output, tracked, {})
             self.assertIn("sheetshrink.exe", manifest["files"])
+            self.assertTrue(package.STARTER_FILES.issubset(manifest["files"]))
             self.assertEqual(package.verify(output), manifest)
 
     def fixture(self, root):
@@ -31,6 +32,12 @@ class RuntimePackageTests(unittest.TestCase):
             path = repository / source
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"runtime fixture")
+            tracked.append(source.as_posix())
+        for name in package.STARTER_FILES:
+            source = Path("tools") / name
+            path = repository / source
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"launcher fixture")
             tracked.append(source.as_posix())
         for name in ("deltasieve.exe", "excel-shrink-cli.exe"):
             (binaries / name).write_bytes(b"path-only fixture, never executed")
@@ -71,8 +78,13 @@ class RuntimePackageTests(unittest.TestCase):
             "excel-shrink-cli/office-capture/node_modules/private.js",
             "excel-shrink-cli/src/regression/archive_processes.ps1",
             "private/corpus.xlsx",
+            "tools/start-deltasieve.ps1",
         ])
-        self.assertEqual(set(selected), {Path("office-capture/web/resident.js"), Path("src/regression/archive_processes.ps1")})
+        self.assertEqual(set(selected), {
+            Path("office-capture/web/resident.js"),
+            Path("src/regression/archive_processes.ps1"),
+            Path("start-deltasieve.ps1"),
+        })
 
     def test_interrupted_copy_leaves_an_explicit_incomplete_package(self):
         with tempfile.TemporaryDirectory() as temporary:

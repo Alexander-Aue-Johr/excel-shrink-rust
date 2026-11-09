@@ -6,6 +6,8 @@ from pathlib import Path
 import shutil
 import subprocess
 
+STARTER_FILES = {"start-deltasieve.cmd", "start-deltasieve.ps1"}
+
 RUNTIME_ASSETS = {
     Path("office-capture/run-targeted-comparison.ps1"),
     Path("office-capture/targeted-comparison-host.ps1"),
@@ -29,7 +31,9 @@ def runtime_members(tracked):
     for name in tracked:
         path = Path(name)
         parts = path.parts
-        if parts[:2] == ("excel-shrink-cli", "office-capture"):
+        if path.parent == Path("tools") and path.name in STARTER_FILES:
+            members[Path(path.name)] = path
+        elif parts[:2] == ("excel-shrink-cli", "office-capture"):
             relative = Path(*parts[2:])
             if any(part in {"tests", "node_modules", "bin", "obj"} for part in relative.parts):
                 continue
