@@ -109,3 +109,10 @@ Both receipts preserved all eight anchor fields and the separate fallback record
 The successful chart control contained no OLE records. Bounded cached-OLE frame
 qualification still requires DrawingML/VML identity binding, supported metadata
 checks and negative native controls before any coverage expansion.
+
+The subsequent [frame and preview mutation controls](../experiments/ole-frame-controls/README.md)
+completed independent bounded comparisons. A coherent three-row frame movement
+changed 6,473 RGBA pixels. Replacing only the cached EMF changed 5,242 pixels.
+Both pairs retained identical capture geometry and their rendered images were
+inspected. These controls establish that the native reference detects the two
+specific mutations. Production bounded-OLE qualification remains outstanding.
