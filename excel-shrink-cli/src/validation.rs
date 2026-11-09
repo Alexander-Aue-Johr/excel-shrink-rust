@@ -88,6 +88,13 @@ enum Command {
     Export { report: PathBuf, output: PathBuf },
     /// List embedded corpus profiles and their pinned archive identities without downloading.
     CorpusList,
+    /// Verify an external Enron extraction and prepare a local candidate archive.
+    CorpusImportEnron {
+        #[arg(long)]
+        handover: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Restore missing corpus originals from a pinned archive, retaining verified files.
     CorpusPrepare {
         #[arg(long)]
@@ -609,6 +616,11 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         Some(Command::CorpusList) => {
             let catalog = crate::validation_corpora::catalog()?;
             println!("{}", serde_json::to_string_pretty(&catalog)?);
+            Ok(())
+        }
+        Some(Command::CorpusImportEnron { handover, output }) => {
+            let receipt = crate::validation_corpora::import_handover(&handover, &output)?;
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
             Ok(())
         }
         Some(Command::CorpusPrepare { profile, artifacts, cache, archive }) => {

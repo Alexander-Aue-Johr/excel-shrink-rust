@@ -78,6 +78,29 @@ conversion acceptance and complete upstream extraction coverage require their
 own evidence. Import into the ordinary runner and reconstruction integration
 remain open.
 
+## Import command
+
+`deltasieve corpus-import-enron --handover <directory> --output <new-directory>`
+verifies the declared 159 archive identities against the built-in source profile,
+candidate counts and lengths, frozen code receipts and every candidate SHA-256.
+It streams the original bytes into a deterministic, uncompressed candidate ZIP.
+Members are sorted by SHA-256 and use `candidates/<sha256>.xls` so the existing
+archive runner can submit each candidate to its legacy conversion path. This
+extension is an input-routing convention. It does not certify the underlying
+candidate as an Excel workbook. Native conversion must still accept the file.
+
+The import preserves the manifests, occurrence records, review cases, scripts,
+receipts and external ledger in a separate `handover` directory. `import.json`
+is published atomically after both the candidate archive and copied metadata
+are verified. It explicitly declares external generation, distinct-payload
+selection and unverified openability. The original handover remains unchanged.
+An interrupted import retains its partial output for inspection. A retry chooses
+a new output directory, and existing imports are never overwritten.
+
+The resulting `candidates.zip` is accepted by the existing custom-archive study
+entry point. The built-in Enron download/profile workflow remains disabled until
+recipe reconstruction and its ordinary web-profile integration are implemented.
+
 ## Evaluation states
 
 For an XLS original, the Excel-generated XLSX is the saved baseline. Apply

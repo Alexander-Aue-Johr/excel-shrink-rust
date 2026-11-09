@@ -5,9 +5,11 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, fs, path::Path};
 
 mod acquisition;
+mod enron_import;
 mod source_profile;
 
 pub(crate) use acquisition::{prepare, prepare_with_progress};
+pub(crate) use enron_import::import_handover;
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct Profile {
