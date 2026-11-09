@@ -56,6 +56,7 @@ impl Fixture {
             &self.artifacts,
             &self.root.join("cache"),
             archive,
+            &|_| {},
         )
     }
 }
@@ -97,6 +98,30 @@ fn conflicting_originals_stop_before_downloading_or_replacing() -> Result<()> {
     assert_eq!(fs::read(fixture.artifacts.join("a.xlsx"))?, b"user-data");
     assert!(!fixture.artifacts.join("nested/b.xlsx").exists());
     assert!(!fixture.root.join("cache").exists());
+    Ok(())
+}
+
+#[test]
+fn progress_reports_verification_and_successfully_published_members() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let events = std::sync::Mutex::new(Vec::new());
+    prepare_profile(
+        fixture.profile.clone(),
+        &fixture.artifacts,
+        &fixture.root.join("cache"),
+        Some(&fixture.archive),
+        &|event| events.lock().unwrap().push(event),
+    )?;
+    let events = events.into_inner().unwrap();
+    assert_eq!(events.first().unwrap()["phase"], "checking_originals");
+    assert_eq!(events.last().unwrap()["phase"], "verifying_originals");
+    let extracted: Vec<_> = events
+        .iter()
+        .filter(|event| event["phase"] == "extracting")
+        .collect();
+    assert_eq!(extracted.len(), 2);
+    assert_eq!(extracted[1]["added"], 2);
+    assert_eq!(extracted[1]["member"], "nested/b.xlsx");
     Ok(())
 }
 

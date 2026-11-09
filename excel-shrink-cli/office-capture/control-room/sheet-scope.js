@@ -6,6 +6,7 @@ import { optionValue, setOption } from '/observatory-assets/processor-options.js
 import { installStudyConfiguration } from '/observatory-assets/study-configuration.js';
 import { installPreparationPackages } from '/observatory-assets/preparation-packages.js';
 import { installPerformancePreparation } from '/observatory-assets/performance-preparation.js';
+import { installCorpusAcquisition } from '/observatory-assets/corpus-acquisition.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -39,6 +40,7 @@ let workbookRevision = '';
 let workbookRequest = 0;
 let workbookSearchTimer;
 let preparationJobView;
+let corpusJobView;
 const targetedPanel = createTargetedPanel(byId('targeted-comparisons'), {
   candidateLabel: () => runCandidateLabel,
 });
@@ -66,7 +68,8 @@ function mode() {
 
 function showSections() {
   const selected = mode();
-  byId('configuration').hidden = ['report', 'study', 'new-study', 'prepared', 'prepare-performance'].includes(selected);
+  byId('configuration').hidden = ['report', 'study', 'new-study', 'prepared', 'prepare-performance', 'corpus'].includes(selected);
+  byId('corpus-acquisition').hidden = selected !== 'corpus';
   byId('performance-job').hidden = selected !== 'prepare-performance';
   byId('preparation-packages').hidden = selected !== 'prepared';
   byId('new-study').hidden = selected !== 'new-study';
@@ -384,6 +387,7 @@ function choosePath(path, directory) {
 
 function renderProgress(state) {
   preparationJobView?.render(state.preparation_job, state.active);
+  corpusJobView?.render(state.corpus_job, state.active);
   const progress = state.progress;
   runCandidateLabel = progress.processing?.stage === 'SheetShrink' ? 'SheetShrink' : 'Comparison';
   isActive = state.active;
@@ -654,6 +658,9 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     installStudyConfiguration({ api, message, defaults: session.study_defaults, logicalProcessors });
     installPreparationPackages({ api, message, onImported: populate });
     preparationJobView = installPerformancePreparation({ api, message });
+    installCorpusAcquisition({ api, message, session })
+      .then(view => { corpusJobView = view; })
+      .catch(error => message(`Corpus profiles unavailable. ${error.message}`, true));
     workingDirectory = session.working_directory;
     browseDirectoryDefault = session.browse_directory || workingDirectory;
     populate(session.config);

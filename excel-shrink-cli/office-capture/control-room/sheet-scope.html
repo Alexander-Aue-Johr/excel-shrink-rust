@@ -28,8 +28,22 @@
         <label data-sheetshrink-only><input type="radio" name="mode" value="new-study"> Start a SheetShrink corpus study</label>
         <label><input type="radio" name="mode" value="prepared"> Transfer Check Performance preparations</label>
         <label><input type="radio" name="mode" value="prepare-performance"> Prepare Check Performance variants</label>
+        <label><input type="radio" name="mode" value="corpus"> Acquire versioned corpus originals</label>
       </div>
     </section>
+
+    <form id="corpus-acquisition" class="panel" hidden>
+      <h2>Acquire versioned corpus originals</h2>
+      <p class="help">Checks the embedded file manifest. Complete originals are reused without downloading. Missing files are restored from the pinned archive. Conflicting local files are preserved and reported.</p>
+      <fieldset id="corpus-fields" class="grid" disabled>
+        <label class="wide">Corpus profile<select id="corpus-profile" name="profile" required></select></label>
+        <p id="corpus-profile-details" class="help wide"></p>
+        <label class="wide">Originals directory<span class="path"><input id="corpus-artifacts" name="artifacts" required><button type="button" data-browse="corpus-artifacts">Browse…</button></span></label>
+        <label class="wide">Download cache<span class="path"><input id="corpus-cache" name="cache" required><button type="button" data-browse="corpus-cache">Browse…</button></span></label>
+        <label class="wide">Local ZIP archive, optional<span class="path"><input id="corpus-archive" name="archive"><button type="button" data-browse="corpus-archive" data-kind="file">File…</button></span></label>
+        <div class="actions wide"><button type="submit" name="operation" value="inspect">Check originals</button><button type="submit" name="operation" value="prepare">Restore missing originals</button></div>
+      </fieldset>
+    </form>
 
     <form id="performance-job" class="panel" hidden>
       <h2>Prepare Check Performance variants</h2>
@@ -198,6 +212,11 @@
     <p id="configuration-message" role="status" aria-live="polite"></p>
     </dialog>
 
+    <section id="corpus-observation" class="panel" hidden>
+      <h2>Corpus acquisition</h2>
+      <p id="corpus-job-status" role="status"></p>
+      <pre id="corpus-job-result"></pre>
+    </section>
     <section id="performance-job-observation" class="panel" hidden>
       <h2>Check Performance preparation</h2>
       <p id="performance-job-status" role="status"></p>

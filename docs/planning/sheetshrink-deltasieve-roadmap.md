@@ -336,8 +336,14 @@ cache and create-only publication. Small synthetic ZIP tests cover partial reuse
 offline complete reuse, conflicts, bad archive/member hashes, failed-member
 cleanup, retry, concurrent acquisition and publication races. The existing host
 overwrite-protection test also passes. The real multi-gigabyte profile archives
-have not been downloaded or extracted by this acceptance. Web selection,
-acquisition progress, profile-driven study creation and distributed rehearsal
+have not been downloaded or extracted by this acceptance. The web acquisition
+utility now uses the shared catalog and preparation implementation with an
+independent background job and bounded status. The real local HTTP inspection
+returned 9,117 missing originals in a 570-byte job snapshot; the separate test
+host was stopped afterward. Focused verification and the interrupted broad smoke
+selection are documented in
+`../visual-validation/experiments/corpus-profile-acquisition-20261109.md`.
+Full browser acceptance, profile-driven study creation and distributed rehearsal
 remain open. No Task 06 completion box is changed.
 
 ## 07 Verify conversion and environment-dependent formulas

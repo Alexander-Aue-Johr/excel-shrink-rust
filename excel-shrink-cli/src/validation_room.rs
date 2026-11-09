@@ -31,6 +31,7 @@ const CSS: &str = include_str!("../office-capture/control-room/sheet-scope.css")
 mod application;
 mod preparation;
 mod preparation_job;
+mod corpus_job;
 pub(crate) use application::Application;
 
 struct Room {
@@ -46,6 +47,7 @@ struct Room {
     study: Mutex<Option<(String, PathBuf)>>,
     study_defaults: crate::validation_study::Configuration,
     preparation_job: Mutex<Option<preparation_job::Job>>,
+    corpus_job: Mutex<Option<corpus_job::Job>>,
 }
 
 type ApiResult = std::result::Result<Json<Value>, ApiError>;
@@ -102,6 +104,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool, application: Appl
         study: Mutex::new(None),
         study_defaults,
         preparation_job: Mutex::new(None),
+        corpus_job: Mutex::new(None),
     });
     let web_root = validation::capture::capture_directory()?.join("control-room");
     let routes = Router::new()
@@ -129,6 +132,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool, application: Appl
         .route("/api/study/start", post(start_study))
         .route("/api/study/ready", get(study_ready))
         .route("/api/corpora", get(corpus_catalog))
+        .route("/api/corpora/start", post(corpus_job::start))
         .route("/api/open", post(open_report))
         .route("/api/export", post(export_report))
         .route("/api/preparation/preview", post(preparation::preview))
@@ -222,6 +226,8 @@ async fn session(State(room): State<Arc<Room>>) -> ApiResult {
         .map_err(|_| anyhow::anyhow!("Configuration lock poisoned"))?
         .clone();
     let working_directory = std::env::current_dir().map_err(anyhow::Error::from)?;
+    let executable = std::env::current_exe().map_err(anyhow::Error::from)?;
+    let artifacts = executable.parent().context("Executable directory")?.join("artifacts");
     let browse_directory = std::env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .filter(|path| path.is_dir())
@@ -232,7 +238,9 @@ async fn session(State(room): State<Arc<Room>>) -> ApiResult {
         "browse_directory":browse_directory,"native_picker":cfg!(windows),
         "logical_processors":std::thread::available_parallelism().map_or(1, usize::from),
         "processor_schema":crate::cli_metadata::describe(),"shrink_preset":shrink_preset,
-        "study_defaults":room.study_defaults}),
+        "study_defaults":room.study_defaults,
+        "corpus_artifacts_root":artifacts.join("corpora"),
+        "corpus_download_cache":artifacts.join("cache")}),
     ))
 }
 
@@ -367,8 +375,9 @@ async fn state(State(room): State<Arc<Room>>) -> ApiResult {
         .as_ref()
         .map(|(id, _)| format!("/reports/{id}"));
     let preparation_job = preparation_job::snapshot(&room).await?;
+    let corpus_job = corpus_job::snapshot(&room)?;
     Ok(Json(
-        json!({"active":room.active.load(Ordering::Acquire),"progress":progress,"telemetry":telemetry,"preparation_job":preparation_job,
+        json!({"active":room.active.load(Ordering::Acquire),"progress":progress,"telemetry":telemetry,"preparation_job":preparation_job,"corpus_job":corpus_job,
         "comparisons":comparisons,"report_base":report_base}),
     ))
 }
@@ -748,6 +757,7 @@ mod tests {
             study: Mutex::new(None),
             study_defaults: crate::validation_study::Configuration::default(),
             preparation_job: Mutex::new(None),
+            corpus_job: Mutex::new(None),
         });
         let page = workbooks(
             State(room.clone()),

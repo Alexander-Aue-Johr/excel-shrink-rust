@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 mod acquisition;
 
-pub(crate) use acquisition::prepare;
+pub(crate) use acquisition::{prepare, prepare_with_progress};
 
 #[derive(Clone, Deserialize)]
 struct Profile {

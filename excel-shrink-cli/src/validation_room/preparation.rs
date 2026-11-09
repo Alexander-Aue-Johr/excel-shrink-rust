@@ -102,6 +102,7 @@ mod tests {
             study: Mutex::new(None),
             study_defaults: crate::validation_study::Configuration::default(),
             preparation_job: Mutex::new(None),
+            corpus_job: Mutex::new(None),
         })
     }
 

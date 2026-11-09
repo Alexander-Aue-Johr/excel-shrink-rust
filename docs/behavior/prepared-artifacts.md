@@ -30,7 +30,20 @@ Existing originals are never overwritten. Verified partial progress survives a
 later member failure and can be reused on retry. Concurrent acquisition into the
 same directory is rejected by an operating-system file lock. Failed current
 staging files are removed; a process crash can leave uniquely named partials.
-Profile-driven study creation and web acquisition controls remain integration work.
+The web utility "Acquire versioned corpus originals" uses this catalog and the
+same acquisition implementation. Its default originals and cache paths are under
+`artifacts` beside the running executable. Users can change both paths and supply
+an offline archive. Checking originals is read-only. Restoring missing files is a
+separate explicit action. Neither action starts validation or opens Excel.
+
+`POST /api/corpora/start` requires the local session token and returns an accepted
+job immediately. The server owns its background work and existing admission
+reservation until completion or failure. Closing or refreshing the browser does
+not cancel it. `/api/state` exposes the current phase, restored-file count, last
+member and terminal result or error. Missing-file name arrays are omitted from
+polling; full names remain available through `corpus-inspect --details`. Job status
+is in memory for this server lifetime; published originals remain reusable after
+a server restart. Profile-driven study creation remains integration work.
 
 A preparation input has a stable source ID, a logical display name, a local
 baseline path and its SHA-256. A known raw source additionally records its hash,

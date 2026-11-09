@@ -19,7 +19,17 @@ pub(crate) fn prepare(
     cache: &Path,
     archive: Option<&Path>,
 ) -> Result<Value> {
-    prepare_profile(profile(id)?, artifacts, cache, archive)
+    prepare_with_progress(id, artifacts, cache, archive, &|_| {})
+}
+
+pub(crate) fn prepare_with_progress(
+    id: &str,
+    artifacts: &Path,
+    cache: &Path,
+    archive: Option<&Path>,
+    progress: &dyn Fn(Value),
+) -> Result<Value> {
+    prepare_profile(profile(id)?, artifacts, cache, archive, progress)
 }
 
 fn prepare_profile(
@@ -27,6 +37,7 @@ fn prepare_profile(
     artifacts: &Path,
     cache: &Path,
     archive: Option<&Path>,
+    progress: &dyn Fn(Value),
 ) -> Result<Value> {
     fs::create_dir_all(artifacts)?;
     require_regular_source(artifacts)?;
@@ -44,6 +55,7 @@ fn prepare_profile(
         .open(lock_path)?;
     lock.try_lock()
         .context("Corpus acquisition is already active")?;
+    progress(json!({"phase":"checking_originals","total":profile.workbooks.len()}));
     let before = super::inspect_profile(profile.clone(), &artifacts)?;
     ensure!(
         before["changed_count"] == 0,
@@ -54,8 +66,12 @@ fn prepare_profile(
     }
     let archive = match archive {
         Some(path) => path.to_path_buf(),
-        None => cached_download(&profile.archive.url, cache, false)?,
+        None => {
+            progress(json!({"phase":"resolving_archive","archive_bytes":profile.archive.bytes}));
+            cached_download(&profile.archive.url, cache, false)?
+        }
     };
+    progress(json!({"phase":"verifying_archive","archive_bytes":profile.archive.bytes}));
     crate::validation_sources::require_regular_file(&archive)?;
     ensure!(
         fs::metadata(&archive)?.len() == profile.archive.bytes
@@ -89,7 +105,12 @@ fn prepare_profile(
         result?;
         cleanup?;
         added += 1;
+        progress(
+            json!({"phase":"extracting","added":added,"reused":before["verified"],
+            "total":profile.workbooks.len(),"member":workbook.name}),
+        );
     }
+    progress(json!({"phase":"verifying_originals","added":added,"total":profile.workbooks.len()}));
     let inspection = super::inspect_profile(profile, &artifacts)?;
     ensure!(
         inspection["complete"] == true,
