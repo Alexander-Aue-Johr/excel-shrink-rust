@@ -1,5 +1,24 @@
 # Add-in registration accumulation, 2026-11-04
 
+## Follow-up inventory on 2026-11-09
+
+A read-only inventory of the current user's WEF Developer key found 617
+registrations. File existence checks found 609 missing manifest paths and eight
+existing manifests. Missing-path samples referred to old `es-office-capture-*`
+directories under the user's C: temporary directory. Existing entries included
+the live Destatis resident sessions and two retained diagnostic sessions.
+Existence alone does not establish whether a registration is still in use.
+No values were removed during this inventory.
+
+The earlier reversible startup experiment in
+[the add-in startup investigation](addin-startup-20261108.md) remained fast after
+the missing registrations were restored. Accumulation is established, but its
+causal contribution to current startup latency remains unproven. The existing
+cleanup command requires Excel to be closed. Keep that gate when applying it.
+Resident cleanup restores registrations on normal exit, while forced launcher
+termination can bypass its `finally` block. This observation does not identify
+which exit path produced each of the 609 missing-path entries.
+
 A small real Data.gov Original/Default pair timed out after 120 seconds without
 an Office.js heartbeat. Excel consumed approximately one CPU core while no
 WebView appeared. Visible inspection showed the workbook grid without an add-in.
