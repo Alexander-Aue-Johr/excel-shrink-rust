@@ -374,6 +374,13 @@ words inside an object's name do not constitute such properties. A geometric
 line with zero height can still have a visible stroke. A future bounded-line rule
 must account for that stroke before enabling finite background-tail coverage.
 
+Independent reference-object verification additionally supports a closed thin
+horizontal-line template. It requires namespace-checked XML, a one-to-one native
+name/frame match, zero rotation and containment of the frame plus half its
+stroke and two points of rasterization context. Unknown line properties retain
+failure. This opt-in reference qualification does not itself enable bounded
+background tails in the production selector.
+
 A standard CF catalogue consisting entirely of `cellIs equal` rules with
 nonempty literal text operands cannot format unserialized blank cells. Such a
 catalogue does not extend the content envelope to its whole application area.

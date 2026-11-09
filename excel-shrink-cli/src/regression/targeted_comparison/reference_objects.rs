@@ -51,20 +51,76 @@ pub(super) fn verify(
                     return Err(error.context("Read native reference OLE metadata"));
                 }
             }
-            validate(&inventory, &measured[0])?;
+            let lines = if inventory["objects"].as_array().is_some_and(|objects| {
+                objects.iter().any(|object| object["kind"] == "GeometricShape")
+            }) {
+                super::ole_metadata::line_frames(workbooks[index], sheet)?
+            } else {
+                Vec::new()
+            };
+            observation["line_frames"] = serde_json::to_value(&lines)?;
+            validate_with_lines(&inventory, &measured[0], &lines)?;
         }
     }
     Ok(())
 }
 
+#[cfg(test)]
 fn validate(inventory: &Value, areas: &[Geometry]) -> Result<()> {
+    validate_with_lines(inventory, areas, &[])
+}
+
+fn validate_with_lines(
+    inventory: &Value,
+    areas: &[Geometry],
+    lines: &[super::ole_metadata::LineFrame],
+) -> Result<()> {
     let objects: Vec<NativeObject> = serde_json::from_value(
         inventory
             .get("objects")
             .context("Native object inventory missing")?
             .clone(),
     )?;
+    if !lines.is_empty() {
+        let native_line_count = objects.iter()
+            .filter(|object| object.kind == "GeometricShape")
+            .count();
+        let all_lines_match = lines.iter().all(|line| {
+            objects.iter().filter(|object| {
+                object.kind == "GeometricShape"
+                    && object.name == line.name
+                    && object.rotation == 0.0
+                    && object.geometry == line.geometry
+            }).count() == 1
+        });
+        ensure!(
+            lines.len() == native_line_count && all_lines_match,
+            "Line XML and native identities do not correspond one-to-one"
+        );
+    }
     for object in &objects {
+        if object.kind == "GeometricShape" && object.rotation == 0.0 {
+            if let Some(line) = lines.iter().find(|line| {
+                line.name == object.name && line.geometry == object.geometry
+            }) {
+                // Include half the stroke and two points of rasterization context.
+                let padding = line.stroke_points / 2.0 + 2.0;
+                let left = (line.geometry.left - padding).max(0.0);
+                let top = (line.geometry.top - padding).max(0.0);
+                let envelope = Geometry {
+                    left,
+                    top,
+                    width: line.geometry.left + line.geometry.width + padding - left,
+                    height: line.geometry.top + padding - top,
+                }.validate()?;
+                ensure!(
+                    areas.iter().any(|area| contains(*area, envelope)),
+                    "Reference line {} extends outside its padded supplied rectangle",
+                    object.name
+                );
+                continue;
+            }
+        }
         // Excel also exposes chart containers as Unsupported shapes. Accept an
         // alias only when the named native chart has exactly the same rectangle.
         if object.kind == "Unsupported"
@@ -107,6 +163,49 @@ fn contains(area: Geometry, object: Geometry) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "Requires LINE_DIAG_REFERENCE with the retained Abwasser native inventory"]
+    fn retained_abwasser_inventory_matches_closed_line_frames() -> Result<()> {
+        let path = std::path::PathBuf::from(std::env::var("LINE_DIAG_REFERENCE")?);
+        let report: Value = serde_json::from_slice(&std::fs::read(&path)?)?;
+        let workbook = path.parent().context("Missing reference directory")?.join("original.xlsx");
+        assert_eq!(
+            crate::regression::artifact_cache::hash_file(&workbook)?,
+            report["original_rebuilt_sha256"].as_str().context("Missing rebuilt identity")?,
+        );
+        let observation = &report["object_coverage"][0];
+        assert_eq!(observation["sheet"], "Inhalt");
+        let lines = super::super::ole_metadata::line_frames(&workbook, "Inhalt")?;
+        assert_eq!(lines.len(), 2);
+        let areas: Vec<Geometry> = serde_json::from_value(observation["areas"].clone())?;
+        validate_with_lines(&observation["inventory"], &areas, &lines)?;
+        Ok(())
+    }
+
+    #[test]
+    fn qualified_lines_need_matching_native_frames_and_stroke_margin() -> Result<()> {
+        let line = super::super::ole_metadata::LineFrame {
+            name: "Line 1".into(),
+            geometry: Geometry { top: 10.0, left: 10.0, width: 70.0, height: 0.0 },
+            stroke_points: 0.85,
+        };
+        let inventory = json!({"objects":[{
+            "name":"Line 1", "kind":"GeometricShape", "rotation":0,
+            "geometry":line.geometry,
+        }]});
+        let area = Geometry { top: 0.0, left: 0.0, width: 100.0, height: 100.0 };
+        validate_with_lines(&inventory, &[area], std::slice::from_ref(&line))?;
+        assert!(validate(&inventory, &[area]).is_err());
+        assert!(validate_with_lines(&inventory, &[line.geometry], std::slice::from_ref(&line)).is_err());
+        let mut moved = inventory.clone();
+        moved["objects"][0]["geometry"]["top"] = json!(11);
+        assert!(validate_with_lines(&moved, &[area], std::slice::from_ref(&line)).is_err());
+        let mut rotated = inventory;
+        rotated["objects"][0]["rotation"] = json!(45);
+        assert!(validate_with_lines(&rotated, &[area], &[line]).is_err());
+        Ok(())
+    }
 
     #[test]
     fn only_supported_unrotated_contained_objects_qualify() -> Result<()> {

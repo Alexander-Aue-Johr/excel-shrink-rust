@@ -17,10 +17,36 @@ use std::{
 use zip::ZipArchive;
 
 mod correspondence;
+mod drawing_lines;
+pub(super) use drawing_lines::Frame as LineFrame;
 mod namespaces;
 mod representations;
 mod vml_geometry;
 mod vml_picture;
+
+/// Closed line metadata is used only when a native inventory reports geometric shapes.
+pub(super) fn line_frames(path: &Path, sheet: &str) -> Result<Vec<LineFrame>> {
+    let mut archive = ZipArchive::new(File::open(path)?)?;
+    let part = formula_worksheet_parts(&mut archive)?.into_iter()
+        .find_map(|(name, part)| (name == sheet).then_some(part))
+        .context("Line metadata worksheet missing")?;
+    let relationships = read_relationships(&mut archive, &part)?;
+    let mut frames = Vec::new();
+    for relationship in relationships.values().filter(|relation| relation.kind.ends_with("/drawing")) {
+        ensure!(!relationship.external
+            && relationship.kind == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
+            && relationship.element_namespace.as_deref() == Some("http://schemas.openxmlformats.org/package/2006/relationships"),
+            "Unsupported line drawing relationship");
+        let mut entry = archive.by_name(&relationship.target)?;
+        ensure!(entry.size() <= 1024 * 1024, "Oversized line drawing metadata");
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes)?;
+        frames.extend(drawing_lines::read(&bytes)?);
+    }
+    let mut names = BTreeSet::new();
+    ensure!(frames.iter().all(|frame| names.insert(frame.name.clone())), "Ambiguous line names");
+    Ok(frames)
+}
 
 #[derive(Debug, Default, Serialize)]
 pub(super) struct Catalogue {
@@ -325,6 +351,24 @@ fn hash_local_parts(
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// abwasser-oeffentlich-2190212199005.xlsx, Inhalt, drawing2.xml.
+    #[test]
+    #[ignore = "Requires XML_DIAG_LEFT and XML_DIAG_OUTPUT for the retained Abwasser workbook"]
+    fn inspect_retained_abwasser_line_frames() -> Result<()> {
+        let input = std::env::var("XML_DIAG_LEFT")?;
+        let frames = line_frames(Path::new(&input), "Inhalt")?;
+        assert_eq!(frames.len(), 2);
+        for (index, frame) in frames.iter().enumerate() {
+            assert_eq!(frame.name, format!("Line {}", index + 1));
+            assert_eq!(frame.geometry, super::super::capture_layout::Geometry {
+                top: 25.5, left: 0.0, width: 781.5, height: 0.0,
+            });
+            assert_eq!(frame.stroke_points, 0.85);
+        }
+        std::fs::write(std::env::var("XML_DIAG_OUTPUT")?, serde_json::to_vec_pretty(&frames)?)?;
+        Ok(())
+    }
 
     const OBJECTS: &str = r#"
         <oleObjects>

@@ -359,3 +359,46 @@ These observations apply to the retained clipped, rectangular zero-size shapes.
 They do not justify ignoring every zero-area shape, nor do they close the native
 object coverage gate. The experiment leaves production files and selection rules
 unchanged.
+
+## Closed horizontal-line reference qualification
+
+The reference-object guard now recognizes a closed DrawingML family consisting
+of horizontal lines with explicit solid RGB paint, widths up to one point,
+unrotated and unflipped transforms, no arrows, and no effects or shape-style
+extensions. Known creation-ID and hidden-no-fill metadata are accepted with
+their namespaces and attributes checked. Unknown paths, attributes, namespaces,
+relationships and duplicate elements prevent qualification. Worksheet and drawing
+XML are inspected through borrowed byte readers, with drawing metadata bounded
+to one MiB.
+
+All recognized line names and native `GeometricShape` observations must
+correspond one-to-one with exactly equal point frames and zero rotation. Each
+supplied reference area must contain the frame expanded by half the stroke width
+and two points of rasterization context. Expansion at the worksheet's top/left
+origin is clipped to that origin. Native line geometry alone is insufficient.
+
+`inspect_retained_abwasser_line_frames` passed against the actual retained
+`Inhalt` drawing. It found both 781.5-point horizontal lines at top 25.5, with
+0.85-point strokes. `retained_abwasser_inventory_matches_closed_line_frames`
+then passed against the previously recorded native inventory and supplied area.
+That test first verified the exact rebuilt workbook SHA-256
+`4aefcc1e105ef9923a040e9b9236ebe149b957e5258943dda722ad5b6d8d9be9`.
+It uses the recorded `native-line-inventory/reference.json` and its retained
+`original.xlsx`, preserving their original failed-guard verdict.
+
+Synthetic negative controls cover rotation, flip, arrows, excess stroke width,
+nonhorizontal geometry, different preset geometry, effects, unknown elements,
+foreign namespaces, mismatched native frames and insufficient stroke margins.
+This step enables the opt-in independent reference qualification. It does not
+yet change production background-tail selection or the two running attempts.
+
+Three subsequent fresh native attempts did not reach object qualification.
+The debug executable timed out on `open_batch` at 45 seconds and again at
+60 seconds with the packaged asset root. The unchanged `runtime-a50f2e18`
+executable also timed out at 45 seconds. Their separate output directories are
+`qualified-native-line-control`, `qualified-native-line-runtime-assets` and
+`release-startup-control` under the Abwasser experiment root. Owned cleanup
+completed in the launcher observations. No result is recorded as a successful
+new native qualification. The Computer Use window listing also timed out after
+its prescribed retry and session reset. Existing corpus capture batches and
+Check Performance preparations continued making progress during these failures.
