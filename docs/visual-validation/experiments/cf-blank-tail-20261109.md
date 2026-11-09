@@ -78,3 +78,16 @@ The independent reference used the previously packaged `0ad30f53` runtime and
 bypassed production candidate selection. The ordinary controls used the newly
 built diagnostic executable and matching current assets. Their bytes and
 operation evidence are retained separately from the running corpus runtime.
+
+## Optimized package check
+
+The separately packaged optimized runtime passed the ordinary positive control
+in 11.108 seconds, selecting two regions with no pixel differences and retaining
+both CF extent proof markers. All 114 runtime members were verified. Its
+application SHA-256 is
+`864f251586b6598608090286cbb8f263bd4bc580ac3bf7c7bb5235ecb96c96dc`,
+and the native report hash is
+`fcd8884409626b34ac47a3e0e3ae64be83b25b660ff69deb2975f6cb6182727c`.
+The package is retained in the private night-work directory as
+`runtime-2d72e076`. This is package acceptance, not production deployment or
+corpus completion.
