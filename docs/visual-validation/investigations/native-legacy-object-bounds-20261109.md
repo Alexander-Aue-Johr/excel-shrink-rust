@@ -44,6 +44,33 @@ and endpoint extent, hidden or collapsed neighboring cells, and unsupported
 effects, and must include native mutation controls before deployment. Record
 the replacement region count and measured runtime here when those checks pass.
 
+#### Native line-removal control
+
+`experiments/ole-frame-controls/line_controls.py` resolves `Inhalt` through
+package relationships and validates the two named, explicit-width line shapes
+before removing their complete anchors from an experiment copy. It verifies
+that only the resolved drawing part changes, the ZIP CRCs pass, and the source
+SHA-256 remains unchanged. No production workbook is edited.
+
+The independently supplied native area `Inhalt!A1:H50` detected exactly 1,042
+changed RGBA pixels after both copies were rebuilt. The changed rectangle is
+`[1, 34, 1043, 35)` in image coordinates. Both images measure 1,369 × 1,636
+pixels and have identical native range geometry. Visual inspection shows the
+horizontal line below the heading disappearing, with the remaining image
+unchanged. This demonstrates detection of the visible zero-height line in
+this supplied area. It does not prove that a future automatic area is complete.
+
+The reference command completed in 16.3446892 seconds, including opening,
+rebuilding, capturing and cleanup. This one-area mutation control is not a
+before/after timing of the production selector. Source SHA-256 is
+`f21f1209cfdaea28ee0df629b43bc7f48f2b4381a5168ee1421e637dd5f468fb`.
+The retained reference receipt SHA-256 is
+`c50532773ace9ae036b99c73691abface76214347b02c7b0b598a798419d3ab8`.
+Inputs, images, measurements and the successful owned-process launcher receipt
+are retained under `G:\deltasieve-work\abwasser-line-controls-20261109`.
+Object qualification was disabled because the reference object guard currently
+accepts images and charts, with no qualified line envelope.
+
 The Elterngeld workbook's retained measured plan contains 104,836 shared
 capture regions, including many near row one million on `Erläuterung`. That
 worksheet has only 18 serialized cells and dimension `A3:I6`. Its visible PDF
