@@ -56,6 +56,13 @@ negative/nonfinite values and overflowing rectangles remain unsupported.
 Successful parsing describes the stored rectangle. It does not establish that
 all drawing effects fit inside it or qualify an unsupported native object.
 
+The nested `correspondence` field additionally records whether worksheet object
+records, DrawingML identities, VML identities, cached previews and eight anchor
+coordinates agree. It distinguishes `matched` metadata from `unresolved` cases
+with a concrete reason. Package relationship elements must have the expected
+namespace, and preview targets and SHA-256 identities must agree. This field
+does not change native-object qualification or production capture coverage.
+
 A qualification failure describes this guard's supported object model. It does
 not establish that the workbook is invalid or the range renderer omits the
 object. Bounded native controls have rendered embedded Word and PDF previews

@@ -16,6 +16,7 @@ use std::{
 };
 use zip::ZipArchive;
 
+mod correspondence;
 mod namespaces;
 mod representations;
 mod vml_geometry;
@@ -27,6 +28,7 @@ pub(super) struct Catalogue {
     objects: Vec<Object>,
     relationships: BTreeMap<String, Relationship>,
     representations: Vec<representations::Representation>,
+    correspondence: Vec<correspondence::Observation>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -42,6 +44,7 @@ struct Object {
 
 #[derive(Debug, Serialize)]
 struct Relationship {
+    element_namespace: Option<String>,
     kind: String,
     target: String,
     external: bool,
@@ -191,7 +194,9 @@ fn read_relationships(
     entry.read_to_end(&mut bytes)?;
     let mut reader = Reader::<64>::new(&bytes)?;
     let mut result = BTreeMap::new();
+    let mut scope = namespaces::Namespaces::default();
     while let Some(tag) = reader.next()? {
+        scope.observe(tag)?;
         if tag.local() != b"Relationship" || tag.kind == Kind::End {
             continue;
         }
@@ -220,6 +225,7 @@ fn read_relationships(
                 .insert(
                     id,
                     Relationship {
+                        element_namespace: scope.element(tag.name)?,
                         kind,
                         target,
                         external,
@@ -271,12 +277,14 @@ pub(super) fn inspect(path: &Path, sheet: &str) -> Result<Catalogue> {
         "OLE metadata references a missing relationship"
     );
     hash_local_parts(&mut archive, &mut relationships)?;
+    let correspondence = correspondence::inspect(&objects, &relationships, &representations);
     Ok(Catalogue {
         worksheet_part: part,
         namespaces,
         objects,
         relationships,
         representations,
+        correspondence,
     })
 }
 

@@ -1308,6 +1308,28 @@ for these tiny fixtures. Initial attempts failed before comparing because extend
 Windows prefixes reached Join-Path in the Excel resolver and capture script. Those
 boundary conversions were fixed before the successful run. Eight focused manual
 scheduler tests passed, including fixed-capacity admission and prefetch handling.
+## Independent reference OLE observations
+
+The explicit native-reference workflow retains OLE metadata even when object
+qualification fails. Worksheet, DrawingML identity and VML shape namespaces are
+resolved in their lexical scopes. External relationships are recorded without
+fetching their targets. Local payload and preview identities retain byte counts
+and SHA-256 hashes. VML point frames have explicit absent, parsed or unsupported
+states.
+
+The nested `correspondence` observations group worksheet Choice/Fallback records
+by shape ID. A `matched` observation requires consistent branch attributes,
+known namespaces, one anchored worksheet record, unique DrawingML/VML identities,
+matching local preview target and hash, eight equal anchor coordinates and a
+parsed VML point frame. Legacy pixel offsets must correspond exactly to the
+worksheet EMU offsets. Ambiguity, external targets, foreign namespaces, malformed
+or inverted anchors and preview conflicts produce `unresolved` with a reason.
+
+This match concerns the recorded package relationships and anchors. It does not
+qualify rendering effects, account for every other object, establish native-frame
+agreement or certify pixel equality. The native reference object guard and
+production capture policy retain their previous supported-object requirements.
+
 ## Capture job list and pinned details
 
 Warm-pool startup verifies that the deployed capture directory has its sibling

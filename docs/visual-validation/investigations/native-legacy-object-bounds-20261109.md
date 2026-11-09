@@ -217,6 +217,29 @@ SHA-256 is
 All three XML inspections reused existing inputs and native evidence, without
 starting Excel. This step leaves OLE qualification and capture coverage unchanged.
 
+## Cross-representation correspondence
+
+The metadata scanner now groups the worksheet's anchored and fallback OLE
+records by shape ID and checks their attribute and namespace agreement. It
+requires a unique matching DrawingML identity, compatibility ID and VML shape.
+Worksheet and VML preview targets and hashes must agree. Eight worksheet anchor
+coordinates must exactly match the legacy anchor, using 9,525 EMUs per legacy
+pixel. Foreign relationship namespaces, external targets, conflicting previews,
+duplicate identities, malformed coordinates and inverted anchors remain
+unresolved. Missing or unsupported VML style frames remain unresolved too.
+
+The focused comparison module run passed 151 tests with 14 explicit integration
+experiments ignored. The retained-file diagnostic was then enabled separately
+for the real Word, PDF and coherently moved PDF cases. All three produced one
+matched correspondence. The moved case correctly retained its updated top of
+159.75 points, demonstrating that correspondence is not an unchanged-geometry
+verdict. The corresponding private receipt SHA-256 identities are
+`926e4d239f3b54b1523df4ae45d2b5b0f6015f4b548b028ff2d221d44cefa575`,
+`7a0dd2d3a939b2ac92ceb8ece725583e5131fad2cb53993f36f68bdb53c0ae33`
+and `9c1d7c5f1ada439b7271fa815d8b17dc6a1263ca5f8a69c943277dc0b77293ff`.
+This step leaves full property validation, native-frame qualification and
+all-object accounting open. The production runtime was not replaced.
+
 ## Zero-area text-box visibility controls
 
 The same retained workbook has three zero-size `Text 1` shapes on Deutschland,

@@ -12,27 +12,27 @@ use zip::ZipArchive;
 
 #[derive(Debug, Default, Serialize)]
 pub(super) struct Representation {
-    part: String,
-    external: bool,
+    pub(super) part: String,
+    pub(super) external: bool,
     sha256: Option<String>,
     namespace_declarations: BTreeMap<String, Vec<String>>,
-    shapes: Vec<Shape>,
-    relationships: BTreeMap<String, Relationship>,
+    pub(super) shapes: Vec<Shape>,
+    pub(super) relationships: BTreeMap<String, Relationship>,
 }
 
 #[derive(Debug, Serialize)]
-struct Shape {
-    qualified_name: String,
+pub(super) struct Shape {
+    pub(super) qualified_name: String,
     #[serde(flatten)]
-    resolved_namespaces: namespaces::Observation,
-    style_frame: vml_geometry::Observation,
-    attributes: BTreeMap<String, String>,
-    compatibility_ids: Vec<String>,
-    preview_relationship_ids: Vec<String>,
-    legacy_anchors: Vec<String>,
+    pub(super) resolved_namespaces: namespaces::Observation,
+    pub(super) style_frame: vml_geometry::Observation,
+    pub(super) attributes: BTreeMap<String, String>,
+    pub(super) compatibility_ids: Vec<String>,
+    pub(super) preview_relationship_ids: Vec<String>,
+    pub(super) legacy_anchors: Vec<String>,
 }
 
-fn read(part: String, bytes: &[u8]) -> Result<Representation> {
+pub(super) fn read(part: String, bytes: &[u8]) -> Result<Representation> {
     let mut result = Representation {
         part,
         sha256: Some(format!("{:x}", Sha256::digest(bytes))),
@@ -190,6 +190,7 @@ mod tests {
             ("remote", "https://example.invalid/external.vml", true),
         ] {
             relationships.insert(id.to_owned(), Relationship {
+                element_namespace: Some("http://schemas.openxmlformats.org/package/2006/relationships".into()),
                 kind: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing".into(),
                 target: target.into(), external, bytes: None, sha256: None,
             });
