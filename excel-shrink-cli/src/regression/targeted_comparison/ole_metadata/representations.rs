@@ -1,6 +1,6 @@
 //! Retain DrawingML/VML identities alongside worksheet OLE records.
-//! These are observations, without a supported-frame or namespace-resolution claim.
-use super::{attributes, hash_local_parts, read_relationships, Relationship};
+//! Resolve identity-subtree namespaces without qualifying supported rendering frames.
+use super::{attributes, hash_local_parts, namespaces, read_relationships, Relationship};
 use crate::regression::xml_views::{Kind, Reader};
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
@@ -21,6 +21,8 @@ pub(super) struct Representation {
 #[derive(Debug, Serialize)]
 struct Shape {
     qualified_name: String,
+    #[serde(flatten)]
+    resolved_namespaces: namespaces::Observation,
     attributes: BTreeMap<String, String>,
     compatibility_ids: Vec<String>,
     preview_relationship_ids: Vec<String>,
@@ -35,7 +37,9 @@ fn read(part: String, bytes: &[u8]) -> Result<Representation> {
     };
     let mut reader = Reader::<128>::new(bytes)?;
     let mut active = None;
+    let mut scope = namespaces::Namespaces::default();
     while let Some(tag) = reader.next()? {
+        scope.observe(tag)?;
         if tag.kind == Kind::End {
             if active.is_some_and(|(_, depth)| tag.depth == depth) {
                 active = None;
@@ -54,8 +58,11 @@ fn read(part: String, bytes: &[u8]) -> Result<Representation> {
         }
         if matches!(tag.name, b"xdr:cNvPr" | b"v:shape") {
             ensure!(active.is_none(), "Nested drawing identity records");
+            let mut resolved_namespaces = namespaces::Observation::default();
+            resolved_namespaces.observe(tag, &scope, b"o:relid")?;
             result.shapes.push(Shape {
                 qualified_name: std::str::from_utf8(tag.name)?.to_owned(),
+                resolved_namespaces,
                 attributes: attrs,
                 compatibility_ids: Vec::new(),
                 preview_relationship_ids: Vec::new(),
@@ -68,6 +75,7 @@ fn read(part: String, bytes: &[u8]) -> Result<Representation> {
         }
         let Some((index, _)) = active else { continue };
         let shape = &mut result.shapes[index];
+        shape.resolved_namespaces.observe(tag, &scope, b"o:relid")?;
         match tag.name {
             b"a14:compatExt" => {
                 shape.compatibility_ids.push(
@@ -236,5 +244,35 @@ mod tests {
         ] {
             assert!(read("test.xml".into(), bytes).is_err());
         }
+    }
+
+    #[test]
+    fn drawing_and_preview_namespaces_follow_the_actual_scope() -> Result<()> {
+        let drawing = read("drawing.xml".into(), br#"<xdr:wsDr xmlns:xdr="drawing" xmlns:a14="compatibility"><xdr:cNvPr id="1"><a14:compatExt xmlns:a14="foreign" spid="shape1"/><a14:compatExt spid="shape1"/></xdr:cNvPr></xdr:wsDr>"#)?;
+        let observed = &drawing.shapes[0].resolved_namespaces;
+        assert_eq!(
+            observed.element_namespaces["xdr:cNvPr"],
+            std::collections::BTreeSet::from([Some("drawing".into())])
+        );
+        assert_eq!(
+            observed.element_namespaces["a14:compatExt"],
+            std::collections::BTreeSet::from([
+                Some("foreign".into()),
+                Some("compatibility".into())
+            ])
+        );
+        let vml = read("drawing.vml".into(), br#"<xml xmlns:v="vml" xmlns:o="office"><v:shape id="shape1"><v:imagedata xmlns:o="foreign" o:relid="image1"/></v:shape><v:shape id="shape2"><v:imagedata o:relid="image2"/></v:shape></xml>"#)?;
+        assert_eq!(
+            vml.shapes[0].resolved_namespaces.relationship_namespaces,
+            std::collections::BTreeSet::from([Some("foreign".into())])
+        );
+        assert_eq!(
+            vml.shapes[1].resolved_namespaces.relationship_namespaces,
+            std::collections::BTreeSet::from([Some("office".into())])
+        );
+        let serialized = serde_json::to_value(vml)?;
+        assert!(serialized["shapes"][0].get("element_namespaces").is_some());
+        assert!(serialized["shapes"][0].get("resolved_namespaces").is_none());
+        Ok(())
     }
 }

@@ -31,8 +31,8 @@ pub(super) struct Catalogue {
 #[derive(Debug, Default, Serialize)]
 struct Object {
     qualified_name: String,
-    element_namespaces: BTreeMap<String, BTreeSet<Option<String>>>,
-    relationship_namespaces: BTreeSet<Option<String>>,
+    #[serde(flatten)]
+    resolved_namespaces: namespaces::Observation,
     attributes: BTreeMap<String, String>,
     properties: Option<BTreeMap<String, String>>,
     anchor: BTreeMap<String, i64>,
@@ -105,7 +105,7 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
                             attributes: attributes(tag.attrs)?,
                             ..Default::default()
                         };
-                        observe_namespaces(&mut object, tag, &scope)?;
+                        object.resolved_namespaces.observe(tag, &scope, b"r:id")?;
                         result.push(object);
                         active = (tag.kind == Kind::Start).then_some(result.len() - 1);
                     }
@@ -114,7 +114,7 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
                 let Some(index) = active else { return Ok(()) };
                 let object = &mut result[index];
                 if tag.kind != Kind::End {
-                    observe_namespaces(object, tag, &scope)?;
+                    object.resolved_namespaces.observe(tag, &scope, b"r:id")?;
                     object
                         .child_elements
                         .insert(std::str::from_utf8(tag.name)?.to_owned());
@@ -167,24 +167,6 @@ fn objects(input: impl Read) -> Result<(Vec<Object>, BTreeMap<String, BTreeSet<S
         "Incomplete OLE metadata"
     );
     Ok((result, namespaces))
-}
-
-fn observe_namespaces(
-    object: &mut Object,
-    tag: crate::regression::xml_views::Tag<'_>,
-    scope: &namespaces::Namespaces,
-) -> Result<()> {
-    object
-        .element_namespaces
-        .entry(std::str::from_utf8(tag.name)?.into())
-        .or_default()
-        .insert(scope.element(tag.name)?);
-    if tag.attr(b"r:id")?.is_some() {
-        object
-            .relationship_namespaces
-            .insert(scope.element(b"r:id")?);
-    }
-    Ok(())
 }
 
 fn read_relationships(
@@ -450,27 +432,27 @@ mod tests {
         let (data, _) = objects(xml.as_slice())?;
         assert_eq!(data.len(), 2);
         assert_eq!(
-            data[0].element_namespaces["oleObject"],
+            data[0].resolved_namespaces.element_namespaces["oleObject"],
             BTreeSet::from([Some("foreign".into())])
         );
         assert_eq!(
-            data[0].element_namespaces["objectPr"],
+            data[0].resolved_namespaces.element_namespaces["objectPr"],
             BTreeSet::from([Some("main".into())])
         );
         assert_eq!(
-            data[0].element_namespaces["xdr:row"],
+            data[0].resolved_namespaces.element_namespaces["xdr:row"],
             BTreeSet::from([None])
         );
         assert_eq!(
-            data[0].relationship_namespaces,
+            data[0].resolved_namespaces.relationship_namespaces,
             BTreeSet::from([Some("relationships".into()), Some("foreign".into()),])
         );
         assert_eq!(
-            data[1].element_namespaces["oleObject"],
+            data[1].resolved_namespaces.element_namespaces["oleObject"],
             BTreeSet::from([Some("main".into())])
         );
         assert_eq!(
-            data[1].relationship_namespaces,
+            data[1].resolved_namespaces.relationship_namespaces,
             BTreeSet::from([Some("relationships".into())])
         );
         Ok(())

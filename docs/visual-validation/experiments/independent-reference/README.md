@@ -41,6 +41,12 @@ anchors and linked preview identities. External representation targets are
 recorded without access. Missing local representation parts or preview links
 fail explicitly. Qualified-name matching in this diagnostic inventory does not
 establish namespace-aware coverage or acceptance of unknown rendering effects.
+Recognized DrawingML identity and VML shape subtrees also retain expanded element
+namespace observations. Literal VML `o:relid` attributes retain their actual
+namespace binding. Worksheet and representation observations use the same sparse
+lexical-scope tracker. These observations expose local prefix rebinding while
+keeping the existing JSON field names. Full representation validation and
+supported-frame qualification remain separate requirements.
 
 A qualification failure describes this guard's supported object model. It does
 not establish that the workbook is invalid or the range renderer omits the

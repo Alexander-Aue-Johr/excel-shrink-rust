@@ -154,8 +154,8 @@ Focused tests cover inherited foreign default namespaces, local relationship
 prefix rebinding, restoration after empty and nested elements, unknown prefixes
 and duplicate declarations. These checks prevent a later qualifier from using
 only spelling or a global namespace-declaration inventory as evidence. They
-leave the existing unsupported-object rule in place. DrawingML/VML scope
-resolution, anchor/native-frame agreement and all-object accounting remain
+leave the existing unsupported-object rule in place. Full DrawingML/VML
+validation, anchor/native-frame agreement and all-object accounting remain
 separate prerequisites.
 
 Nine focused OLE tests passed. The explicitly enabled retained-file diagnostic
@@ -171,6 +171,27 @@ Their SHA-256 identities are
 for Word and
 `506bc92da1a48b3a5713251df122eaf8d3336b5173e9b1bea9f9f25daf31602f`
 for PDF. No production capture rule or corpus verdict changed during this step.
+
+## Representation namespace follow-up
+
+The same lexical-scope tracker now records expanded names in recognized
+DrawingML identity and VML shape subtrees. VML image relationship attributes
+retain the actual `o:relid` namespace. A shared flattened observation structure
+preserves the worksheet JSON field names. Ten focused OLE tests passed, including
+local DrawingML compatibility-prefix rebinding, VML relationship-prefix
+rebinding and restoration for the following shape.
+
+Explicit XML-only inspection of the retained Word and PDF fixtures resolved
+their recognized DrawingML, VML and Office relationship names as expected.
+The representation-aware diagnostic receipt SHA-256 identities are
+`c7f6212281fe2470c695f23b2a1065e93b46791591ed7f41230e7a25732b3199`
+for Word and
+`27e2500627a3305391817302adf08865c652678fab1a3aae0f9564487d1560c4`
+for PDF. The diagnostics took 0.02 and 0.01 seconds after compilation.
+This establishes namespace observations for the recognized subtrees. It does
+not establish support for every representation property, rendering effect or
+object frame. Production capture rules and native reference qualification
+remain unchanged.
 
 ## Zero-area text-box visibility controls
 

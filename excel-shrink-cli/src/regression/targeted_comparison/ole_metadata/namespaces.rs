@@ -1,7 +1,33 @@
 //! Track lexical namespace bindings for the streaming OLE observation.
 use crate::regression::xml_views::{Attributes, Kind, Tag};
 use anyhow::{ensure, Result};
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Debug, Default, Serialize)]
+pub(super) struct Observation {
+    pub element_namespaces: BTreeMap<String, BTreeSet<Option<String>>>,
+    pub relationship_namespaces: BTreeSet<Option<String>>,
+}
+
+impl Observation {
+    pub fn observe(
+        &mut self,
+        tag: Tag<'_>,
+        scope: &Namespaces,
+        relationship_attribute: &[u8],
+    ) -> Result<()> {
+        self.element_namespaces
+            .entry(std::str::from_utf8(tag.name)?.into())
+            .or_default()
+            .insert(scope.element(tag.name)?);
+        if tag.attr(relationship_attribute)?.is_some() {
+            self.relationship_namespaces
+                .insert(scope.element(relationship_attribute)?);
+        }
+        Ok(())
+    }
+}
 
 #[derive(Default)]
 pub(super) struct Namespaces {
