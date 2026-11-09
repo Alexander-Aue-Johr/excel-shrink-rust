@@ -10,14 +10,24 @@ outputs use G: to preserve the free-space buffer on V:. Corpus identities and
 results remain separate. The existing Check Performance preparation target was
 reduced to two workers to prioritize these comparisons.
 
-The queue uses the verified optimized six-machine runtime, without modifying
-its binaries or assets. An initial PowerShell hash-command availability error
+The queue initially used the verified optimized six-machine runtime. An initial PowerShell hash-command availability error
 occurred before any study started. Replacing that private launch check with
 streamed .NET hashing allowed normal study startup. Destatis runner PID 47256
 was confirmed live with its full 1,182-file selection and four preparations in
 flight. Data.gov and Enron remain queued. This is startup acceptance, not corpus
 completion. The queue requires a final complete report before advancing and
 retains nonzero findings exits as findings rather than infrastructure success.
+
+The whole-grid planning failure subsequently required an isolated runtime asset
+update from `6c744038`. The queue was stopped through the normal termination API
+and resumed from its existing launch receipt with four groups. All 1,182 prepared
+inputs and 240 completed comparisons were retained. The production executable
+hash stayed unchanged. The separate night runtime contains 113 verified files,
+and the private six-machine USB source was left untouched. The receiving API
+confirmed runner PID 63360 advancing to 273 completed comparisons with four active
+groups and two skipped inputs. These are progress observations, not final counts.
+Whole-grid failures retain unverified coverage and require a later corrected retry.
+The runtime migration receipt preserves the previous and current launch hashes.
 
 The Enron receiving-side import finished with 34,065 members and an explicit
 external-generation receipt. Count, total uncompressed bytes and three additional
