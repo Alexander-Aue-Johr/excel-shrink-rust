@@ -6,6 +6,7 @@ use clap::Parser;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, fs, path::PathBuf, time::Instant};
+use super::reference_objects as objects;
 
 #[derive(Debug, Parser)]
 pub(crate) struct Args {
@@ -20,6 +21,9 @@ pub(crate) struct Args {
     output: PathBuf,
     #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(u64).range(1..))]
     operation_timeout_seconds: u64,
+    /// Require supported native picture/chart bounds to fit inside the supplied areas.
+    #[arg(long)]
+    verify_objects: bool,
 }
 
 #[derive(Deserialize)]
@@ -70,7 +74,18 @@ pub(crate) fn run(input: Args) -> Result<()> {
         state.capture_policy = "explicit-reference-plan-v1";
         state.execution_strategy = "reference-paired-rebuild-v1";
     })?;
-    let result = observe(&mut comparison, &regions, &mut receipt);
+    receipt["verify_objects"] = json!(input.verify_objects);
+    if input.verify_objects {
+        receipt["limitations"].as_array_mut().unwrap().push(json!(
+            "Object qualification covers native image/chart rectangles, not decorative ink outside their reported bounds."
+        ));
+    }
+    let result = observe(
+        &mut comparison,
+        &regions,
+        &mut receipt,
+        input.verify_objects,
+    );
     let cleanup = comparison.release_excel_and_wait_for_exit();
     let error = result.as_ref().err().or(cleanup.as_ref().err());
     receipt["status"] = json!(if error.is_none() {
@@ -122,6 +137,7 @@ fn observe(
     comparison: &mut Comparison<'_>,
     regions: &[Candidate],
     receipt: &mut Value,
+    verify_objects: bool,
 ) -> Result<()> {
     publish(&comparison.args.output, receipt)?;
     comparison.open_workbooks(true)?;
@@ -139,6 +155,10 @@ fn observe(
     receipt["default_rebuilt_sha256"] = json!(deltasieve_engine::reuse::file_sha256(
         &comparison.paths.default
     )?);
+    if verify_objects {
+        objects::verify(host, regions, &comparison.telemetry, receipt)?;
+        publish(&comparison.args.output, receipt)?;
+    }
     for (index, region) in regions.iter().enumerate() {
         let measured = host.measure_ranges(
             &[

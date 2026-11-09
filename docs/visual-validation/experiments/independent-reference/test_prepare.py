@@ -23,6 +23,18 @@ def workbook(dimension, extra=None):
 
 
 class PreparationTests(unittest.TestCase):
+    def test_native_object_qualification_is_explicit_and_tiling_is_bounded(self):
+        source = workbook("A1:C600", "xl/media/logo.png")
+        with self.assertRaises(ValueError):
+            make_plan(source, source)
+        plan = make_plan(source, source, require_native_objects=True, tile_rows=256)
+        self.assertEqual([row["range"] for row in plan], ["A1:C256", "A257:C512", "A513:C600"])
+        for part in ("xl/embeddings/object.bin", "xl/drawings/legacy.vml", "xl/chartsheets/sheet1.xml"):
+            with self.subTest(part=part), self.assertRaises(ValueError):
+                make_plan(workbook("A1", part), source, require_native_objects=True)
+        with self.assertRaisesRegex(ValueError, "budget"):
+            make_plan(workbook("A1:C20000"), workbook("A1"), tile_rows=256)
+
     def test_union_includes_leading_geometry_and_removed_extent(self):
         self.assertEqual(make_plan(workbook("B3:Z9"), workbook("A1:C20")),
                          [{"sheet": "Data", "range": "A1:Z20"}])

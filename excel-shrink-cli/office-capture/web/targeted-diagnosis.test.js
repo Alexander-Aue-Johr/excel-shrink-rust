@@ -2,6 +2,29 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 require('./targeted-diagnosis.js');
 
+test('reference object inventory reads pictures and charts together without rendering', async () => {
+  let syncs = 0;
+  const loads = [];
+  const image = {name: 'Logo', type: 'Image', rotation: 0, top: 1, left: 2, width: 30, height: 40};
+  const chart = {name: 'Chart', top: 10, left: 20, width: 100, height: 80};
+  const sheet = {
+    shapes: {items: [image], load: fields => loads.push(fields)},
+    charts: {items: [chart], load: fields => loads.push(fields)},
+  };
+  const context = {
+    workbook: {worksheets: {getItem: name => {assert.equal(name, 'Data'); return sheet;}}},
+    sync: async () => {syncs++;},
+  };
+  const result = await globalThis.TargetedDiagnosis.run(
+    {kind: 'reference_objects', sheet: 'Data'}, action => action(context));
+  assert.equal(syncs, 1);
+  assert.equal(loads.length, 2);
+  assert.deepEqual(result.objects, [
+    {name: 'Logo', kind: 'Image', rotation: 0, geometry: {top: 1, left: 2, width: 30, height: 40}},
+    {name: 'Chart', kind: 'Chart', rotation: 0, geometry: {top: 10, left: 20, width: 100, height: 80}},
+  ]);
+});
+
 test('chart inventory reads live geometry without rendering any images', async () => {
   let syncs = 0;
   const chart = {name: 'Chart 1', top: 10, left: 20, width: 400, height: 200,

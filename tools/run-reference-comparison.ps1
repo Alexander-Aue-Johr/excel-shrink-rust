@@ -13,7 +13,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Plan,
     [Parameter(Mandatory=$true)][string]$Output,
     [ValidateRange(1, 600)][int]$OperationTimeoutSeconds = 120,
-    [ValidateRange(1, 600)][int]$TotalTimeoutSeconds = 300
+    [ValidateRange(1, 600)][int]$TotalTimeoutSeconds = 300,
+    [switch]$VerifyObjects
 )
 
 Set-StrictMode -Version Latest
@@ -46,6 +47,7 @@ try {
     $env:EXCEL_SHRINK_LOG_DIR = Join-Path $runtimePath 'logs'
     $arguments = 'regression reference-compare --original "{0}" --default "{1}" --plan "{2}" --output "{3}" --operation-timeout-seconds {4}' -f `
         $originalPath, $defaultPath, $planPath, $outputPath, $OperationTimeoutSeconds
+    if ($VerifyObjects) { $arguments += ' --verify-objects' }
     $process = $desktop.Start($binaryPath, $arguments, $owned)
     if (-not $process.WaitForExit($TotalTimeoutSeconds * 1000)) {
         throw "Reference comparison exceeded its $TotalTimeoutSeconds-second experiment budget."

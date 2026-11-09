@@ -1,8 +1,9 @@
 """Bind a frozen sample to verified preparations and independent dimension plans.
 
 This experiment uses ElementTree independently of the candidate planner. A plan
-covers A1 through the union of both stored worksheet dimensions. Workbooks with
-graphical parts remain unsupported because dimensions do not bound their ink.
+covers A1 through the union of both stored worksheet dimensions. Basic drawings
+are permitted only in the explicit native-object qualification mode. Dimensions
+alone never establish graphical coverage.
 """
 
 import argparse
@@ -56,14 +57,24 @@ def column_name(column):
     return result
 
 
-def dimensions(payload):
+def dimensions(payload, require_native_objects=False):
     """Read stored dimensions without using selector decisions or cell parsing."""
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
             raise ValueError("Duplicate package members")
-        if any(name.startswith(("xl/drawings/", "xl/charts/", "xl/chartsheets/",
-                                "xl/activeX/", "xl/embeddings/", "xl/media/")) for name in names):
+        if require_native_objects:
+            if any(name.startswith(("xl/chartsheets/", "xl/activeX/", "xl/embeddings/"))
+                   or name.endswith(".vml") for name in names):
+                raise UnsupportedEnvelope("Legacy drawings, chart sheets and embedded objects require a separate reference envelope")
+            for name in names:
+                if name.startswith(("xl/drawings/", "xl/charts/")) and name.endswith(".xml"):
+                    drawing = ET.fromstring(archive.read(name))
+                    if any(node.tag.rsplit("}", 1)[-1] in ("effectLst", "effectDag") and len(node)
+                           for node in drawing.iter()):
+                        raise UnsupportedEnvelope("Drawing effects require a separate ink envelope")
+        elif any(name.startswith(("xl/drawings/", "xl/charts/", "xl/chartsheets/",
+                                  "xl/activeX/", "xl/embeddings/", "xl/media/")) for name in names):
             raise UnsupportedEnvelope("Graphical or embedded parts require a separate reference envelope")
         workbook = ET.fromstring(archive.read("xl/workbook.xml"))
         relationships = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
@@ -90,12 +101,23 @@ def dimensions(payload):
         return result
 
 
-def make_plan(original, default):
-    left, right = dimensions(original), dimensions(default)
+def make_plan(original, default, require_native_objects=False, tile_rows=None, max_regions=64):
+    left = dimensions(original, require_native_objects)
+    right = dimensions(default, require_native_objects)
     if left.keys() != right.keys():
         raise UnsupportedEnvelope("Worksheet names differ")
-    return [{"sheet": name, "range": f"A1:{column_name(max(left[name][1], right[name][1]))}{max(left[name][0], right[name][0])}"}
-            for name in left]
+    if tile_rows is not None and not 1 <= tile_rows <= 512:
+        raise ValueError("Reference tile rows must be within 1..512")
+    result = []
+    for name in left:
+        bottom = max(left[name][0], right[name][0])
+        column = column_name(max(left[name][1], right[name][1]))
+        step = tile_rows or bottom
+        if len(result) + (bottom + step - 1) // step > max_regions:
+            raise UnsupportedEnvelope("Reference rectangle count exceeds the declared per-workbook budget")
+        for start in range(1, bottom + 1, step):
+            result.append({"sheet": name, "range": f"A{start}:{column}{min(start + step - 1, bottom)}"})
+    return result
 
 
 def verified_member(archive, member, expected):
@@ -105,7 +127,7 @@ def verified_member(archive, member, expected):
     return payload
 
 
-def prepare(selection, study, output):
+def prepare(selection, study, output, require_native_objects=False, tile_rows=None):
     """Preserve every selected identity, including unsupported and failed cases."""
     manifest = json.loads(selection.read_text(encoding="utf-8"))
     output.mkdir(parents=True, exist_ok=False)
@@ -127,7 +149,7 @@ def prepare(selection, study, output):
                     raise ValueError("Expected exactly one Default variant")
                 original = verified_member(archive, preparation["converted_member"], preparation["converted_sha256"])
                 default = verified_member(archive, variants[0]["member"], variants[0]["sha256"])
-            plan = make_plan(original, default)
+            plan = make_plan(original, default, require_native_objects, tile_rows)
             directory = output / group
             directory.mkdir()
             (directory / "original.xlsx").write_bytes(original)
@@ -136,13 +158,18 @@ def prepare(selection, study, output):
             row.update(status="plan_frozen", plan=plan,
                        original_sha256=hashlib.sha256(original).hexdigest(),
                        default_sha256=hashlib.sha256(default).hexdigest(),
-                       prepared_by=preparation["prepared_by"])
+                       prepared_by=preparation["prepared_by"],
+                       requires_native_objects=require_native_objects)
         except UnsupportedEnvelope as error:
             row.update(status="unsupported", reason=str(error))
         except (OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError) as error:
             row["reason"] = str(error)
     result = {"selection_sha256": hashlib.sha256(selection.read_bytes()).hexdigest(),
-              "envelope": "A1 through union of stored dimensions, no graphical/embedded parts",
+              "preparation_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              "envelope": "A1 through union of stored dimensions; native object qualification required"
+                          if require_native_objects else "A1 through union of stored dimensions, no graphical/embedded parts",
+              "requires_native_objects": require_native_objects, "tile_rows": tile_rows,
+              "max_regions_per_workbook": 64,
               "limits": ["Stored dimensions are a declared reference envelope, not a proof of all rendered ink.",
                          "Text overflow beyond the envelope and other effects require separate coverage.",
                          "Native geometry limits and failures remain in the selected denominator."],
@@ -156,7 +183,10 @@ if __name__ == "__main__":
     parser.add_argument("--selection", required=True, type=Path)
     parser.add_argument("--study", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--require-native-objects", action="store_true",
+                        help="Permit basic drawings only with mandatory native reference --verify-objects qualification")
+    parser.add_argument("--tile-rows", type=int)
     args = parser.parse_args()
-    result = prepare(args.selection, args.study, args.output)
+    result = prepare(args.selection, args.study, args.output, args.require_native_objects, args.tile_rows)
     print(json.dumps({"selected": len(result["rows"]),
                       "plans": sum(row["status"] == "plan_frozen" for row in result["rows"])}))

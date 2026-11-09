@@ -616,6 +616,18 @@ in `../visual-validation/experiments/independent-reference/comparator-pilot-2026
 These are controlled pair-level checks. The real-world seeded sample, broader
 mutation matrix, pixel-coverage scoring and matched cost experiments remain open.
 
+The existing twelve-occurrence Enron development reference sample was fully
+reconciled to seven completed inputs with 33 areas, two size-preflight failures
+and three unsupported graphical envelopes. All completed overlapping RGBA pixels
+match. Two raw extent differences consist solely of opaque-white exterior strips.
+A separate twelve-occurrence Destatis selection remains fixed. Its optional
+native-object envelope qualifies one input over two areas and retains eleven
+unsupported inputs. Native image/chart bounds, an outside-area rejection control,
+source identities and limits are recorded in
+`../visual-validation/experiments/independent-reference/real-samples-20261109.md`.
+The production corpus runner and frozen capture policy were not changed by these
+reference-only extensions.
+
 ## 14 Write and review complete first manuscript drafts
 
 - [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.

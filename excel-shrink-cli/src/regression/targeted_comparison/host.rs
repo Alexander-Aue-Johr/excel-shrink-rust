@@ -360,6 +360,16 @@ impl ExcelHost {
         serde_json::from_value(response["charts"].clone()).context("Invalid chart inventory")
     }
 
+    /// Inventory native object rectangles independently of XML candidate selection.
+    pub(super) fn reference_objects(
+        &mut self,
+        lane: LaneId,
+        sheet: &str,
+        telemetry: &Telemetry,
+    ) -> Result<Value> {
+        self.call(json!({"kind":"reference_objects", "lane":lane.key(), "sheet":sheet}), telemetry)
+    }
+
     /// Export the whole chart and its placement, without a worksheet-sized capture.
     pub(super) fn capture_chart(
         &mut self,

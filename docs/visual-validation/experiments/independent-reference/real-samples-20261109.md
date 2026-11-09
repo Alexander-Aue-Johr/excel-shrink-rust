@@ -58,3 +58,37 @@ that population. The next envelope implementation must account for actual object
 extent or use an independently supplied bounded area with explicit coverage
 limits. Choosing replacement inputs without graphics would change the experiment
 and is not a remedy for these unsupported outcomes.
+
+## Native object qualification extension
+
+The optional native-object preparer retains the same twelve Destatis identities.
+It permits basic graphical packages only with the native `--verify-objects` check.
+Legacy VML, embedded objects, chart sheets, nonempty drawing effects and more than
+64 reference rectangles remain unsupported. Eleven selected inputs still fail
+that declared envelope. One selected input produces two fixed reference areas.
+
+`a69fa2ddf6a9a3204409`, `31121992_Jahr.xlsx`, completed in 12.659 seconds.
+Its `Deckblatt ` sheet has the native image `Grafik 2`, with rectangle left
+236.25, top 32.25, width 240.75 and height 30.75 points in both states. That image
+fits inside `A1:O38`. The data sheet `31.12.1992` has no native image or chart and
+uses `A1:T40`. Both reference areas contain zero changed overlapping RGBA pixels.
+The data image heights differ by 20 pixels, with an additional 25,820 opaque-white
+pixels at the original's bottom edge. The raw extent difference remains retained.
+This is one completed input out of twelve selected, with eleven unsupported
+outcomes, under a reported-object-rectangle model. Decorative ink beyond native
+rectangles remains outside this qualification.
+
+The separate synthetic object-guard control retained a chart within `Data!A1:N30`
+and completed in 10.933 seconds. An intentionally insufficient `A1:D4` plan failed
+with zero reference images and retained its observed chart rectangle. Excel also
+exposes this chart as an `Unsupported` shape. The guard accepts that alias only
+when its name and complete native geometry equal the separately enumerated chart.
+The first attempt rejected that alias and remains separate failed evidence.
+
+The cases used one additional Excel pair at a time, a 60-second command timeout
+and a 90-second total launcher timeout. The four-group production comparison
+continued. Evidence is under `reference-object-guard-20261109` and the fixed
+Destatis sample's `destatis-native-a69fa2ddf6a9a3204409` directory. Fifteen JavaScript
+tests, seven sampler/preparer tests and the focused Rust qualifier test passed.
+These tests establish the extension's bounded native path and rejection behavior.
+They do not establish a full-corpus detection rate.

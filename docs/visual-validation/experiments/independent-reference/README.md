@@ -7,6 +7,21 @@ copies are opened even for byte-identical input, enabling same-input controls.
 
 The plan is a JSON array. Freeze its areas before inspecting candidate coverage.
 
+`--verify-objects`, or the launcher's `-VerifyObjects`, additionally inventories
+native worksheet shapes and charts after rebuilding both copies. Only unrotated
+images and charts whose reported rectangles fit inside one supplied reference
+area qualify. Excel can expose a chart container twice, including as an
+unsupported shape. An unsupported entry is accepted as a chart alias only when
+its name and full native rectangle exactly match a native chart. Other object
+types, missing inventory, rotated objects and objects outside the supplied area
+fail explicitly before reference images are captured. The native inventory stays
+in `reference.json`, including on qualification failure.
+
+This qualification concerns reported object rectangles. Shadows, glows and other
+ink outside that model require a separate envelope. It does not certify that a
+supplied plan covers every rendering effect. Native image geometry uses the
+documented shape model and its `Image` type. [Microsoft Shape API](https://learn.microsoft.com/en-us/javascript/api/excel/excel.shape?view=excel-js-1.9), [Microsoft shape types](https://learn.microsoft.com/en-us/javascript/api/excel/excel.shapetype?view=excel-js-1.9)
+
 ```json
 [
   {"sheet": "Rows", "range": "A1:C128"}
@@ -87,6 +102,15 @@ complete coverage of overflow or every rendering effect. Graphical, embedded and
 chart-sheet parts require a separate reference envelope and remain explicitly
 unsupported by this preparer. Native size limits and timeouts retain their own
 outcomes. Public claims must state these limits.
+
+The optional preparer mode `--require-native-objects --tile-rows 256` creates
+bounded plans for basic graphical packages with mandatory native qualification.
+Its output records `requires_native_objects=true` and the preparation script
+hash. Such plans must run with `-VerifyObjects`. It continues to reject legacy
+VML, embedded objects, chart sheets and nonempty drawing effects. More than 64
+rectangles per workbook exceeds this experiment's declared budget and remains
+unsupported. The default dimension-only mode retains its graphical exclusion.
+Both modes preserve the frozen selection and record every unsupported outcome.
 
 The frozen Enron sample prepared on 2026-11-08 retained all twelve identities.
 Nine produced plans and three require graphical/embedded reference coverage.

@@ -124,6 +124,21 @@
         reportProgress('workbook_saved');
         return {saved: true};
       }
+      if (command.kind === 'reference_objects') {
+        const sheet = context.workbook.worksheets.getItem(command.sheet);
+        sheet.shapes.load('items/name,items/type,items/top,items/left,items/width,items/height,items/rotation');
+        sheet.charts.load('items/name,items/top,items/left,items/width,items/height');
+        await context.sync();
+        const geometry = item => ({top: item.top, left: item.left, width: item.width, height: item.height});
+        return {objects: [
+          ...sheet.shapes.items.map(shape => ({
+            name: shape.name, kind: shape.type, rotation: shape.rotation, geometry: geometry(shape),
+          })),
+          ...sheet.charts.items.map(chart => ({
+            name: chart.name, kind: 'Chart', rotation: 0, geometry: geometry(chart),
+          })),
+        ]};
+      }
       if (command.kind === 'charts') {
         const sheets = context.workbook.worksheets;
         sheets.load('items/name');

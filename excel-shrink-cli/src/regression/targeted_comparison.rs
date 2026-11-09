@@ -7,6 +7,7 @@ mod charts;
 mod chart_dependencies;
 pub(in crate::regression) use chart_dependencies::Mode as ChartCaptureMode;
 pub(crate) mod reference;
+mod reference_objects;
 pub(in crate::regression) use chart_dependencies::inspect_xml as inspect_chart_xml;
 mod check_performance;
 mod conditional_formatting;
