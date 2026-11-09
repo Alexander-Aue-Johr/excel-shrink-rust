@@ -654,7 +654,7 @@ The targeted resident classifies an owned dialog titled `Name Conflict` or
 `Namenskonflikt` as `name_conflict`. It follows the same early-failure evidence
 and owned-process cleanup path as other known opening blockers. It does not
 choose a replacement name or accept the prompt. The standalone conversion and
-Check Performance preparation pool still requires equivalent blocker monitoring.
+Check Performance preparation pool uses the same dialog classification rules.
 
 During opening and outstanding Excel commands, the native host inspects visible dialogs belonging to the exact owned Excel PID. This includes modal `BasicEmbeddedBrowser` windows, which do not use Excel's classic dialog classes. Accessible labels from these browsers are read by a disposable helper with a four-second process deadline and a five-second repeat interval. Editable fields and password values are excluded; email addresses in labels are redacted.
 

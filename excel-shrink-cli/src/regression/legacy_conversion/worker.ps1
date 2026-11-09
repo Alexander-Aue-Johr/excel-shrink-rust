@@ -81,6 +81,9 @@ try {
     $settings = $excel.ActiveWorkbook
     $settings.EnableAutoRecover = $false
     $excel.Calculation = -4135
+    $monitorArguments = '-NoProfile -ExecutionPolicy Bypass -File ' + (Quote-Argument (Join-Path $PSScriptRoot 'watch-opening.ps1')) +
+        ' -Session ' + (Quote-Argument $Session) + ' -HelperPid ' + $PID
+    $dialogMonitor = [CaptureDesktop]::StartOnDesktop($DesktopName, (Join-Path $PSHOME 'powershell.exe'), $monitorArguments, $owned)
     $excelPath = Find-ExcelExecutable
     $excelFile = [Diagnostics.FileVersionInfo]::GetVersionInfo($excelPath)
     $excelStream = [IO.File]::OpenRead($excelPath)

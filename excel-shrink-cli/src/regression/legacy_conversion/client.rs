@@ -117,6 +117,22 @@ pub(super) fn run_request(root: &Path, session: &Path, request: &Request) -> Res
     let mut last_phase = Value::Null;
     let mut last_progress = Instant::now();
     loop {
+        if let Some(blocker) = read_json(&request.directory.join("blocking-dialog.json")) {
+            anyhow::ensure!(
+                blocker["id"] == request.id,
+                "opening dialog belongs to another request"
+            );
+            retire_and_wait(session)?;
+            anyhow::bail!(
+                "Excel {operation} blocked by {} during opening; inspect {}",
+                blocker["kind"],
+                request.directory.display()
+            );
+        }
+        if let Some(error) = read_json(&session.join("dialog-monitor-error.json")) {
+            retire_and_wait(session)?;
+            anyhow::bail!("Excel opening dialog monitor failed: {}", error["error"]);
+        }
         if let Some(response) = read_json(&request.directory.join("response.json")) {
             if response["id"] != request.id {
                 retire_and_wait(session)?;

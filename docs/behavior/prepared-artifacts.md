@@ -443,3 +443,22 @@ counts and an independent live worker target. Successful files retain all three
 save/optimization controls and their producer measurements. A failure remains a
 failure in the denominator. Export prepared variants with the transfer workflow
 for subsequent comparison on a different PC.
+
+## Opening blockers in preparation workers
+
+Each owned conversion or Check Performance Excel worker has an independent,
+read-only dialog monitor on its private desktop. This monitor can run while
+`Workbooks.Open` is blocked in COM. Once per second it verifies the recorded
+Excel process birth time and inspects native dialog labels during the opening
+phase. It shares the targeted resident's English/German failure classifier.
+Progress dialogs and unrecognized messages do not establish an opening failure.
+
+A recognized blocker produces `runtime/blocking-dialog.json` with the request
+identity, phase, kind, native handle, labels and process identity. The request
+client retires the exact owned worker through the existing confirmed-cleanup
+path and reports failure promptly. No choice, authentication, repair or name
+replacement is accepted. Dialog-monitor errors are explicit infrastructure
+failures. Unknown or inaccessible blockers retain the ordinary phase timeout.
+
+Existing prepared outputs and frozen running workers retain their original
+behavior. Updating the source does not modify a running pool's helper files.

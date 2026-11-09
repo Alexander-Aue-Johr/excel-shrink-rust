@@ -78,6 +78,21 @@ impl Pool {
             include_str!("../../../office-capture/CaptureSetup.psm1"),
         )?;
         fs::write(
+            root.join("watch-opening.ps1"),
+            include_str!("watch-opening.ps1"),
+        )?;
+        fs::write(
+            root.join("TargetedOpeningDialogs.cs"),
+            include_str!("../../../office-capture/TargetedOpeningDialogs.cs"),
+        )?;
+        fs::write(
+            root.join("OpeningDialogKinds.psm1"),
+            format!(
+                "\u{feff}{}",
+                include_str!("../../../office-capture/OpeningDialogKinds.psm1")
+            ),
+        )?;
+        fs::write(
             root.join("ExcelConversionErrors.psm1"),
             format!("\u{feff}{}", include_str!("../ExcelConversionErrors.psm1")),
         )?;
