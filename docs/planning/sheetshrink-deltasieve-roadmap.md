@@ -2,6 +2,28 @@
 
 ## Full local night queue requested on 2026-11-09
 
+The later audit-buffering and missing-manifest cleanup runtime was built and
+packaged separately as `runtime-499b27d4`. All 114 package files passed the
+closed-package verifier. Its `deltasieve.exe` SHA-256 is
+`f54bf1ed649b780afbc7b75a994690d08be18e66d513ca0a90393bcf65b97b4b`.
+The current targeted comparison tests passed 154 tests with 14 ignored checks.
+The existing 100,000-change file roundtrip passed. A separate alternating-order
+serialization/compression experiment preserved identical decoded bytes and
+measured a 7.2–10.2-fold improvement within that narrow section. Whole-workbook
+speedup remains unmeasured. The Seeschifffahrt case study explains its large
+save-control audits and nine selected regions in
+`../visual-validation/investigations/seeschifffahrt-xml-inspection-20261109.md`.
+
+The live Destatis runner remains on its existing immutable runtime. A private
+transition supervisor waits for the current queue process to exit at the
+completed-Destatis boundary. It checks process start identity, terminal queue
+status, the complete final diagnosis and ownership of its boundary marker before
+starting Data.gov and then imported Enron with the newly verified runtime.
+The supervisor and current runner were confirmed live while Destatis advanced
+to 1,113 completed comparisons, eighteen skips and twenty-one remaining inputs
+with four active groups. No active comparisons were interrupted for this queued
+transition. The transition itself remains pending until that boundary is reached.
+
 The `3453df30` repeating-background extension passed 143 targeted tests, the
 retained Mikrozensus extent diagnostic and ordinary optimized native unchanged
 and changed-fill controls with gridlines enabled on both sides. The separate
