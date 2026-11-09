@@ -8,6 +8,7 @@ members = [
     "crates/deltasieve-engine",
     "crates/corpus-runner",
     "crates/excel-automation",
+    "crates/preparation-web",
 ]
 resolver = "2"
 

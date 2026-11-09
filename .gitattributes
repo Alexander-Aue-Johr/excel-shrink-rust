@@ -1,1 +1,3 @@
 * text=auto eol=lf
+crates/preparation-web/assets/app.js -whitespace linguist-generated
+crates/preparation-web/assets/app.css linguist-generated

@@ -55,21 +55,65 @@ source-layout dependency, not a runtime dependency on the CLI executable.
 Conversion reuses Excel sessions. Check Performance retains fresh Excel per
 input while continuously refilling worker vacancies.
 
-### Observatory demo assessment
+### Preparation Observatory
 
-The supplied SheetShrink Observatory demo has a synthetic producer, replay
-clock, worker lanes and before/after distributions. It is suitable as a visual
-starting point. Its producer precomputes future jobs and end times. A production
-adapter must instead consume incremental events and retain explicit failed,
-skipped and interrupted states, with bounded visible history for large corpora.
-The standalone apps expose this event seam. The demo is not yet connected.
+`xlsx-convert.exe --web` and `excel-check-performance.exe --web` serve their
+configuration and progress UI on loopback. Starting either executable without
+input/output arguments also enters web mode. `--port 0` selects an available
+port and prints its URL. Input/output/worker options prefill the form. Processing
+starts when the user presses Start. Both applications embed the same frontend
+and call the native library in-process through `preparation-web`.
 
-For conversion, show workbook progress, throughput and ETA. For Check
-Performance, show workbook lanes and before/after sizes. Sheet/chunk lanes and
-cleanup distributions apply only when the selected operation provides those
-measurements. The static UI can be served by a Rust host without a Node runtime.
-Replay should consume the same events as the live projection. Durable receipts
-remain authoritative when optional UI telemetry is incomplete.
+The interface adapts the supplied SheetShrink Observatory's renderer, worker
+lanes, CSS and distribution scenes. The source archive SHA-256 is
+`a3d99a344226fcf2268950451148e86e67df3b8e8590a57a72b07826ed285e31`.
+The synthetic producer and predetermined job schedule have been replaced by an
+incremental native-event projection. Conversion shows workbook progress,
+throughput, ETA and failures. Check Performance additionally shows workbook and
+worksheet size distributions using before/after optimization controls.
+Each worker lane contains workbook jobs on a single level.
+
+Start, stop and live worker changes use token-protected JSON endpoints. Host
+and Origin checks restrict requests to the printed loopback authority. State
+polls carry a cursor and send subsequent events plus aggregate counts. Initial
+connection, run changes and expired cursors receive a bounded snapshot.
+The projection retains 256 recent jobs and 512 events. Global counts survive
+history eviction. Full receipts and an append-only `<output>.events.jsonl`
+remain on disk. A normal web run creates this event file automatically.
+
+Stop requests terminate the owned Excel pool, retain completed outputs and
+leave unstarted inputs queued. They may interrupt the active workbook.
+The source manifest is published from successful conversion receipts, including
+when a conversion run is stopped. Check Performance continuation still uses
+verified `--reuse-from` artifacts. The web host's live projection belongs to its
+process lifetime. Reopening an old result directory as a static report is a
+separate workflow.
+
+Frontend sources are under `crates/preparation-web/ui`. Run `pnpm install`,
+`pnpm check`, `pnpm test` and `pnpm build` there when changing them. The lockfile
+pins dependencies. Generated `assets/app.js` and `assets/app.css` are committed
+and embedded in the binaries, so deployed applications need no Node runtime.
+Bundled dependency licenses are retained under `ui/licenses`.
+
+### Native UI acceptance
+
+The small native test used a genuine BIFF8 XLS file containing A1 = 7 and B1 =
+`A1*2`, plus an XLSX with 999 formatted blank cells. Both were selected through
+the conversion web form with two workers and an 8192 MiB physical/commit
+reserve. Both completed in approximately 2.99 seconds. Their generated source
+manifest then drove Check Performance through its web form in approximately
+6.50 seconds. Outcomes were `no_optimization_needed` and
+`optimization_confirmed`. The measured optimization controls totaled 23,103
+bytes before and 17,302 after. XML inspection confirmed A1 = 7, B1 = 14 and the
+formula `A1*2` in all converted/before/after files. These tiny-file timings
+describe functional acceptance only.
+
+A stop test retained seven completed outputs, recorded one interrupted active
+input and left 192 of 200 duplicate input occurrences queued. All owned Excel
+processes exited. A separate live worker-change test confirmed two ready, busy
+native sessions after changing the target from one to two. Both dashboards
+were visually inspected in the browser. This testing also exposed and fixed
+extended-length TEMP paths rejected by the .NET Framework helper compiler.
 
 Build the Windows entry points with a configured build directory on a working
 drive, then package their outputs into a new directory. Python 3.9 or newer and

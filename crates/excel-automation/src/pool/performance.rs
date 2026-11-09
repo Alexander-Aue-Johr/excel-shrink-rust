@@ -262,6 +262,12 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
         let mut handles = Vec::new();
         let mut last_control = Instant::now();
         loop {
+            if context.should_stop() {
+                cancelled.store(true, Ordering::Release);
+                let error = anyhow::anyhow!("Preparation stopped by user");
+                pool.abort(&error)?;
+                return Err(error);
+            }
             let desired = target.load(Ordering::Acquire);
             for slot in handles.len()..desired {
                 let target = &target;
@@ -277,7 +283,7 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
                 let counters = &counters;
                 let reuse_lookups = &reuse_lookups;
                 handles.push(scope.spawn(move || loop {
-                    if cancelled.load(Ordering::Acquire) || next.load(Ordering::Acquire) >= pending.len() {
+                    if context.should_stop() || cancelled.load(Ordering::Acquire) || next.load(Ordering::Acquire) >= pending.len() {
                         break;
                     }
                     if slot >= target.load(Ordering::Acquire) {
@@ -291,6 +297,22 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
                     let input = &inputs[index];
                     let directory = output.join(format!("input-{index:06}"));
                     context.observe("job.started", Some(&input.source_id), Some(slot), json!({"name": input.name}));
+                    let metadata = match mode {
+                        Mode::CheckPerformance => package_sizes::inspect(&input.baseline)
+                            .map(|sizes| json!({"package": sizes})),
+                        Mode::Conversion => fs::metadata(&input.baseline)
+                            .map(|file| json!({"file_bytes": file.len()}))
+                            .map_err(Into::into),
+                    };
+                    context.observe(
+                        "workbook.metadata",
+                        Some(&input.source_id),
+                        Some(slot),
+                        match metadata {
+                            Ok(metadata) => metadata,
+                            Err(error) => json!({"error": format!("{error:#}")}),
+                        },
+                    );
                     let result = match mode {
                         Mode::CheckPerformance => prepare(&pool_root, input, &directory, &producer),
                         Mode::Conversion => prepare_conversion(&pool_root, input, &directory, &producer),
@@ -418,14 +440,18 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
         inputs.len(),
         requested_target.load(Ordering::Acquire),
         started_at.elapsed(),
-        if pool_result.is_ok() && failed == 0 {
+        if context.should_stop() {
+            "stopped"
+        } else if pool_result.is_ok() && failed == 0 {
             "completed"
         } else {
             "failed"
         },
     )?;
     context.observe(
-        if pool_result.is_ok() && failed == 0 {
+        if context.should_stop() {
+            "run.stopped"
+        } else if pool_result.is_ok() && failed == 0 {
             "run.completed"
         } else {
             "run.failed"
@@ -625,6 +651,35 @@ fn generation_recipe(root: &Path) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requested_stop_keeps_the_queue_unstarted() -> Result<()> {
+        let (root, _, manifest, _) = reuse::fixture()?;
+        let output = root.join("user-stopped");
+        let context = RunContext::quiet(Operation::CheckPerformance);
+        context.stop_handle().store(true, Ordering::Release);
+        let error = run_with_context(
+            Args {
+                input: Vec::new(),
+                source_manifest: Some(manifest),
+                output: output.clone(),
+                workers: 2,
+                reuse_from: None,
+            },
+            context,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("stopped by user"));
+        let progress = read_json(&output.join("progress.json")).unwrap();
+        assert_eq!(progress["started"], 0);
+        assert_eq!(progress["queued"], 1);
+        assert_eq!(progress["status"], "stopped");
+        assert_eq!(
+            read_json(&output.join("workers/manifest.json")).unwrap()["workers"],
+            json!([])
+        );
+        Ok(())
+    }
 
     #[test]
     fn memory_stop_preserves_unstarted_jobs_without_launching_excel() -> Result<()> {

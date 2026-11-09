@@ -15,8 +15,22 @@ fn main() -> anyhow::Result<()> {
         about = "Prepare confirmed Excel Check Performance copies"
     )]
     struct Command {
-        #[command(flatten)]
-        job: performance::Args,
+        #[arg(long, num_args = 1.., conflicts_with = "source_manifest")]
+        input: Vec<PathBuf>,
+        #[arg(long)]
+        source_manifest: Option<PathBuf>,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[arg(long, default_value_t = 2)]
+        workers: usize,
+        #[arg(long)]
+        reuse_from: Option<PathBuf>,
+        /// Open a local configuration and progress web server.
+        #[arg(long)]
+        web: bool,
+        /// Loopback port. Zero chooses an available port.
+        #[arg(long, default_value_t = 0)]
+        port: u16,
         /// Recursively discover XLSX files when an input directory is selected.
         #[arg(long)]
         recursive: bool,
@@ -29,9 +43,28 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut command = Command::parse();
-    if !command.job.input.is_empty() {
-        command.job.input =
-            corpus_runner::sources::expand_paths(&command.job.input, &["xlsx"], command.recursive)?;
+    if command.web
+        || (command.input.is_empty()
+            && command.source_manifest.is_none()
+            && command.output.is_none())
+    {
+        return preparation_web::serve(
+            Operation::CheckPerformance,
+            preparation_web::Defaults {
+                inputs: command.input,
+                output: command.output,
+                workers: command.workers,
+                recursive: command.recursive,
+                reserve_mib: command.reserve_mib,
+                source_manifest: command.source_manifest,
+                reuse_from: command.reuse_from,
+            },
+            command.port,
+        );
+    }
+    if !command.input.is_empty() {
+        command.input =
+            corpus_runner::sources::expand_paths(&command.input, &["xlsx"], command.recursive)?;
     }
     let mut context = match command.events {
         Some(path) => RunContext::observed(
@@ -44,7 +77,18 @@ fn main() -> anyhow::Result<()> {
         .reserve_mib
         .map(MemoryReserve::from_mib)
         .transpose()?;
-    performance::run_with_context(command.job, context)
+    performance::run_with_context(
+        performance::Args {
+            input: command.input,
+            source_manifest: command.source_manifest,
+            output: command
+                .output
+                .ok_or_else(|| anyhow::anyhow!("Choose --output or --web"))?,
+            workers: command.workers,
+            reuse_from: command.reuse_from,
+        },
+        context,
+    )
 }
 
 #[cfg(not(windows))]

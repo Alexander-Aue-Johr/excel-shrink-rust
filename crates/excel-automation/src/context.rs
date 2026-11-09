@@ -5,12 +5,16 @@ use corpus_runner::{
     telemetry::{Events, Observer, Operation},
 };
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 
 pub struct RunContext {
     pub events: Events,
     pub memory_reserve: Option<MemoryReserve>,
     observation_error: Mutex<Option<String>>,
+    stop_requested: Arc<AtomicBool>,
 }
 
 #[cfg(test)]
@@ -44,6 +48,7 @@ impl RunContext {
             events: Events::quiet(operation),
             memory_reserve: None,
             observation_error: Mutex::new(None),
+            stop_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -52,7 +57,16 @@ impl RunContext {
             events: Events::new(operation, observer),
             memory_reserve: None,
             observation_error: Mutex::new(None),
+            stop_requested: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn stop_handle(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stop_requested)
+    }
+
+    pub fn should_stop(&self) -> bool {
+        self.stop_requested.load(Ordering::Acquire)
     }
 
     /// Preserve native outcomes when an optional observer fails, then fail the run explicitly.

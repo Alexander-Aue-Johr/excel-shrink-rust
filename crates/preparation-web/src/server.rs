@@ -1,0 +1,595 @@
+use anyhow::{ensure, Context, Result};
+use axum::{
+    extract::{Query, State},
+    http::{header, HeaderMap, StatusCode},
+    response::{Html, IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
+};
+use corpus_runner::{
+    artifacts,
+    memory::MemoryReserve,
+    package_sizes::PackageSizes,
+    telemetry::{Event, JsonLines, Observer, Operation},
+};
+use excel_automation::{context::RunContext, conversion, pool::performance};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    time::Instant,
+};
+
+const HISTORY_LIMIT: usize = 512;
+const JOB_LIMIT: usize = 256;
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Defaults {
+    pub inputs: Vec<PathBuf>,
+    pub output: Option<PathBuf>,
+    pub workers: usize,
+    pub recursive: bool,
+    pub reserve_mib: Option<u64>,
+    pub source_manifest: Option<PathBuf>,
+    pub reuse_from: Option<PathBuf>,
+}
+
+#[derive(Clone, Serialize)]
+struct Job {
+    id: String,
+    name: String,
+    worker: Option<usize>,
+    started_ms: u64,
+    ended_ms: Option<u64>,
+    status: String,
+    before: Option<PackageSizes>,
+    after: Option<PackageSizes>,
+    source_bytes: Option<u64>,
+    error: Option<String>,
+}
+
+#[derive(Default, Serialize)]
+struct Counts {
+    total: usize,
+    prepared: usize,
+    failed: usize,
+    reused: usize,
+    before_bytes: u64,
+    after_bytes: u64,
+}
+
+struct RunState {
+    id: String,
+    status: &'static str,
+    error: Option<String>,
+    defaults: Defaults,
+    counts: Counts,
+    jobs: VecDeque<Job>,
+    events: VecDeque<Value>,
+    next: u64,
+    started: Instant,
+    elapsed_ms: u64,
+    stop: Option<Arc<AtomicBool>>,
+}
+
+impl RunState {
+    fn new(defaults: Defaults) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            status: "idle",
+            error: None,
+            defaults,
+            counts: Counts::default(),
+            jobs: VecDeque::new(),
+            events: VecDeque::new(),
+            next: 0,
+            started: Instant::now(),
+            elapsed_ms: 0,
+            stop: None,
+        }
+    }
+
+    fn active(&self) -> bool {
+        matches!(self.status, "starting" | "running" | "stopping")
+    }
+
+    fn accept(&mut self, event: &Event) {
+        if event.event_type == "run.started" {
+            self.counts.total = event.payload["total"].as_u64().unwrap_or(0) as usize;
+            self.status = if self.status == "stopping" {
+                "stopping"
+            } else {
+                "running"
+            };
+        }
+        if event.event_type == "workbook.reused" {
+            self.counts.prepared += 1;
+            self.counts.reused += 1;
+        }
+        if let Some(id) = &event.workbook_id {
+            if event.event_type == "job.started" {
+                while self.jobs.len() >= JOB_LIMIT {
+                    let Some(position) = self.jobs.iter().position(|job| job.ended_ms.is_some())
+                    else {
+                        break;
+                    };
+                    self.jobs.remove(position);
+                }
+                self.jobs.push_back(Job {
+                    id: id.clone(),
+                    name: event.payload["name"].as_str().unwrap_or(id).to_owned(),
+                    worker: event.worker_index,
+                    started_ms: event.elapsed_millis,
+                    ended_ms: None,
+                    status: "running".into(),
+                    before: None,
+                    after: None,
+                    source_bytes: None,
+                    error: None,
+                });
+            }
+            if let Some(job) = self.jobs.iter_mut().find(|job| job.id == *id) {
+                match event.event_type.as_str() {
+                    "workbook.metadata" => {
+                        job.before = serde_json::from_value(event.payload["package"].clone()).ok();
+                        job.source_bytes = event.payload["file_bytes"].as_u64();
+                    }
+                    "job.completed" | "job.failed" => {
+                        job.ended_ms = Some(event.elapsed_millis);
+                        job.status = if event.event_type == "job.completed" {
+                            "prepared"
+                        } else {
+                            "failed"
+                        }
+                        .into();
+                        job.error = event.payload["error"].as_str().map(str::to_owned);
+                        let sizes = &event.payload["archive_sizes"];
+                        if let Ok(before) =
+                            serde_json::from_value(sizes["before_optimization"].clone())
+                        {
+                            job.before = Some(before);
+                        }
+                        job.after = serde_json::from_value(sizes["after_optimization"].clone())
+                            .or_else(|_| serde_json::from_value(sizes["converted"].clone()))
+                            .ok();
+                        if job.status == "prepared" {
+                            self.counts.prepared += 1;
+                            if let (Some(before), Some(after)) = (&job.before, &job.after) {
+                                self.counts.before_bytes += before.file_bytes;
+                                self.counts.after_bytes += after.file_bytes;
+                            }
+                        } else {
+                            self.counts.failed += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        self.elapsed_ms = event.elapsed_millis;
+        self.events
+            .push_back(json!({"cursor": self.next, "event": event}));
+        self.next += 1;
+        while self.events.len() > HISTORY_LIMIT {
+            self.events.pop_front();
+        }
+    }
+}
+
+#[derive(Clone)]
+struct App {
+    operation: Operation,
+    token: String,
+    authority: String,
+    run: Arc<Mutex<RunState>>,
+}
+
+struct RunObserver {
+    state: Arc<Mutex<RunState>>,
+    log: JsonLines,
+}
+
+impl Observer for RunObserver {
+    fn publish(&self, event: &Event) -> Result<()> {
+        self.state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Dashboard state poisoned"))?
+            .accept(event);
+        self.log.publish(event)
+    }
+}
+
+pub fn serve(operation: Operation, defaults: Defaults, port: u16) -> Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()?
+        .block_on(async {
+            let listener =
+                tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+            let authority = listener.local_addr()?.to_string();
+            let app = App {
+                operation,
+                token: uuid::Uuid::new_v4().to_string(),
+                authority: authority.clone(),
+                run: Arc::new(Mutex::new(RunState::new(defaults))),
+            };
+            let routes = Router::new()
+                .route("/", get(index))
+                .route(
+                    "/app.js",
+                    get(|| async {
+                        (
+                            [(header::CONTENT_TYPE, "text/javascript")],
+                            include_str!("../assets/app.js"),
+                        )
+                    }),
+                )
+                .route(
+                    "/app.css",
+                    get(|| async {
+                        (
+                            [(header::CONTENT_TYPE, "text/css")],
+                            include_str!("../assets/app.css"),
+                        )
+                    }),
+                )
+                .route("/api/state", get(state))
+                .route("/api/start", post(start))
+                .route("/api/stop", post(stop))
+                .route("/api/workers", post(workers))
+                .layer(axum::middleware::from_fn_with_state(
+                    app.clone(),
+                    check_host,
+                ))
+                .with_state(app);
+            println!("Preparation Observatory: http://{authority}/");
+            axum::serve(listener, routes).await?;
+            Ok(())
+        })
+}
+
+async fn check_host(
+    State(app): State<App>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if request
+        .headers()
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        != Some(app.authority.as_str())
+    {
+        return (StatusCode::FORBIDDEN, "Invalid local host").into_response();
+    }
+    next.run(request).await
+}
+
+async fn index(State(app): State<App>) -> Response {
+    let html = include_str!("../assets/index.html").replace("__TOKEN__", &app.token);
+    ([(header::CACHE_CONTROL, "no-store"),
+      (header::CONTENT_SECURITY_POLICY, "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'")], Html(html)).into_response()
+}
+
+#[derive(Default, Deserialize)]
+struct Cursor {
+    run: Option<String>,
+    after: Option<u64>,
+}
+
+async fn state(State(app): State<App>, Query(cursor): Query<Cursor>) -> Response {
+    let run = app.run.lock().unwrap();
+    let first = run
+        .events
+        .front()
+        .and_then(|event| event["cursor"].as_u64())
+        .unwrap_or(run.next);
+    let reset = cursor.run.as_deref() != Some(&run.id)
+        || cursor
+            .after
+            .is_none_or(|after| after < first || after > run.next);
+    let events: Vec<_> = if reset {
+        Vec::new()
+    } else {
+        run.events
+            .iter()
+            .filter(|event| event["cursor"].as_u64().unwrap() >= cursor.after.unwrap())
+            .cloned()
+            .collect()
+    };
+    let elapsed_ms = if run.active() {
+        run.started.elapsed().as_millis() as u64
+    } else {
+        run.elapsed_ms
+    };
+    ([(header::CACHE_CONTROL, "no-store")], Json(json!({
+        "run_id": run.id, "operation": app.operation, "status": run.status, "error": run.error,
+            "defaults": if reset { Some(&run.defaults) } else { None }, "workers": run.defaults.workers,
+            "counts": run.counts, "elapsed_ms": elapsed_ms,
+        "next": run.next, "reset": reset, "jobs": if reset { Some(&run.jobs) } else { None }, "events": events,
+        "history_limit": JOB_LIMIT,
+    }))).into_response()
+}
+
+fn authorize(app: &App, headers: &HeaderMap) -> Result<()> {
+    ensure!(
+        headers
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok())
+            == Some(app.authority.as_str()),
+        "Invalid local host"
+    );
+    ensure!(
+        headers
+            .get("x-observatory-token")
+            .and_then(|value| value.to_str().ok())
+            == Some(app.token.as_str()),
+        "Invalid request token"
+    );
+    if let Some(origin) = headers.get(header::ORIGIN) {
+        ensure!(
+            origin.to_str()? == format!("http://{}", app.authority),
+            "Invalid origin"
+        );
+    }
+    Ok(())
+}
+
+fn rejected(error: impl std::fmt::Display) -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({"error": error.to_string()})),
+    )
+        .into_response()
+}
+
+async fn start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(defaults): Json<Defaults>,
+) -> Response {
+    if let Err(error) = authorize(&app, &headers) {
+        return rejected(error);
+    }
+    if defaults.workers == 0 || defaults.workers > 256 {
+        return rejected("Choose between 1 and 256 workers");
+    }
+    if let Some(mib) = defaults.reserve_mib {
+        if let Err(error) = MemoryReserve::from_mib(mib) {
+            return rejected(error);
+        }
+    }
+    let Some(output) = defaults.output.as_ref() else {
+        return rejected("Choose a new output directory");
+    };
+    if output.exists() {
+        return rejected("Output directory already exists. Choose a new directory");
+    }
+    if !output.parent().is_some_and(|parent| parent.is_dir()) {
+        return rejected("Output parent directory must exist");
+    }
+    if defaults.inputs.is_empty() && defaults.source_manifest.is_none() {
+        return rejected("Choose input files or a source manifest");
+    }
+    if !defaults.inputs.is_empty() && defaults.source_manifest.is_some() {
+        return rejected("Choose either input paths or a source manifest");
+    }
+    if matches!(app.operation, Operation::XlsxConvert)
+        && (defaults.source_manifest.is_some() || defaults.reuse_from.is_some())
+    {
+        return rejected("Conversion accepts input paths and a new output directory");
+    }
+    let mut log_name = output.as_os_str().to_os_string();
+    log_name.push(".events.jsonl");
+    let log_path = PathBuf::from(log_name);
+    let mut run = app.run.lock().unwrap();
+    if run.active() {
+        return rejected("A preparation is already running");
+    }
+    let log = match JsonLines::create(&log_path) {
+        Ok(log) => log,
+        Err(error) => return rejected(error),
+    };
+    *run = RunState::new(defaults.clone());
+    run.status = "starting";
+    let mut context = RunContext::observed(
+        app.operation,
+        Arc::new(RunObserver {
+            state: Arc::clone(&app.run),
+            log,
+        }),
+    );
+    context.memory_reserve = defaults
+        .reserve_mib
+        .map(MemoryReserve::from_mib)
+        .transpose()
+        .unwrap();
+    run.stop = Some(context.stop_handle());
+    drop(run);
+    tokio::spawn(async move {
+        let operation = app.operation;
+        let result =
+            tokio::task::spawn_blocking(move || execute(operation, defaults, context)).await;
+        let mut run = app.run.lock().unwrap();
+        run.elapsed_ms = run.started.elapsed().as_millis() as u64;
+        let stopped = run
+            .stop
+            .as_ref()
+            .is_some_and(|stop| stop.load(Ordering::Acquire));
+        let error = match result {
+            Ok(Ok(())) => None,
+            Ok(Err(error)) => Some(format!("{error:#}")),
+            Err(error) => Some(error.to_string()),
+        };
+        run.status = if stopped {
+            "stopped"
+        } else if error.is_some() {
+            "failed"
+        } else {
+            "completed"
+        };
+        run.error = error;
+        let elapsed = run.elapsed_ms;
+        for job in run.jobs.iter_mut().filter(|job| job.ended_ms.is_none()) {
+            job.ended_ms = Some(elapsed);
+            job.status = "interrupted".into();
+        }
+        run.stop = None;
+    });
+    Json(json!({"accepted": true})).into_response()
+}
+
+fn execute(operation: Operation, defaults: Defaults, context: RunContext) -> Result<()> {
+    let output = defaults.output.context("Output missing")?;
+    match operation {
+        Operation::XlsxConvert => conversion::run(
+            conversion::Options {
+                inputs: defaults.inputs,
+                output,
+                workers: defaults.workers,
+                recursive: defaults.recursive,
+            },
+            context,
+        ),
+        Operation::CheckPerformance => {
+            let inputs = if defaults.inputs.is_empty() {
+                Vec::new()
+            } else {
+                corpus_runner::sources::expand_paths(
+                    &defaults.inputs,
+                    &["xlsx"],
+                    defaults.recursive,
+                )?
+            };
+            performance::run_with_context(
+                performance::Args {
+                    input: inputs,
+                    source_manifest: defaults.source_manifest,
+                    output,
+                    workers: defaults.workers,
+                    reuse_from: defaults.reuse_from,
+                },
+                context,
+            )
+        }
+        Operation::SheetShrink => anyhow::bail!("This host serves native Excel preparation"),
+    }
+}
+
+async fn stop(State(app): State<App>, headers: HeaderMap) -> Response {
+    if let Err(error) = authorize(&app, &headers) {
+        return rejected(error);
+    }
+    let mut run = app.run.lock().unwrap();
+    if let Some(stop) = &run.stop {
+        stop.store(true, Ordering::Release);
+        run.status = "stopping";
+    }
+    Json(json!({"accepted": true})).into_response()
+}
+
+#[derive(Deserialize)]
+struct Workers {
+    workers: usize,
+}
+
+async fn workers(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(request): Json<Workers>,
+) -> Response {
+    if let Err(error) = authorize(&app, &headers) {
+        return rejected(error);
+    }
+    if request.workers == 0 || request.workers > 256 {
+        return rejected("Choose between 1 and 256 workers");
+    }
+    let mut run = app.run.lock().unwrap();
+    if run.status != "running" {
+        return rejected("Wait for the preparation to start");
+    }
+    let output = run.defaults.output.as_ref().unwrap();
+    if let Err(error) = artifacts::atomic_write(
+        &output.join("control.json"),
+        &serde_json::to_vec(&json!({"version": 1, "workers": request.workers})).unwrap(),
+    ) {
+        return rejected(error);
+    }
+    run.defaults.workers = request.workers;
+    Json(json!({"accepted": true})).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app() -> App {
+        App {
+            operation: Operation::XlsxConvert,
+            token: "test-token".into(),
+            authority: "127.0.0.1:12345".into(),
+            run: Arc::new(Mutex::new(RunState::new(Defaults {
+                inputs: Vec::new(),
+                output: None,
+                workers: 2,
+                recursive: false,
+                reserve_mib: None,
+                source_manifest: None,
+                reuse_from: None,
+            }))),
+        }
+    }
+
+    fn event(sequence: u64, kind: &str, id: &str) -> Event {
+        Event {
+            version: 1,
+            sequence,
+            elapsed_millis: sequence,
+            operation: Operation::XlsxConvert,
+            event_type: kind.into(),
+            workbook_id: Some(id.into()),
+            worker_index: Some(0),
+            payload: json!({"name": id}),
+        }
+    }
+
+    #[test]
+    fn history_eviction_retains_global_counts() {
+        let app = app();
+        let mut state = app.run.lock().unwrap();
+        for index in 0..700 {
+            let id = index.to_string();
+            state.accept(&event(index * 2, "job.started", &id));
+            state.accept(&event(index * 2 + 1, "job.completed", &id));
+        }
+        assert_eq!(state.counts.prepared, 700);
+        assert_eq!(state.jobs.len(), JOB_LIMIT);
+        assert_eq!(state.events.len(), HISTORY_LIMIT);
+        assert_eq!(
+            state.events.front().unwrap()["cursor"],
+            1400 - HISTORY_LIMIT
+        );
+    }
+
+    #[test]
+    fn mutations_require_local_authority_token_and_origin() {
+        let app = app();
+        let mut headers = HeaderMap::new();
+        assert!(authorize(&app, &headers).is_err());
+        headers.insert(header::HOST, "127.0.0.1:12345".parse().unwrap());
+        headers.insert("x-observatory-token", "test-token".parse().unwrap());
+        assert!(authorize(&app, &headers).is_ok());
+        headers.insert(header::ORIGIN, "https://unrelated.example".parse().unwrap());
+        assert!(authorize(&app, &headers).is_err());
+        headers.insert(header::ORIGIN, "http://127.0.0.1:12345".parse().unwrap());
+        assert!(authorize(&app, &headers).is_ok());
+        headers.insert(header::HOST, "unrelated.example".parse().unwrap());
+        assert!(authorize(&app, &headers).is_err());
+    }
+}

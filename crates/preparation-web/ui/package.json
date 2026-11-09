@@ -1,0 +1,25 @@
+{
+  "name": "preparation-observatory-ui",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc -p tsconfig.json",
+    "test": "node test.mjs",
+    "format": "prettier --write app components lib main.tsx live.ts styles.css build.mjs"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "lucide-react": "0.468.0",
+    "three": "0.177.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.5",
+    "prettier": "3.5.3",
+    "typescript": "5.8.3",
+    "@types/react": "19.1.6",
+    "@types/react-dom": "19.1.6",
+    "@types/three": "0.177.0"
+  }
+}

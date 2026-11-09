@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] }
+  },
+  "include": ["main.tsx", "live.ts", "components/**/*.tsx", "lib/**/*.ts"]
+}

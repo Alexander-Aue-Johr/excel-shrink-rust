@@ -1,0 +1,108 @@
+.preparation-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 22px;
+  margin-bottom: 24px;
+}
+.preparation-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+}
+.preparation-form input,
+.preparation-form textarea {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  color: var(--text);
+  background: var(--bg);
+  width: 100%;
+}
+.preparation-form textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+.preparation-form .check {
+  flex-direction: row;
+  align-items: center;
+}
+.preparation-form .check input {
+  width: auto;
+}
+.wide {
+  grid-column: 1 / -1;
+}
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.form-note,
+.view-note {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.view-note {
+  padding: 16px 20px;
+}
+.error-banner {
+  background: #43282b;
+  color: #ffb3b3;
+  padding: 18px;
+  margin-bottom: 20px;
+  overflow-wrap: anywhere;
+}
+.failure {
+  color: #e5a8a8;
+  overflow-wrap: anywhere;
+}
+.focus-book p {
+  margin-top: 14px;
+  line-height: 1.6;
+}
+.job-results {
+  margin-top: 24px;
+}
+.job-table {
+  max-height: 440px;
+  overflow: auto;
+}
+.job-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.job-table th,
+.job-table td {
+  text-align: left;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+.job-table th {
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+}
+.job-table td:first-child {
+  max-width: 600px;
+  overflow-wrap: anywhere;
+}
+.job-table td button {
+  text-align: left;
+}
+.job-table tbody tr {
+  cursor: pointer;
+}
+.selected-job {
+  background: #233b38;
+}
+@media (max-width: 760px) {
+  .preparation-form {
+    grid-template-columns: 1fr;
+  }
+  .form-actions {
+    grid-column: 1;
+  }
+}
