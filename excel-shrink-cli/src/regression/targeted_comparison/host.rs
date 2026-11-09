@@ -386,7 +386,7 @@ impl ExcelHost {
         };
         let mut child = Command::new("powershell.exe")
             .args(["-STA", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(&script)
+            .arg(crate::regression::excel_automation::power_shell_path(&script)?)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -661,7 +661,8 @@ mod tests {
             &script,
             r#"
 $command = [Console]::ReadLine() | ConvertFrom-Json
-@{ok=$true;result=@{complete=$true;received_budget_ms=$command.budget_ms}} | ConvertTo-Json -Compress
+$resolved = Join-Path $PSScriptRoot 'verified'
+@{ok=$true;result=@{complete=$true;received_budget_ms=$command.budget_ms;script_root=$resolved}} | ConvertTo-Json -Compress
 "#,
         )?;
         let args = super::super::Args::try_parse_from([
@@ -674,9 +675,11 @@ $command = [Console]::ReadLine() | ConvertFrom-Json
             root.to_str().context("test path encoding")?,
         ])?;
         let telemetry = Telemetry::start(&args)?;
-        let mut host = ExcelHost::start(Some(&script), Duration::from_secs(90))?;
+        let canonical_script = std::fs::canonicalize(&script)?;
+        let mut host = ExcelHost::start(Some(&canonical_script), Duration::from_secs(90))?;
         let result = host.height_runs(LaneId::O, "Data", &[(1, 100)], &telemetry)?;
         assert_eq!(result["received_budget_ms"], 90_000);
+        assert!(result["script_root"].as_str().context("script root")?.ends_with("verified"));
         drop(host);
         drop(telemetry);
         std::fs::remove_dir_all(root)?;

@@ -650,6 +650,11 @@ Completed corpus comparisons remove temporary upload-pool links after both repor
 
 ### Embedded authentication dialogs
 
+The persistent PowerShell command host receives a normalized Windows script
+path, including when capture assets were resolved through canonical filesystem
+paths. Windows verbatim prefixes must not reach its `-File` argument because
+Windows PowerShell 5 can otherwise lose `PSScriptRoot` before host initialization.
+
 The targeted resident classifies an owned dialog titled `Name Conflict` or
 `Namenskonflikt` as `name_conflict`. It follows the same early-failure evidence
 and owned-process cleanup path as other known opening blockers. It does not
