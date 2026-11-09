@@ -2,6 +2,48 @@
 
 ## Retained cases
 
+### Long-running whole-grid fallback observations
+
+The 2026-11-09 live observations distinguish elapsed runtime from completed
+full-capture timing. Neither attempt had finished at this checkpoint.
+
+| Workbook | Sheet responsible for the large plan | All regions | Regions on that sheet | Elapsed hours | Captures completed per state |
+| --- | --- | --- | --- | --- | --- |
+| `elterngeld-leistungsbezuege-wohnsitz-kreisebene-j-5229211187005.xlsx` | `Erläuterung` | 104,836 | 104,833 | 5.29 | 60,864 |
+| `abwasser-oeffentlich-2190212199005.xlsx` | `Inhalt` | 185,942 | 185,856 | 5.26 | 60,696 |
+
+The respective attempt identities are
+`e52cdda8adbafd3ea9bd/targeted-be0670db-f76a-40d1-b665-3615fc23179f`
+and `f83cbc0ae64d8359ea27/targeted-02a4537a-a33d-4378-9c14-7aa26bc591ba`.
+Their retained `capture-regions.jsonl` and SQLite-backed telemetry belong to
+the Destatis run `90e78249-ac4b-493e-a3e4-0068b7060d0e`.
+Both original and SheetShrink lanes were still returning successful batches.
+Observed eight-region batches took approximately 3.4 and 2.7 seconds,
+respectively. These samples do not establish the total full-capture duration.
+
+The offline snapshot diagnostic reproduced visual bounds `A1:XFD1048576`
+on both sheets, with no conditional-formatting blocks. Content bounds were
+`A3:A6` and `A1:B47`, respectively. The unsupported-object fallback disables
+the finite uniform-background-tail proof. This explains the large region plan
+without attributing it to a stalled Excel process.
+
+In `Inhalt`, `drawing2.xml` contains two coincident horizontal shapes, `Line 1`
+and `Line 2`. Each runs from column 0/row 1, offset `(0, 95250)` EMU, to
+column 3/row 1, offset `(800100, 95250)` EMU. The transform has origin
+`(0, 323850)` and extent `(9925050, 0)` EMU. Both use preset geometry `line`
+and explicit stroke width `10795` EMU, approximately 0.85 points. Their
+`headEnd` and `tailEnd` elements have no attributes. The existing
+`anchor_has_unmodeled_visuals` rule treats an explicit stroke width as
+unmodeled. A zero-height geometric line still has visible stroke extent.
+
+The focused test
+`office_plan::visual_plan::tests::abwasser_explicit_line_stroke_retains_unmodeled_visual_fallback`
+records this reduced reproducer and its current fallback behavior. It does not
+qualify the line for bounded capture. Any replacement must account for stroke
+and endpoint extent, hidden or collapsed neighboring cells, and unsupported
+effects, and must include native mutation controls before deployment. Record
+the replacement region count and measured runtime here when those checks pass.
+
 The Elterngeld workbook's retained measured plan contains 104,836 shared
 capture regions, including many near row one million on `Erläuterung`. That
 worksheet has only 18 serialized cells and dimension `A3:I6`. Its visible PDF

@@ -775,6 +775,32 @@ mod tests {
     }
 
     #[test]
+    fn abwasser_explicit_line_stroke_retains_unmodeled_visual_fallback() {
+        // abwasser-oeffentlich-2190212199005.xlsx, sheet Inhalt, drawing2.xml.
+        // Both retained horizontal lines use these anchors and a 10,795 EMU stroke.
+        // The fallback currently prevents finite background-tail coverage. Keep this
+        // reproducer until stroke extent has an independently verified bound.
+        let drawing = br#"<xdr:wsDr xmlns:xdr="x" xmlns:a="a">
+            <xdr:twoCellAnchor>
+                <xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff>
+                    <xdr:row>1</xdr:row><xdr:rowOff>95250</xdr:rowOff></xdr:from>
+                <xdr:to><xdr:col>3</xdr:col><xdr:colOff>800100</xdr:colOff>
+                    <xdr:row>1</xdr:row><xdr:rowOff>95250</xdr:rowOff></xdr:to>
+                <xdr:sp><xdr:spPr>
+                    <a:xfrm><a:off x="0" y="323850"/>
+                        <a:ext cx="9925050" cy="0"/></a:xfrm>
+                    <a:prstGeom prst="line"><a:avLst/></a:prstGeom>
+                    <a:ln w="10795"><a:solidFill><a:srgbClr val="000000"/>
+                        </a:solidFill><a:round/><a:headEnd/><a:tailEnd/></a:ln>
+                </xdr:spPr></xdr:sp><xdr:clientData/>
+            </xdr:twoCellAnchor>
+        </xdr:wsDr>"#;
+        let plan = parse_drawing(drawing).unwrap();
+        assert_eq!((plan.max_row, plan.max_column), (2, 4));
+        assert!(plan.fallback_required);
+    }
+
+    #[test]
     fn alternate_drawing_branches_extend_the_capture_bounds() {
         let drawing = br#"<xdr:wsDr xmlns:xdr="x" xmlns:mc="m">
             <mc:AlternateContent><mc:Choice Requires="a14">
