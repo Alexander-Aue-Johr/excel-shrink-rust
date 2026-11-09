@@ -1,6 +1,6 @@
 //! Prepare attributable optimization artifacts with a continuously refilled Excel pool.
 use super::*;
-use crate::validation_preparation::{self, Input};
+use corpus_runner::sources::{self as validation_preparation, Input};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Mutex,
@@ -42,26 +42,26 @@ fn publish_progress(
 }
 
 #[derive(clap::Args, Debug)]
-pub(crate) struct Args {
+pub struct Args {
     /// Prepared XLSX inputs. Legacy conversion remains a separate operation.
     #[arg(long, required_unless_present = "source_manifest", conflicts_with = "source_manifest", num_args = 1..)]
-    input: Vec<PathBuf>,
+    pub input: Vec<PathBuf>,
     /// Stable source occurrences and expected baseline hashes for corpus reuse.
     #[arg(long)]
-    source_manifest: Option<PathBuf>,
+    pub source_manifest: Option<PathBuf>,
     /// New directory retaining per-input results, failures and worker ownership.
     #[arg(long)]
-    output: PathBuf,
+    pub output: PathBuf,
     /// Independent Excel workers; may exceed the logical processor count.
     #[arg(long, default_value_t = 2)]
-    workers: usize,
+    pub workers: usize,
     /// Reuse verified successful inputs from a completed or positively departed preparation.
     #[arg(long)]
-    reuse_from: Option<PathBuf>,
+    pub reuse_from: Option<PathBuf>,
 }
 
 /// Run one continuously refilled queue, retaining every input's terminal receipt.
-pub(crate) fn run_manifest(
+pub fn run_manifest(
     source_manifest: PathBuf,
     output: PathBuf,
     workers: usize,
@@ -77,7 +77,7 @@ pub(crate) fn run_manifest(
 }
 
 /// Run one continuously refilled queue, retaining every input's terminal receipt.
-pub(crate) fn run(args: Args) -> Result<()> {
+pub fn run(args: Args) -> Result<()> {
     anyhow::ensure!(
         args.workers > 0,
         "Check Performance workers must be positive"
@@ -102,7 +102,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
         &output.join("control.json"),
         &json!({"version":1,"workers":args.workers}),
     )?;
-    let producer = super::super::artifact_cache::hash_file(&std::env::current_exe()?)?;
+    let producer = corpus_runner::artifacts::hash_file(&std::env::current_exe()?)?;
     write_json(
         &output.join("owner.json"),
         &json!({"pid":std::process::id(),"started_ms":crate::native_process::current_started_unix_ms()}),
@@ -352,7 +352,7 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
     fs::create_dir(directory)?;
     let runtime = directory.join("runtime");
     fs::create_dir(&runtime)?;
-    let source_hash = super::super::artifact_cache::hash_file(input)?;
+    let source_hash = corpus_runner::artifacts::hash_file(input)?;
     if let Some(expected) = &source.expected_sha256 {
         anyhow::ensure!(
             expected == &source_hash,
@@ -362,7 +362,7 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
     let baseline = directory.join("baseline.xlsx");
     fs::copy(input, &baseline)?;
     anyhow::ensure!(
-        source_hash == super::super::artifact_cache::hash_file(&baseline)?,
+        source_hash == corpus_runner::artifacts::hash_file(&baseline)?,
         "Baseline changed while freezing the preparation input"
     );
     zip::ZipArchive::new(File::open(&baseline)?)?
@@ -371,16 +371,16 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
     let (session, lease) = client::lease_session(root)?;
     let request = Request {
         id: uuid::Uuid::new_v4().to_string(),
-        input: PathBuf::from(super::super::power_shell_path(&baseline)?),
-        output: PathBuf::from(super::super::power_shell_path(directory)?),
-        directory: PathBuf::from(super::super::power_shell_path(&runtime)?),
+        input: PathBuf::from(crate::shell::power_shell_path(&baseline)?),
+        output: PathBuf::from(crate::shell::power_shell_path(directory)?),
+        directory: PathBuf::from(crate::shell::power_shell_path(&runtime)?),
         performance: true,
     };
     let response = client::run_request(root, &session, &request)?
         .context("Check Performance worker exited before completing this input")?;
     drop(lease);
     anyhow::ensure!(
-        source_hash == super::super::artifact_cache::hash_file(input)?,
+        source_hash == corpus_runner::artifacts::hash_file(input)?,
         "Input changed during preparation"
     );
     anyhow::ensure!(
@@ -397,7 +397,7 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
             name,
             json!({
                 "bytes": fs::metadata(&path)?.len(),
-                "sha256": super::super::artifact_cache::hash_file(&path)?
+                "sha256": corpus_runner::artifacts::hash_file(&path)?
             }),
         );
     }
@@ -437,10 +437,7 @@ fn generation_recipe(root: &Path) -> Result<Value> {
         "NativeWindow.cs",
         "ExcelProcessId.cs",
     ] {
-        recipe.insert(
-            name,
-            super::super::artifact_cache::hash_file(&root.join(name))?,
-        );
+        recipe.insert(name, corpus_runner::artifacts::hash_file(&root.join(name))?);
     }
     Ok(serde_json::to_value(recipe)?)
 }
@@ -640,8 +637,7 @@ mod tests {
                 "fresh-excel-per-input"
             );
             assert_eq!(
-                receipt["native_result"]["status"],
-                first["native_result"]["status"],
+                receipt["native_result"]["status"], first["native_result"]["status"],
                 "Repeating the same original must not reuse the previous optimization outcome"
             );
             assert_eq!(receipt["artifacts"].as_object().unwrap().len(), 3);
@@ -653,9 +649,7 @@ mod tests {
         for directory in ["input-000000", "input-000001", "input-000002"] {
             let receipt = read_json(&output.join(directory).join("prepared.json")).unwrap();
             assert_eq!(
-                super::super::super::artifact_cache::hash_file(
-                    &output.join(directory).join("baseline.xlsx")
-                )?,
+                corpus_runner::artifacts::hash_file(&output.join(directory).join("baseline.xlsx"))?,
                 receipt["source_sha256"]
             );
         }

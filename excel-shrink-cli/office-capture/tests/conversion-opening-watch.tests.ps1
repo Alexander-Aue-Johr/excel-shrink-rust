@@ -18,7 +18,7 @@ try {
     foreach ($name in @('TargetedOpeningDialogs.cs', 'OpeningDialogKinds.psm1')) {
         Copy-Item -LiteralPath (Join-Path $capture $name) -Destination $root
     }
-    Copy-Item -LiteralPath (Join-Path $capture '../src/regression/legacy_conversion/watch-opening.ps1') -Destination $root
+    Copy-Item -LiteralPath (Join-Path $capture '../../crates/excel-automation/src/pool/watch-opening.ps1') -Destination $root
     $shell = Join-Path $PSHOME 'powershell.exe'
     $arguments = '-STA -NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -DialogWorker'
     $worker = $desktop.Start($shell, $arguments, $owned)

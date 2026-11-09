@@ -291,6 +291,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "corpus-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+ "windows-sys",
+ "zip",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -473,6 +486,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
+name = "excel-automation"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "corpus-runner",
+ "serde",
+ "serde_json",
+ "uuid",
+ "windows-sys",
+ "zip",
+]
+
+[[package]]
 name = "excel-shrink-cli"
 version = "0.1.0"
 dependencies = [
@@ -481,8 +509,10 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
+ "corpus-runner",
  "crc32fast",
  "deltasieve-engine",
+ "excel-automation",
  "excel-shrink-core",
  "flate2",
  "futures-util",

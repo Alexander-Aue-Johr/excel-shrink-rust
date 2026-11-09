@@ -22,6 +22,8 @@ corpus-regression-tests = []
 cell-tracing = ["excel-shrink-core/cell-tracing"]
 
 [dependencies]
+excel-automation = { path = "../crates/excel-automation" }
+corpus-runner = { path = "../crates/corpus-runner" }
 deltasieve-engine = { path = "../crates/deltasieve-engine" }
 excel-shrink-core = { path = "../excel-shrink-core" }
 clap = { version = "4.4", features = ["derive"] }

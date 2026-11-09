@@ -29,13 +29,10 @@ impl Worker {
     ) -> Result<Self> {
         let directory = root.join(uuid::Uuid::new_v4().to_string());
         fs::create_dir(&directory)?;
-        let mut command = super::super::excel_automation::power_shell_script_command(
+        let mut command = crate::shell::power_shell_script_command(
             script,
             &[
-                (
-                    "Session",
-                    super::super::excel_automation::power_shell_path(&directory)?,
-                ),
+                ("Session", crate::shell::power_shell_path(&directory)?),
                 ("OwnerPid", std::process::id().to_string()),
                 ("OwnerStartedMs", owner_started_ms.to_string()),
             ],

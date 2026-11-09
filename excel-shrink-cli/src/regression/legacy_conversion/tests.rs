@@ -1,4 +1,14 @@
 use super::*;
+use anyhow::{Context, Result};
+use serde_json::{json, Value};
+use std::{fs, path::{Path, PathBuf}, time::{Duration, Instant}};
+fn read_json(path: &Path) -> Option<Value> {
+    fs::read(path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok())
+}
+fn write_json(path: &Path, value: &impl serde::Serialize) -> Result<()> {
+    corpus_runner::artifacts::atomic_write(path, &serde_json::to_vec(value)?)
+}
+
 
 /// Measure workbook switching separately from process and Office.js readiness.
 #[test]
@@ -17,10 +27,10 @@ fn native_xlsx_pair_opens_in_the_same_owned_excel_process() -> Result<()> {
     let startup = Instant::now();
     let mut pool = Pool::new(root.join("pool"))?;
     pump_until(&mut pool, 1, |pool| {
-        pool.workers.len() == 1 && pool.workers[0].ready()
+        pool.sessions().len() == 1 && pool.sessions()[0].ready
     })?;
     let startup_seconds = startup.elapsed().as_secs_f64();
-    let identity = read_json(&pool.workers[0].directory.join("identity.json"))
+    let identity = read_json(&pool.sessions()[0].directory.join("identity.json"))
         .context("Missing owned Excel identity")?;
     let mut samples = Vec::new();
     for round in 0..2 {
@@ -28,8 +38,8 @@ fn native_xlsx_pair_opens_in_the_same_owned_excel_process() -> Result<()> {
             let output = root.join(format!("round-{round}-{index}.xlsx"));
             let work = root.join(format!("request-{round}-{index}"));
             let metrics = std::thread::scope(|scope| -> Result<_> {
-                let pool_root = pool.root.clone();
-                let request = scope.spawn(move || client::convert(&pool_root, input, &output, &work));
+                let pool_root = pool.root().to_path_buf();
+                let request = scope.spawn(move || convert(&pool_root, input, &output, &work));
                 pump_until(&mut pool, 1, |_| request.is_finished())?;
                 request.join().unwrap()
             })?;
@@ -58,41 +68,11 @@ fn native_xlsx_pair_opens_in_the_same_owned_excel_process() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn ram_reserve_has_a_512_mib_floor() {
-    assert!(!has_startup_reserve(512 * 1_048_576 - 1, 0));
-    assert!(has_startup_reserve(512 * 1_048_576, 0));
-    assert!(!has_startup_reserve(768 * 1_048_576, 1024));
-}
 
-#[test]
-fn a_session_lease_is_exclusive_and_released_on_drop() -> Result<()> {
-    let root = std::env::temp_dir().join(format!("conversion-lease-{}", uuid::Uuid::new_v4()));
-    fs::create_dir(&root)?;
-    let first = open_lease(&root)?;
-    first.try_lock()?;
-    let second = open_lease(&root)?;
-    assert!(second.try_lock().is_err());
-    drop(first);
-    second.try_lock()?;
-    Ok(())
-}
 
-#[test]
-fn idle_pool_polls_coalesce_heartbeat_writes() -> Result<()> {
-    let root = std::env::temp_dir().join(format!("pool-heartbeat-{}", uuid::Uuid::new_v4()));
-    let mut pool = Pool::new(root.clone())?;
-    let heartbeat = root.join("heartbeat");
-    // Keep the publication deadline fixed while polling an unchanged pool.
-    pool.last_publish = Instant::now() + Duration::from_secs(60);
-    fs::write(&heartbeat, b"unchanged-probe")?;
-    pool.reconcile(0, 512)?;
-    assert_eq!(fs::read(&heartbeat)?, b"unchanged-probe");
-    pool.last_publish = Instant::now() - Duration::from_secs(2);
-    pool.reconcile(0, 512)?;
-    assert_eq!(fs::read(&heartbeat)?, b"running");
-    Ok(())
-}
+
+
+
 
 /// Exercise reuse, independent sessions, error recycling, scale-down and cleanup.
 #[test]
@@ -112,10 +92,10 @@ fn native_pool_reuses_excel_and_recovers_failed_sessions() -> Result<()> {
     )?;
     let mut pool = Pool::new(root.join("pool"))?;
     pump_until(&mut pool, 2, |pool| {
-        pool.workers.len() == 2 && pool.workers.iter().all(worker::Worker::ready)
+        pool.sessions().len() == 2 && pool.sessions().iter().all(|worker| worker.ready)
     })?;
     let original: Vec<_> = pool
-        .workers
+        .sessions()
         .iter()
         .map(|worker| read_json(&worker.directory.join("identity.json")).unwrap())
         .collect();
@@ -128,9 +108,9 @@ fn native_pool_reuses_excel_and_recovers_failed_sessions() -> Result<()> {
                 let input = fixtures.join("normal.xls");
                 let output = root.join(format!("round-{round}-{index}.xlsx"));
                 let work = root.join(format!("round-{round}-{index}"));
-                let pool_root = pool.root.clone();
+                let pool_root = pool.root().to_path_buf();
                 handles
-                    .push(scope.spawn(move || client::convert(&pool_root, &input, &output, &work)));
+                    .push(scope.spawn(move || convert(&pool_root, &input, &output, &work)));
             }
             pump_until(&mut pool, 2, |_| {
                 handles.iter().all(|handle| handle.is_finished())
@@ -158,11 +138,11 @@ fn native_pool_reuses_excel_and_recovers_failed_sessions() -> Result<()> {
         .iter()
         .any(|identity| identity["pid"].as_u64() == metrics.excel_pid.map(u64::from))));
     std::thread::scope(|scope| -> Result<()> {
-        let pool_root = pool.root.clone();
+        let pool_root = pool.root().to_path_buf();
         let input = fixtures.join("password.xls");
         let output = root.join("password.xlsx");
         let work = root.join("password");
-        let handle = scope.spawn(move || client::convert(&pool_root, &input, &output, &work));
+        let handle = scope.spawn(move || convert(&pool_root, &input, &output, &work));
         pump_until(&mut pool, 2, |_| handle.is_finished())?;
         assert!(handle
             .join()
@@ -174,10 +154,10 @@ fn native_pool_reuses_excel_and_recovers_failed_sessions() -> Result<()> {
         Ok(())
     })?;
     pump_until(&mut pool, 2, |pool| {
-        pool.workers.len() == 2 && pool.workers.iter().all(worker::Worker::ready)
+        pool.sessions().len() == 2 && pool.sessions().iter().all(|worker| worker.ready)
     })?;
     let survivors = pool
-        .workers
+        .sessions()
         .iter()
         .filter(|worker| {
             let current = read_json(&worker.directory.join("identity.json")).unwrap();
@@ -190,12 +170,12 @@ fn native_pool_reuses_excel_and_recovers_failed_sessions() -> Result<()> {
     );
     let mut identities = original;
     identities.extend(
-        pool.workers
+        pool.sessions()
             .iter()
             .filter_map(|worker| read_json(&worker.directory.join("identity.json"))),
     );
     pump_until(&mut pool, 1, |pool| {
-        pool.workers.len() == 1 && !pool.workers[0].is_retiring()
+        pool.sessions().len() == 1 && !pool.sessions()[0].retiring
     })?;
     drop(pool);
     for identity in identities {
@@ -228,12 +208,12 @@ fn native_shared_revision_history_converts_without_changing_inputs() -> Result<(
     let mut pool = Pool::new(root.join("pool"))?;
     let output = root.join("converted.xlsx");
     let metrics = std::thread::scope(|scope| -> Result<_> {
-        let pool_root = pool.root.clone();
+        let pool_root = pool.root().to_path_buf();
         let work = root.join("conversion");
         let result_path = output.clone();
         let source_path = input.clone();
         let handle =
-            scope.spawn(move || client::convert(&pool_root, &source_path, &result_path, &work));
+            scope.spawn(move || convert(&pool_root, &source_path, &result_path, &work));
         pump_until(&mut pool, 1, |_| handle.is_finished())?;
         handle.join().unwrap()
     })?;
@@ -267,7 +247,7 @@ fn pump_until(pool: &mut Pool, target: usize, ready: impl Fn(&Pool) -> bool) -> 
             return Err(error);
         }
         if started.elapsed() >= Duration::from_secs(150) {
-            let error = anyhow::anyhow!("native pool test timed out: {}", pool.root.display());
+            let error = anyhow::anyhow!("native pool test timed out: {}", pool.root().display());
             pool.abort(&error)?;
             return Err(error);
         }

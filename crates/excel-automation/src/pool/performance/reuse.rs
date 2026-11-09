@@ -84,7 +84,7 @@ impl Index {
             let entry = Entry {
                 directory,
                 receipt,
-                receipt_sha256: super::super::super::artifact_cache::sha256(&bytes),
+                receipt_sha256: corpus_runner::artifacts::sha256(&bytes),
                 producer,
             };
             anyhow::ensure!(
@@ -122,7 +122,7 @@ impl Index {
             ),
             "Previous native completion is unconfirmed"
         );
-        let actual = super::super::super::artifact_cache::hash_file(&source.baseline)?;
+        let actual = corpus_runner::artifacts::hash_file(&source.baseline)?;
         anyhow::ensure!(
             receipt["source_sha256"] == actual
                 && source
@@ -184,7 +184,7 @@ impl Entry {
             "Previous artifact length changed"
         );
         anyhow::ensure!(
-            descriptor["sha256"] == super::super::super::artifact_cache::hash_file(&path)?,
+            descriptor["sha256"] == corpus_runner::artifacts::hash_file(&path)?,
             "Previous artifact hash changed"
         );
         Ok(path)
@@ -200,8 +200,7 @@ impl Entry {
             let target = destination.join(name);
             fs::copy(source, &target)?;
             anyhow::ensure!(
-                self.descriptor(name)["sha256"]
-                    == super::super::super::artifact_cache::hash_file(&target)?,
+                self.descriptor(name)["sha256"] == corpus_runner::artifacts::hash_file(&target)?,
                 "Previous artifact changed during continuation copy"
             );
         }
@@ -225,7 +224,7 @@ pub(super) fn fixture() -> Result<(PathBuf, PathBuf, PathBuf, Value)> {
     drop(pool);
     let source = root.join("source.xlsx");
     write_seed(&source)?;
-    let hash = super::super::super::artifact_cache::hash_file(&source)?;
+    let hash = corpus_runner::artifacts::hash_file(&source)?;
     let bytes = fs::metadata(&source)?.len();
     let mut artifacts = BTreeMap::new();
     fs::copy(&source, directory.join("baseline.xlsx"))?;

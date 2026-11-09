@@ -1,13 +1,8 @@
 //! Lease one ready session and retain the lease until its result is durable.
-use super::super::excel_automation::ExcelOpenMetrics;
 use super::*;
+use crate::ExcelOpenMetrics;
 
-pub(in crate::regression) fn convert(
-    root: &Path,
-    input: &Path,
-    output: &Path,
-    work: &Path,
-) -> Result<ExcelOpenMetrics> {
+pub fn convert(root: &Path, input: &Path, output: &Path, work: &Path) -> Result<ExcelOpenMetrics> {
     fs::create_dir_all(work)?;
     // A vanished helper is infrastructure failure. Retry once using a new session.
     for attempt in 0..2 {
@@ -16,11 +11,9 @@ pub(in crate::regression) fn convert(
         fs::create_dir(&directory)?;
         let request = Request {
             id: uuid::Uuid::new_v4().to_string(),
-            input: PathBuf::from(super::super::excel_automation::power_shell_path(input)?),
-            output: PathBuf::from(super::super::excel_automation::power_shell_path(output)?),
-            directory: PathBuf::from(super::super::excel_automation::power_shell_path(
-                &directory,
-            )?),
+            input: PathBuf::from(crate::shell::power_shell_path(input)?),
+            output: PathBuf::from(crate::shell::power_shell_path(output)?),
+            directory: PathBuf::from(crate::shell::power_shell_path(&directory)?),
             performance: false,
         };
         let result = run_request(root, &session, &request);
@@ -107,10 +100,8 @@ pub(super) fn run_request(root: &Path, session: &Path, request: &Request) -> Res
         "conversion"
     };
     write_json(&session.join("request.json"), request)?;
-    let mut timeout = super::super::visual_diagnostics::seconds_from_env(
-        "EXCEL_SHRINK_AUTOMATION_STALL_SECONDS",
-        120.0,
-    );
+    let mut timeout =
+        crate::shell::seconds_from_env("EXCEL_SHRINK_AUTOMATION_STALL_SECONDS", 120.0);
     if request.performance {
         timeout = timeout.max(Duration::from_secs(180));
     }
