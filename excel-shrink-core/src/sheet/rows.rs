@@ -145,6 +145,7 @@ struct RowCellCleanupState<'a> {
     // Most rows use one font; its ID needs no per-row hash table allocation.
     first_kept_font_id: Option<u32>,
     kept_font_ids: std::collections::HashSet<u32>,
+    kept_merged_fonts: std::collections::HashSet<(usize, u32)>,
     hidden_tail: Option<super::hidden_content::HiddenTail>,
 }
 
@@ -165,6 +166,7 @@ impl<'a> RowCellCleanupState<'a> {
             kept_represented_style_ids: std::collections::HashSet::new(),
             first_kept_font_id: None,
             kept_font_ids: std::collections::HashSet::new(),
+            kept_merged_fonts: std::collections::HashSet::new(),
             hidden_tail: None,
         }
     }
@@ -875,6 +877,7 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
             has_cell_content,
         );
     }
+    let merged_font = merged_font_key(&cell, params, metrics);
     let mut representative = timings.measure(CellStage::SelectRepresentative, || {
         select_empty_style_representative(
             &cell,
@@ -883,6 +886,7 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
             has_cell_content,
             style_policy,
             state,
+            merged_font,
         )
     });
     let preserve_local_mask = protects_unrepresented_column_font(
@@ -907,6 +911,9 @@ fn clean_cell_block<'a, const SAMPLED: bool>(
         // Both visible and hidden kept cells can already represent this font.
         if let Some(font) = representative_font_id(&cell, params) {
             state.record_kept_font_id(font);
+        }
+        if let Some(key) = merged_font {
+            state.kept_merged_fonts.insert(key);
         }
     }
     if !cleaned_cell.is_empty() && !has_cell_content {
@@ -1028,6 +1035,21 @@ fn representative_font_id(cell: &ParsedCell<'_, '_>, params: &CleanSheetParamete
         .map(Xf::font_identity).unwrap_or(0))
 }
 
+/// Merged text can use the font of an otherwise empty covered cell for spacing.
+/// A representative in a different merge does not preserve that local effect.
+fn merged_font_key(
+    cell: &ParsedCell<'_, '_>,
+    params: &CleanSheetParameters,
+    metrics: &CleanSheetMetrics,
+) -> Option<(usize, u32)> {
+    let row = digits_byte_string_to_integer(cell.row);
+    let merge = metrics
+        .merge_cell_ranges
+        .iter()
+        .position(|range| range.contains(cell.col_num, row))?;
+    Some((merge, representative_font_id(cell, params)?))
+}
+
 fn select_empty_style_representative(
     cell: &ParsedCell<'_, '_>,
     params: &CleanSheetParameters,
@@ -1035,6 +1057,7 @@ fn select_empty_style_representative(
     has_cell_content: bool,
     policy: EmptyStyleRepresentativePolicy,
     state: &RowCellCleanupState<'_>,
+    merged_font: Option<(usize, u32)>,
 ) -> EmptyStyleRepresentativeDecision {
     let row_represents_font = cell.row_view.is_some_and(|r| {
         r.promoted_style_id.is_some()
@@ -1055,12 +1078,18 @@ fn select_empty_style_representative(
         && !row_represents_font
         && representative_font_id(cell, params)
             .is_some_and(|font| !state.has_kept_font_id(font));
-    let keep_font_only = hidden_font_representative || (!hidden_auto_height && policy.keep_font_styles
-        && !row_represents_font
-        && empty_cell_can_supply_font_representative(cell, params, metrics, has_cell_content)
-        && cell
-            .style_id
-            .is_some_and(|style_id| !state.has_kept_represented_style_id(style_id)));
+    let merged_font_representative = !has_cell_content
+        && policy.keep_font_styles
+        && merged_font.is_some_and(|key| !state.kept_merged_fonts.contains(&key));
+    let keep_font_only = merged_font_representative
+        || hidden_font_representative
+        || (!hidden_auto_height
+            && policy.keep_font_styles
+            && !row_represents_font
+            && empty_cell_can_supply_font_representative(cell, params, metrics, has_cell_content)
+            && cell
+                .style_id
+                .is_some_and(|style_id| !state.has_kept_represented_style_id(style_id)));
     let keep_merged =
         empty_styled_cell_is_inside_merge_range(cell, params, metrics, has_cell_content);
     let keep_default = policy.keep_default_styleless

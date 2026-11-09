@@ -238,6 +238,15 @@ value is visible. Representatives can be tentative in fixed-height rows and
 removed if no kept row content actually needs them. Explicit merge cells and
 column-format exceptions are handled separately.
 
+A merged text area can also use a covered empty cell's font for text spacing.
+Default retains a local representative for each encountered font in each merged
+area within a row, including a font selected without `applyFont="1"`. A font
+represented in another merged area does not satisfy this requirement. Repeated
+covered cells with the same font remain eligible for removal. Fixed-height rows
+without retained content still use the existing tentative-representative pruning.
+The Destatis `Informationen zur Statistik!A6:H6` regression and native controls
+are recorded in `merged_text_keeps_one_local_font_even_without_apply_font`.
+
 Conditional formatting can make empty rows visibly relevant even when no
 ordinary cell XF has a fill or border. Its application ranges therefore protect
 row layout through their last row, including preceding rows whose heights position

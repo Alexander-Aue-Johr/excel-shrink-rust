@@ -403,6 +403,58 @@ fn keeps_one_font_sentinel_with_explicit_default_fill_and_border() {
     assert_eq!(cleaned, br#"<row r="16" s="0" customFormat="1"><c r="B16" s="1"/></row>"#);
 }
 
+/// Destatis personengesellschaften-gemeinschaften-5731101187005.xlsx,
+/// Informationen zur Statistik, A6:H6. Native controls found 43,767 changed
+/// pixels after deleting B6:H6, and zero after retaining only B6 or H6.
+/// Restoring the spans attribute alone did not change the 43,767-pixel result.
+#[test]
+fn merged_text_keeps_one_local_font_even_without_apply_font() {
+    let text_style = apply_font_only_style(18);
+    let blank_style = Xf::builder()
+        .font_id(Some(0))
+        .fill_id(Some(0))
+        .border_id(Some(0))
+        .apply_fill(true)
+        .build_xf();
+    let params = params_with_styles(&[(237, text_style), (238, blank_style)]);
+    let row = br#"<row r="6" spans="1:8" ht="177" customHeight="1"><c r="A6" s="237" t="s"><v>1081</v></c><c r="B6" s="238"/><c r="C6" s="238"/><c r="H6" s="238"/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+    metrics.merge_cell_ranges.push(crate::models::CellRange {
+        start_row: 6, end_row: 6, start_col: 1, end_col: 8,
+    });
+    let cleaned = replace_single_row_with_metrics(row, &params, &mut metrics);
+    let output = String::from_utf8(cleaned).unwrap();
+    assert!(output.contains(r#"<c r="B6" s="238"/>"#));
+    assert!(!output.contains(r#"r="C6""#));
+    assert!(!output.contains(r#"r="H6""#));
+    assert_eq!(
+        replace_single_row_with_metrics(output.as_bytes(), &params, &mut metrics),
+        output.as_bytes(),
+    );
+}
+
+#[test]
+fn merged_font_representatives_are_local_to_each_merge() {
+    let text_style = apply_font_only_style(18);
+    let blank_style = Xf::builder().font_id(Some(0)).fill_id(Some(0))
+        .border_id(Some(0)).apply_fill(true).build_xf();
+    let params = params_with_styles(&[(237, text_style), (238, blank_style)]);
+    let row = br#"<row r="6" ht="177" customHeight="1"><c r="A6" s="237"><v>1</v></c><c r="B6" s="238"/><c r="C6" s="238"/><c r="D6" s="237"><v>2</v></c><c r="E6" s="238"/><c r="F6" s="238"/></row>"#;
+    let mut metrics = CleanSheetMetrics::default();
+    for (start_col, end_col) in [(1, 3), (4, 6)] {
+        metrics.merge_cell_ranges.push(crate::models::CellRange {
+            start_row: 6, end_row: 6, start_col, end_col,
+        });
+    }
+    let output = String::from_utf8(
+        replace_single_row_with_metrics(row, &params, &mut metrics),
+    ).unwrap();
+    assert!(output.contains(r#"<c r="B6" s="238"/>"#));
+    assert!(output.contains(r#"<c r="E6" s="238"/>"#));
+    assert!(!output.contains(r#"r="C6""#));
+    assert!(!output.contains(r#"r="F6""#));
+}
+
 #[test]
 fn keeps_empty_default_font_cell_in_auto_height_row_to_preserve_spacing() {
     let text_style = apply_font_and_fill_style(109, 5);
