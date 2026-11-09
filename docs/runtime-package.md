@@ -1,5 +1,76 @@
 # Windows runtime package
 
+## Shared native automation and standalone applications
+
+`corpus-runner` owns source occurrence identities, atomic artifact writes,
+Windows process ownership, physical-memory and commit checks, ZIP directory
+measurements and optional ordered events. `excel-automation` owns the native
+Excel pool and conversion/Check Performance orchestration. Both new applications
+call this library directly. They have no dependency on the DeltaSieve CLI.
+The historical CLI entry points delegate to these same implementations.
+
+```powershell
+cargo build -p xlsx-convert -p excel-check-performance --release -j 2
+xlsx-convert.exe --input 'V:\inputs' --recursive --output 'V:\converted' --workers 4
+excel-check-performance.exe --source-manifest 'V:\converted\sources.json' --output 'V:\optimized' --workers 4
+```
+
+The runtime packager includes these two executables when present in its binary
+directory and verifies them through the same per-file integrity manifest.
+
+Output directories must be new. Conversion retains frozen source copies,
+converted XLSX files and receipts, and publishes a source manifest accepted by
+Check Performance. Check Performance also accepts `--input` XLSX paths or
+directories, with optional `--recursive`, and retains its existing verified
+`--reuse-from` continuation mechanism. Conversion currently requires a new
+output directory and has no continuation option.
+
+Both apps accept `--reserve-mib` and `--events`. The reserve applies to the lower
+of available physical RAM and system-wide commit headroom, with a 512 MiB floor.
+The default retains one eighth of installed RAM, bounded at 8 GiB. Reaching that
+reserve stops the owned pool and preserves unstarted jobs as queued. Admission
+keeps a further 512 MiB startup margin. These sampled guards cannot prevent an
+unrelated process or one Excel request from allocating memory between checks.
+
+The optional event file must be new and its parent directory must exist.
+Each JSON line carries a version, ordered sequence, elapsed milliseconds,
+operation, event type, workbook identity, dispatch slot and payload. Events
+describe run start/end, reuse and job start/completion/failure. Dispatch slots
+identify orchestration lanes, not native process IDs. GUI consumers can pass an
+`Observer` through `RunContext` to the same backend. Observer failures are
+retained and fail the run at its boundary after preserving native results.
+Consumers must deliver events promptly and offload rendering or network work.
+
+ZIP size measurements use the central directory without inflating worksheet
+XML. Receipts distinguish complete file bytes, compressed member bytes and
+uncompressed XML bytes. Worksheet identifiers here are ZIP part paths. Resolving
+display names additionally requires workbook and relationship metadata.
+Check Performance retains separate measurements for baseline, saved original,
+before optimization and after optimization, so ordinary Excel save effects can
+be distinguished from optimization effects.
+
+The native helper assets still partly reside in the historical CLI source tree
+and are embedded into `excel-automation` at build time. This is a transitional
+source-layout dependency, not a runtime dependency on the CLI executable.
+Conversion reuses Excel sessions. Check Performance retains fresh Excel per
+input while continuously refilling worker vacancies.
+
+### Observatory demo assessment
+
+The supplied SheetShrink Observatory demo has a synthetic producer, replay
+clock, worker lanes and before/after distributions. It is suitable as a visual
+starting point. Its producer precomputes future jobs and end times. A production
+adapter must instead consume incremental events and retain explicit failed,
+skipped and interrupted states, with bounded visible history for large corpora.
+The standalone apps expose this event seam. The demo is not yet connected.
+
+For conversion, show workbook progress, throughput and ETA. For Check
+Performance, show workbook lanes and before/after sizes. Sheet/chunk lanes and
+cleanup distributions apply only when the selected operation provides those
+measurements. The static UI can be served by a Rust host without a Node runtime.
+Replay should consume the same events as the live projection. Durable receipts
+remain authoritative when optional UI telemetry is incomplete.
+
 Build the Windows entry points with a configured build directory on a working
 drive, then package their outputs into a new directory. Python 3.9 or newer and
 Git are required by the packaging tool. The resulting runtime requires Windows

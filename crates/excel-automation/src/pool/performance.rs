@@ -2,16 +2,44 @@
 use super::*;
 use corpus_runner::sources::{self as validation_preparation, Input};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Mutex,
 };
 mod reuse;
+use crate::context::RunContext;
+use corpus_runner::{package_sizes, telemetry::Operation};
 
-#[derive(Default)]
+#[derive(Clone, Copy)]
+enum Mode {
+    CheckPerformance,
+    Conversion,
+}
+
+impl Mode {
+    fn name(self) -> &'static str {
+        match self {
+            Self::CheckPerformance => "check-performance",
+            Self::Conversion => "xlsx-convert",
+        }
+    }
+}
+
 struct ProgressCounters {
+    operation: &'static str,
     prepared: AtomicUsize,
     failed: AtomicUsize,
     reused: AtomicUsize,
+}
+
+impl Default for ProgressCounters {
+    fn default() -> Self {
+        Self {
+            operation: "check-performance",
+            prepared: AtomicUsize::new(0),
+            failed: AtomicUsize::new(0),
+            reused: AtomicUsize::new(0),
+        }
+    }
 }
 
 /// Publish compact counters without rescanning per-workbook receipts for web status queries.
@@ -31,7 +59,7 @@ fn publish_progress(
     write_json(
         &output.join("progress.json"),
         &json!({
-            "version":1,"operation":"check-performance","status":status,
+            "version":1,"operation":counters.operation,"status":status,
             "total":total,"started":started,"prepared":prepared,"failed":failed,
             "reused":counters.reused.load(Ordering::Acquire),
             "in_flight":started.saturating_sub(completed),"queued":total.saturating_sub(started),
@@ -78,18 +106,43 @@ pub fn run_manifest(
 
 /// Run one continuously refilled queue, retaining every input's terminal receipt.
 pub fn run(args: Args) -> Result<()> {
+    run_with_context(args, RunContext::quiet(Operation::CheckPerformance))
+}
+
+pub fn run_with_context(args: Args, context: RunContext) -> Result<()> {
     anyhow::ensure!(
         args.workers > 0,
         "Check Performance workers must be positive"
-    );
-    anyhow::ensure!(
-        !args.output.exists(),
-        "Choose a new preparation output directory"
     );
     let inputs = match &args.source_manifest {
         Some(path) => validation_preparation::read(path)?,
         None => validation_preparation::explicit(&args.input)?,
     };
+    run_inputs(args, inputs, context, Mode::CheckPerformance)
+}
+
+pub(crate) fn run_conversion(
+    inputs: Vec<Input>,
+    output: PathBuf,
+    workers: usize,
+    context: RunContext,
+) -> Result<()> {
+    let args = Args {
+        input: Vec::new(),
+        source_manifest: None,
+        output,
+        workers,
+        reuse_from: None,
+    };
+    run_inputs(args, inputs, context, Mode::Conversion)
+}
+
+fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -> Result<()> {
+    anyhow::ensure!(args.workers > 0, "Excel workers must be positive");
+    anyhow::ensure!(
+        !args.output.exists(),
+        "Choose a new preparation output directory"
+    );
     let selection_hash = validation_preparation::selection_hash(&inputs)?;
     let previous = args
         .reuse_from
@@ -107,10 +160,28 @@ pub fn run(args: Args) -> Result<()> {
         &output.join("owner.json"),
         &json!({"pid":std::process::id(),"started_ms":crate::native_process::current_started_unix_ms()}),
     )?;
-    let mut pool = Pool::new_performance(output.join("workers"))?;
+    let mut pool = match mode {
+        Mode::CheckPerformance => Pool::new_performance(output.join("workers"))?,
+        Mode::Conversion => Pool::new(output.join("workers"))?,
+    };
+    if let Some(reserve) = context.memory_reserve {
+        pool.set_memory_reserve(reserve);
+    }
+    context.observe(
+        "run.started",
+        None,
+        None,
+        json!({
+            "total": inputs.len(), "work_unit": "workbook", "sheet_jobs": false,
+            "size_reduction": matches!(mode, Mode::CheckPerformance), "worksheet_sizes": true
+        }),
+    );
     let pool_root = pool.root.clone();
     let next = AtomicUsize::new(0);
-    let counters = ProgressCounters::default();
+    let counters = ProgressCounters {
+        operation: mode.name(),
+        ..Default::default()
+    };
     let started_at = Instant::now();
     let recipe = generation_recipe(&pool_root)?;
     let mut retained = Vec::new();
@@ -134,6 +205,12 @@ pub fn run(args: Args) -> Result<()> {
         match lookup {
             Some(Ok(Some(entry))) => {
                 entry.restore(&directory)?;
+                context.observe(
+                    "workbook.reused",
+                    Some(&input.source_id),
+                    None,
+                    json!({"name": input.name}),
+                );
                 retained.push(json!({"index":index,"source_id":input.source_id,"name":input.name,
                     "input":input.baseline,"directory":directory,"status":"prepared","error":null,"reused":true}));
                 counters.prepared.fetch_add(1, Ordering::Release);
@@ -169,6 +246,7 @@ pub fn run(args: Args) -> Result<()> {
     let outcomes = Mutex::new(retained);
     let count = args.workers.min(pending.len());
     let target = AtomicUsize::new(count);
+    let cancelled = AtomicBool::new(false);
     let requested_target = AtomicUsize::new(args.workers);
     let peak_dispatch_slots = AtomicUsize::new(count);
     publish_progress(
@@ -187,6 +265,8 @@ pub fn run(args: Args) -> Result<()> {
             let desired = target.load(Ordering::Acquire);
             for slot in handles.len()..desired {
                 let target = &target;
+                let cancelled = &cancelled;
+                let context = &context;
                 let next = &next;
                 let pending = &pending;
                 let inputs = &inputs;
@@ -197,7 +277,7 @@ pub fn run(args: Args) -> Result<()> {
                 let counters = &counters;
                 let reuse_lookups = &reuse_lookups;
                 handles.push(scope.spawn(move || loop {
-                    if next.load(Ordering::Acquire) >= pending.len() {
+                    if cancelled.load(Ordering::Acquire) || next.load(Ordering::Acquire) >= pending.len() {
                         break;
                     }
                     if slot >= target.load(Ordering::Acquire) {
@@ -210,7 +290,23 @@ pub fn run(args: Args) -> Result<()> {
                     };
                     let input = &inputs[index];
                     let directory = output.join(format!("input-{index:06}"));
-                    let result = prepare(&pool_root, input, &directory, &producer);
+                    context.observe("job.started", Some(&input.source_id), Some(slot), json!({"name": input.name}));
+                    let result = match mode {
+                        Mode::CheckPerformance => prepare(&pool_root, input, &directory, &producer),
+                        Mode::Conversion => prepare_conversion(&pool_root, input, &directory, &producer),
+                    };
+                    if result.is_err() && pool_root.join("error.json").exists() {
+                        cancelled.store(true, Ordering::Release);
+                    }
+                    let receipt = read_json(&directory.join("prepared.json"));
+                    context.observe(
+                        if result.is_ok() { "job.completed" } else { "job.failed" },
+                        Some(&input.source_id), Some(slot), json!({
+                            "name": input.name,
+                            "archive_sizes": receipt.as_ref().and_then(|value| value.get("archive_sizes")),
+                            "error": result.as_ref().err().map(|error| format!("{error:#}"))
+                        }),
+                    );
                     let succeeded = result.is_ok();
                     let outcome = json!({
                         "index": index,
@@ -243,6 +339,7 @@ pub fn run(args: Args) -> Result<()> {
                 break;
             }
             if let Err(error) = pool.reconcile(desired, 512) {
+                cancelled.store(true, Ordering::Release);
                 pool.abort(&error)?;
                 return Err(error);
             }
@@ -254,6 +351,7 @@ pub fn run(args: Args) -> Result<()> {
                         workers
                     }
                     Err(error) => {
+                        cancelled.store(true, Ordering::Release);
                         pool.abort(&error)?;
                         return Err(error);
                     }
@@ -267,6 +365,7 @@ pub fn run(args: Args) -> Result<()> {
                     started_at.elapsed(),
                     "running",
                 ) {
+                    cancelled.store(true, Ordering::Release);
                     pool.abort(&error)?;
                     return Err(error);
                 }
@@ -294,7 +393,8 @@ pub fn run(args: Args) -> Result<()> {
         &output.join("preparation.json"),
         &json!({
             "version": 1,
-            "operation": "check-performance",
+            "operation": mode.name(),
+            "telemetry_error": context.observation_error(),
             "workers": peak_dispatch_slots.load(Ordering::Acquire),
             "initial_dispatch_slots": count,
             "requested_workers": args.workers,
@@ -324,10 +424,29 @@ pub fn run(args: Args) -> Result<()> {
             "failed"
         },
     )?;
+    context.observe(
+        if pool_result.is_ok() && failed == 0 {
+            "run.completed"
+        } else {
+            "run.failed"
+        },
+        None,
+        None,
+        json!({
+            "prepared": counters.prepared.load(Ordering::Acquire), "failed": failed,
+            "interrupted": pool_result.is_err(),
+            "unresolved": inputs.len().saturating_sub(outcomes.len()),
+        }),
+    );
+    if matches!(mode, Mode::Conversion) {
+        publish_converted_sources(&output, &inputs)?;
+    }
     pool_result?;
+    context.ensure_observed()?;
     anyhow::ensure!(
         failed == 0,
-        "{failed} Check Performance preparations failed; inspect preparation.json"
+        "{failed} {} preparations failed; inspect preparation.json",
+        mode.name()
     );
     Ok(())
 }
@@ -419,12 +538,73 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
                 "bytes": fs::metadata(&baseline)?.len()
             },
             "artifacts": artifacts,
+            "archive_sizes": {
+                "baseline": package_sizes::inspect(&baseline)?,
+                "original_saved": package_sizes::inspect(&directory.join("original-saved.xlsx"))?,
+                "before_optimization": package_sizes::inspect(&directory.join("before-optimization.xlsx"))?,
+                "after_optimization": package_sizes::inspect(&directory.join("after-optimization.xlsx"))?,
+            },
             "native_result": response["native_result"],
             "measurements": response["metrics"],
             "environment": response["environment"],
             "generation_recipe": recipe,
             "visual_validation": "pending"
         }),
+    )
+}
+
+/// Freeze source bytes before Excel opens them; never overwrite the user's input.
+fn prepare_conversion(root: &Path, input: &Input, directory: &Path, producer: &str) -> Result<()> {
+    fs::create_dir(directory)?;
+    let source_hash = corpus_runner::artifacts::hash_file(&input.baseline)?;
+    let extension = input
+        .baseline
+        .extension()
+        .and_then(|value| value.to_str())
+        .context("Input format missing")?;
+    let frozen = directory.join(format!("source.{extension}"));
+    fs::copy(&input.baseline, &frozen)?;
+    anyhow::ensure!(
+        corpus_runner::artifacts::hash_file(&frozen)? == source_hash,
+        "Input changed while freezing conversion source"
+    );
+    let output = directory.join("converted.xlsx");
+    let metrics = client::convert(root, &frozen, &output, &directory.join("runtime"))?;
+    anyhow::ensure!(
+        corpus_runner::artifacts::hash_file(&input.baseline)? == source_hash,
+        "Input changed during conversion"
+    );
+    let output_hash = corpus_runner::artifacts::hash_file(&output)?;
+    write_json(
+        &directory.join("prepared.json"),
+        &json!({
+            "version": 1, "operation": "xlsx-convert", "source_id": input.source_id,
+            "name": input.name, "source_sha256": source_hash, "producer_sha256": producer,
+            "raw_source": {"sha256": source_hash, "format": extension, "member": null},
+            "baseline": {"file": "converted.xlsx", "sha256": output_hash, "bytes": fs::metadata(&output)?.len()},
+            "measurements": metrics,
+            "archive_sizes": {"source_file_bytes": fs::metadata(&frozen)?.len(), "converted": package_sizes::inspect(&output)?},
+            "visual_validation": "pending"
+        }),
+    )
+}
+
+fn publish_converted_sources(output: &Path, inputs: &[Input]) -> Result<()> {
+    let mut retained = Vec::new();
+    for (index, input) in inputs.iter().enumerate() {
+        let directory = output.join(format!("input-{index:06}"));
+        if let Some(receipt) = read_json(&directory.join("prepared.json")) {
+            retained.push(json!({
+                "source_id": input.source_id, "name": input.name,
+                "baseline": format!("input-{index:06}/converted.xlsx"),
+                "baseline_sha256": receipt["baseline"]["sha256"],
+                "raw_source": receipt["raw_source"]
+            }));
+        }
+    }
+    write_json(
+        &output.join("sources.json"),
+        &json!({"version": 1, "inputs": retained}),
     )
 }
 
@@ -445,6 +625,33 @@ fn generation_recipe(root: &Path) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn memory_stop_preserves_unstarted_jobs_without_launching_excel() -> Result<()> {
+        let (root, _, manifest, _) = reuse::fixture()?;
+        let selected = validation_preparation::read(&manifest)?;
+        let output = root.join("memory-stopped");
+        let mut context = RunContext::quiet(Operation::CheckPerformance);
+        context.memory_reserve = Some(corpus_runner::memory::MemoryReserve { bytes: u64::MAX });
+        let error = run_with_context(
+            Args {
+                input: vec![selected[0].baseline.clone(); 32],
+                source_manifest: None,
+                output: output.clone(),
+                workers: 2,
+                reuse_from: None,
+            },
+            context,
+        )
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("memory reserve"));
+        let progress = read_json(&output.join("progress.json")).unwrap();
+        assert!(progress["queued"].as_u64().unwrap() >= 30);
+        assert!(progress["failed"].as_u64().unwrap() <= 2);
+        let workers = read_json(&output.join("workers/manifest.json")).unwrap();
+        assert_eq!(workers["workers"], json!([]));
+        Ok(())
+    }
 
     #[test]
     fn complete_continuation_needs_no_excel_worker_and_preserves_producer() -> Result<()> {

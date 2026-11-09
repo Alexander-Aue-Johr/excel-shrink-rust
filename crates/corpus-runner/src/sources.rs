@@ -120,6 +120,45 @@ pub fn read(path: &Path) -> Result<Vec<Input>> {
         .collect()
 }
 
+/// Expand directory selections deterministically while retaining explicit occurrences.
+pub fn expand_paths(
+    paths: &[PathBuf],
+    extensions: &[&str],
+    recursive: bool,
+) -> Result<Vec<PathBuf>> {
+    let mut selected = Vec::new();
+    for path in paths {
+        if !path.is_dir() {
+            selected.push(path.clone());
+            continue;
+        }
+        let mut files = Vec::new();
+        let depth = if recursive { usize::MAX } else { 1 };
+        for entry in walkdir::WalkDir::new(path)
+            .follow_links(false)
+            .max_depth(depth)
+        {
+            let entry = entry?;
+            if entry.file_type().is_file()
+                && entry.path().extension().is_some_and(|extension| {
+                    extensions
+                        .iter()
+                        .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+                })
+            {
+                files.push(entry.into_path());
+            }
+        }
+        files.sort();
+        selected.extend(files);
+    }
+    ensure!(
+        !selected.is_empty(),
+        "No supported workbook inputs selected"
+    );
+    Ok(selected)
+}
+
 /// Explicit lists retain occurrence identity without claiming a corpus mapping.
 pub fn explicit(paths: &[PathBuf]) -> Result<Vec<Input>> {
     ensure!(!paths.is_empty(), "Choose at least one prepared XLSX input");
@@ -184,6 +223,28 @@ mod tests {
         fs::create_dir(&root).unwrap();
         fs::write(root.join("baseline.xlsx"), b"baseline").unwrap();
         root
+    }
+
+    #[test]
+    fn directory_selection_is_sorted_and_recursion_is_explicit() -> Result<()> {
+        let root = fixture();
+        fs::create_dir(root.join("nested"))?;
+        fs::write(root.join("z.XLS"), b"legacy")?;
+        fs::write(root.join("ignore.txt"), b"text")?;
+        fs::write(root.join("nested/child.xlsx"), b"child")?;
+        let shallow = expand_paths(&[root.clone()], &["xls", "xlsx"], false)?;
+        assert_eq!(
+            shallow,
+            vec![root.join("baseline.xlsx"), root.join("z.XLS")]
+        );
+        let recursive = expand_paths(&[root.clone()], &["xls", "xlsx"], true)?;
+        assert_eq!(recursive.len(), 3);
+        let duplicate = root.join("z.XLS");
+        assert_eq!(
+            expand_paths(&[duplicate.clone(), duplicate.clone()], &["xls"], false)?,
+            vec![duplicate.clone(), duplicate]
+        );
+        Ok(())
     }
 
     #[test]

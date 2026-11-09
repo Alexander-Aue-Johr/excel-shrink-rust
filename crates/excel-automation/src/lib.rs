@@ -2,6 +2,9 @@
 pub use corpus_runner::native_process;
 #[cfg(windows)]
 pub use corpus_runner::process_job;
+pub mod context;
+#[cfg(windows)]
+pub mod conversion;
 pub mod metrics;
 pub mod shell;
 pub use metrics::ExcelOpenMetrics;

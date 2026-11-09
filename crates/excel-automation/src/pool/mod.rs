@@ -9,7 +9,10 @@ use std::time::{Duration, Instant};
 
 mod client;
 pub mod performance;
-use corpus_runner::process_job as job;
+use corpus_runner::{
+    memory::{self, MemoryReserve},
+    process_job as job,
+};
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -44,6 +47,7 @@ pub struct Pool {
     startup_failures: usize,
     last_publish: Instant,
     job: job::Job,
+    memory_reserve: MemoryReserve,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +58,10 @@ pub struct SessionState {
 }
 
 impl Pool {
+    pub fn set_memory_reserve(&mut self, reserve: MemoryReserve) {
+        self.memory_reserve = reserve;
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -161,6 +169,7 @@ impl Pool {
             startup_failures: 0,
             last_publish: Instant::now(),
             job: job::Job::new()?,
+            memory_reserve: MemoryReserve::configured(memory::snapshot()?)?,
         })
     }
 
@@ -198,6 +207,14 @@ impl Pool {
     }
 
     fn reconcile_inner(&mut self, target: usize, reserve_mib: u64) -> Result<()> {
+        if target > 0 || !self.workers.is_empty() {
+            if let Err(error) = self.memory_reserve.ensure_available(memory::snapshot()?) {
+                self.abort(&error)?;
+                return Err(error);
+            }
+        }
+        // Leave one extra worker's startup margin above the emergency reserve.
+        let reserve_mib = reserve_mib.max(self.memory_reserve.bytes / memory::MIB + 512);
         let mut changed = false;
         for index in (0..self.workers.len()).rev() {
             if self.workers[index].should_stop()? {
@@ -382,17 +399,7 @@ pub fn write_seed(path: &Path) -> Result<()> {
 }
 
 fn available_memory() -> Result<u64> {
-    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
-    let mut status = MEMORYSTATUSEX {
-        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
-        ..unsafe { std::mem::zeroed() }
-    };
-    // SAFETY: The structure has the required length and is writable.
-    anyhow::ensure!(
-        unsafe { GlobalMemoryStatusEx(&mut status) } != 0,
-        "available Windows RAM could not be read"
-    );
-    Ok(status.ullAvailPhys.min(status.ullAvailPageFile))
+    Ok(memory::snapshot()?.available_bytes())
 }
 
 fn has_startup_reserve(available_bytes: u64, reserve_mib: u64) -> bool {

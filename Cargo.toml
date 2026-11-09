@@ -3,6 +3,8 @@ members = [
     "excel-shrink-core",
     "excel-shrink-cli",
     "apps/sheetshrink",
+    "apps/xlsx-convert",
+    "apps/excel-check-performance",
     "crates/deltasieve-engine",
     "crates/corpus-runner",
     "crates/excel-automation",

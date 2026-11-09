@@ -299,6 +299,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "uuid",
+ "walkdir",
  "windows-sys",
  "zip",
 ]
@@ -498,6 +499,16 @@ dependencies = [
  "uuid",
  "windows-sys",
  "zip",
+]
+
+[[package]]
+name = "excel-check-performance"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "corpus-runner",
+ "excel-automation",
 ]
 
 [[package]]
@@ -1941,6 +1952,16 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "xlsx-convert"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "corpus-runner",
+ "excel-automation",
+]
 
 [[package]]
 name = "zerocopy"

@@ -37,6 +37,9 @@ impl Worker {
                 ("OwnerStartedMs", owner_started_ms.to_string()),
             ],
         )?;
+        let temporary = root.join("temp");
+        fs::create_dir_all(&temporary)?;
+        command.env("TEMP", &temporary).env("TMP", &temporary);
         command.stdout(Stdio::from(File::create(directory.join("stdout.log"))?));
         command.stderr(Stdio::from(File::create(directory.join("stderr.log"))?));
         let mut child = command
