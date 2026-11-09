@@ -141,3 +141,34 @@ not establish corpus-wide recall. The running study still uses its previously
 frozen executable until a separately verified runtime deployment. Failed
 whole-grid corpus attempts must be retried after that deployment, with their
 earlier evidence preserved.
+
+## Optimized deployment acceptance
+
+The optimized `0ad30f53` package passed the same native fixture with four
+compared regions and no differences. Its 114 packaged files were verified.
+The production study was then stopped through its termination API. The runner
+and queue processes exited, and no matching targeted child remained in the
+process inspection. The old, independently identified Observatory host was
+stopped because the resume contract rejects a different host executable hash.
+
+The new executable was copied to its immutable hash directory. The saved
+launch receipt now points to executable SHA-256
+`b19fdf990c47ce532f470f2402aa4835a2e2a7d7251a57bfb379896b98920307`
+and the matching packaged assets. Its arguments explicitly accept preparations
+from the old producer
+`1aecbdb71950abf05b1610eccc72e6fd615d71da6373260ac5feb55810a03558`.
+The compatibility review found no changes to `excel-shrink-core` or
+`visual_profile.rs` between the previous package's asset base `d78e9957` and
+`0ad30f53`. Source identities and requested profile checks still apply.
+
+The ordinary resume path retained all 1,182 prepared files and 360 successful
+visual comparisons. It reused 822 preparations for the remaining selection,
+including retries. The new runner, Observatory and four targeted children were
+verified against the new executable identity. The former whole-grid `Jahr`
+workbook completed its retry as unchanged, bringing the successful comparison
+count to 361. Earlier failed and interrupted attempts remain retained.
+
+The private sequential queue uses the new runtime for its subsequent Data.gov
+and Enron starts. The six-machine USB source remains untouched. Migration
+receipts, old launch/configuration/control files and before/stopped summaries
+remain under the night run's `runtime-migrations/0ad30f53` directory.

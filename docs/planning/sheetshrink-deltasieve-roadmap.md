@@ -29,6 +29,17 @@ groups and two skipped inputs. These are progress observations, not final counts
 Whole-grid failures retain unverified coverage and require a later corrected retry.
 The runtime migration receipt preserves the previous and current launch hashes.
 
+The subsequent `0ad30f53` background-band planner passed 136 targeted-module
+tests, a retained-file XML plan check, an ordinary native comparison and a
+deliberately changed-fill control. The optimized runtime was separately packaged
+and natively checked before deployment. Normal resume retained all 1,182 prepared
+files and 360 completed visual comparisons, using the explicit reviewed old-build
+preparation compatibility argument. The new host and four comparison children
+were verified by executable identity. The first formerly whole-grid workbook
+then completed unchanged, advancing the count to 361. CF and unsupported-object
+cases remain separate investigations. These observations do not close corpus
+completion or exhaustive-reference validation gates.
+
 The Enron receiving-side import finished with 34,065 members and an explicit
 external-generation receipt. Count, total uncompressed bytes and three additional
 member hashes were checked. The import writer had already verified every copied
