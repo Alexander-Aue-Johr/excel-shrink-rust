@@ -66,6 +66,30 @@ reference, and totals from different captured areas are not directly comparable.
 SheetShrink's cleanup savings and preservation outcomes remain its own tool
 evaluation. Shared benchmark evidence may be cited with these distinct questions.
 
+### Static-report checkpoint on 2026-11-10 evening
+
+The third combined preview contains 76 observations from 19 source reports.
+Its frozen ordinary cohort lists nine workbook identities per corpus. Separate
+normalized baselines remain labelled separately. This is a partial 3-by-3
+delivery, with further comparator groups still running or pending. The current
+package occupies about 636 MiB. No public deployment has been performed.
+
+Publication review now includes nested JSON, gzip JSON and the embedded JSON
+in generated HTML reports. The actual third preview contains 528 JSON files
+and 92 embedded reports, with 5,967 metadata concerns including repeated
+derived occurrences. Review does not alter evidence or automatically sanitize
+it. A public presentation export and its verification remain required before
+this preview can be described as ready for GitHub Pages.
+
+Destatis/Inquire completed eight available stage inputs. Two produced rendered
+observations and six failed. Four failures concern unresolved whole-grid
+coverage, and two concern opening-time name conflicts. Inspection of the
+Operationen/Prozeduren workbook found default row height changing from 12.75
+to 15 on Titel and GENESIS-Online, with drawings present and no conditional
+format blocks on those sheets. A finite content dimension alone does not
+resolve the changed default geometry. Preserve these failures until a bounded
+coverage proof and native acceptance establish a safe comparison path.
+
 The newly arrived Inquire diagnostic handover contains 15 recovered outputs.
 Their mapping and output hashes were verified locally. Four Inquire outputs
 remain unavailable across the 147 identities. Check Performance has 144 ordinary
