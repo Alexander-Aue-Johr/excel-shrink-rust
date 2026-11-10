@@ -122,3 +122,11 @@ an unknown sheet inventory and no invented comparison verdict. Actual matching
 original identities supply the recorded sheets and observations when available.
 Different original hashes remain separate. Re-export carries the cohort file.
 This presentation selection does not alter native results or establish coverage.
+
+Standalone export snapshots also retain a workbook inventory when the original
+is available locally. This records its SHA-256 and ordered sheet names/states,
+without worksheet-cell inspection. The Atlas prefers the inventory attached to
+the native report, then this snapshot inventory, and finally local recovery.
+A failed comparison keeps its failure status. Re-export can therefore preserve
+its original identity and known sheets after the source files are unavailable.
+Unavailable inventory remains unknown.

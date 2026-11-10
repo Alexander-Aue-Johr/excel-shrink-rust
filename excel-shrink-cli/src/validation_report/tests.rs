@@ -463,3 +463,39 @@ fn selected_export_rejects_unknown_and_duplicate_ids_before_creating_output() ->
     assert!(!output.exists());
     Ok(())
 }
+
+#[test]
+fn failed_pair_keeps_inventory_after_source_workbooks_are_unavailable() -> Result<()> {
+    use std::io::Write;
+    let fixture = Fixture::new()?;
+    let input = fixture.directory("inventory-input")?;
+    let workbook = input.join("book.xlsx");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&workbook)?);
+    zip.start_file("xl/workbook.xml", zip::write::FileOptions::default())?;
+    zip.write_all(br#"<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Data" sheetId="1"/><sheet name="Hidden" sheetId="2" state="hidden"/></sheets></workbook>"#)?;
+    zip.finish()?;
+    let original_sha = deltasieve_engine::reuse::file_sha256(&workbook)?;
+    let source = fixture.directory("inventory-source")?;
+    fs::write(source.join("run.json"), serde_json::to_vec(&json!({
+        "schema":1,"tool":"DeltaSieve","run_id":"inventory-run","status":"completed_with_errors",
+        "index_complete":true,"config":{"source_a":input,"atlas":{"corpus":"Corpus","variant":"Tool"}},
+        "pairs":[{"id":"failed","name":"book.xlsx","status":"failed","error":"capture guard"}]
+    }))?)?;
+    let exported = fixture.0.join("inventory-export");
+    export_site(&source, &exported)?;
+    let run = read_json_file(&exported.join("run.json"))?;
+    assert_eq!(run["pairs"][0]["workbook_inventory"]["original_sha256"], original_sha);
+    assert_eq!(run["pairs"][0]["status"], "failed");
+    fs::remove_dir_all(&input)?;
+    let repeated = fixture.0.join("inventory-reexport");
+    export_site(&exported, &repeated)?;
+    let run_again = read_json_file(&repeated.join("run.json"))?;
+    assert_eq!(run_again["pairs"][0]["workbook_inventory"], run["pairs"][0]["workbook_inventory"]);
+    let decoded = flate2::read::GzDecoder::new(fs::File::open(repeated.join("atlas-data/catalog.json.gz"))?);
+    let catalog: Value = serde_json::from_reader(decoded)?;
+    assert_eq!(catalog["books"].as_array().unwrap().len(), 1);
+    assert_eq!(catalog["books"][0]["original_identity"], original_sha);
+    assert_eq!(catalog["books"][0]["sheets"].as_array().unwrap().len(), 2);
+    assert_eq!(catalog["books"][0]["observations"][0]["status"], "failed");
+    Ok(())
+}

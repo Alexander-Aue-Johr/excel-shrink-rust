@@ -289,6 +289,7 @@ fn append_observation(
         .and_then(|r| r.get("workbook_inventory"))
         .filter(|v| v["complete"] == true)
         .cloned()
+        .or_else(|| pair.get("workbook_inventory").filter(|v| v["complete"] == true).cloned())
         .or_else(|| inventory::recover(&source["config"], name));
     let original = original_identity(root, pair, inventory.as_ref())?;
     let book_id = digest(&json!([corpus, name, original]))?;

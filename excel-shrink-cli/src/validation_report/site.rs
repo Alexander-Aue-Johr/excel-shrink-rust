@@ -196,6 +196,18 @@ pub(crate) fn export_selected_site(
     // The exported index is a complete snapshot of the recovered journal. Its
     // validation status is unchanged, including interrupted or failed runs.
     run["index_complete"] = json!(true);
+    let config = run["config"].clone();
+    for pair in run["pairs"].as_array_mut().context("Run report has no pair list")? {
+        if pair["workbook_inventory"]["complete"] == true {
+            continue;
+        }
+        if let Some(inventory) = pair["name"]
+            .as_str()
+            .and_then(|name| super::inventory::recover(&config, name))
+        {
+            pair["workbook_inventory"] = inventory;
+        }
+    }
     let rows = overview_rows(&source, &run)?;
     let destination = evidence::create_destination(&source, destination)?;
     super::atlas::copy_labels(&source, &destination)?;
