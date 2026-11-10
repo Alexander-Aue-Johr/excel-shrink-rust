@@ -182,23 +182,7 @@ fn publish_collection(destination: &Path, run: &Value) -> Result<PathBuf> {
         &destination.join("run.json"),
         &serde_json::to_vec_pretty(&run)?,
     )?;
-    let mut audit_files = vec!["run.json".to_owned()];
-    for source in run["merge"]["sources"]
-        .as_array()
-        .context("Collection has no sources")?
-    {
-        for field in ["snapshot", "source_metadata"] {
-            audit_files.push(
-                source[field]
-                    .as_str()
-                    .context("Source metadata path missing")?
-                    .to_owned(),
-            );
-        }
-    }
-    audit_files.sort();
-    audit_files.dedup();
-    let review = super::publication::audit(destination, &audit_files)?;
+    let review = super::publication::audit_tree(destination)?;
     evidence::write_new(
         &destination.join("publication-review.json"),
         &serde_json::to_vec_pretty(&review)?,

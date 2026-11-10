@@ -3,9 +3,33 @@
 use super::{evidence, read_json_file};
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::Path;
+use std::{fs, io::Read, path::Path};
 
 const MAX_RETAINED_FINDINGS: usize = 1_000;
+
+/// Review all copied JSON, including source packages and their derived channels.
+pub(crate) fn audit_tree(root: &Path) -> Result<Value> {
+    let canonical = root.canonicalize()?;
+    let root = canonical.as_path();
+    let mut files = Vec::new();
+    for entry in walkdir::WalkDir::new(root) {
+        let entry = entry?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = entry.path()
+            .strip_prefix(root)?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if (relative.ends_with(".json") || relative.ends_with(".json.gz"))
+            && !relative.ends_with("publication-review.json")
+        {
+            files.push(relative);
+        }
+    }
+    files.sort();
+    audit(root, &files)
+}
 
 #[derive(Default)]
 struct Findings {
@@ -30,8 +54,20 @@ pub(super) fn audit(root: &Path, files: &[String]) -> Result<Value> {
     let mut findings = Findings::default();
     for relative in files {
         let path = evidence::confined_file(root, relative)?;
-        let value = if relative.starts_with("replay/") && relative.ends_with(".json.gz") {
-            super::replay::read_chunk(&path)?
+        let value = if relative.ends_with(".json.gz") {
+            anyhow::ensure!(
+                fs::metadata(&path)?.len() <= super::MAX_REPORT_BYTES,
+                "Compressed publication JSON exceeds its read budget"
+            );
+            let mut bytes = Vec::new();
+            flate2::read::GzDecoder::new(fs::File::open(&path)?)
+                .take(super::MAX_REPORT_BYTES + 1)
+                .read_to_end(&mut bytes)?;
+            anyhow::ensure!(
+                bytes.len() as u64 <= super::MAX_REPORT_BYTES,
+                "Expanded publication JSON exceeds its read budget"
+            );
+            serde_json::from_slice(&bytes)?
         } else {
             read_json_file(&path)?
         };
@@ -136,6 +172,24 @@ fn contains_url_credentials(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tree_audit_includes_nested_compressed_viewer_data() -> Result<()> {
+        use std::io::Write;
+        let root = std::env::temp_dir().join(format!("publication-tree-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("runs/source/atlas-data"))?;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let payload = json!({"padding":"x".repeat(600_000),"path":"C:/private/source.xlsx"});
+        encoder.write_all(&serde_json::to_vec(&payload)?)?;
+        fs::write(root.join("runs/source/atlas-data/detail.json.gz"), encoder.finish()?)?;
+        let review = audit_tree(&root)?;
+        assert_eq!(review["scanned_json_files"], 1);
+        assert_eq!(review["metadata_finding_count"], 1);
+        assert_eq!(review["metadata_findings"][0]["file"], "runs/source/atlas-data/detail.json.gz");
+        assert_eq!(review["metadata_findings"][0]["pointer"], "/path");
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn paths_and_credentials_are_found_without_copying_their_values() {

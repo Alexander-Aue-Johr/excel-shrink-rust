@@ -9,7 +9,8 @@ const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_COMPRESSED_BYTES: u64 = 513 * 1024;
 const MAX_DECODED_BYTES: u64 = 512 * 1024 + 64;
 
-/// Read one gzip JSON chunk with fixed allocation bounds, including during publication review.
+/// Read one bounded replay chunk for the replay-contract tests.
+#[cfg(test)]
 pub(super) fn read_chunk(path: &Path) -> Result<Value> {
     let bytes = read_bounded(path, MAX_COMPRESSED_BYTES)?;
     decode_chunk(&bytes)

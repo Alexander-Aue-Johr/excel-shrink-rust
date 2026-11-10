@@ -14,7 +14,8 @@ impl Fixture {
         let root = self.0.join(name);
         fs::create_dir_all(root.join("raw"))?;
         fs::create_dir(root.join("identities"))?;
-        let raw = json!({"status":"completed_with_limitations","comparisons":[{
+        let raw = json!({"status":"completed_with_limitations",
+            "transitions":[{"before_file":"C:/private/source.xlsx"}],"comparisons":[{
             "left":"OR","right":"SDR","findings":if different {
                 vec![json!({"presence_differs":true,"sheet":"Sheet1","range":"A1"})]
             } else {Vec::new()}}]});
@@ -69,6 +70,12 @@ fn preserves_observations_and_source_bytes_and_deduplicates_identical_snapshots(
     assert_eq!(file_sha256(&a.join("run.json"))?, a_hash);
     assert_eq!(file_sha256(&b.join("run.json"))?, b_hash);
     assert!(!output.join(".incomplete").exists());
+    let review = read_json_file(&output.join("publication-review.json"))?;
+    assert!(review["metadata_findings"].as_array().unwrap().iter().any(|finding| {
+        finding["file"].as_str().is_some_and(|file| file.ends_with("pairs/pair/report.json"))
+            && finding["pointer"] == "/transitions/0/before_file"
+    }));
+    assert!(!serde_json::to_string(&review)?.contains("C:/private/source.xlsx"));
     let exported = fixture.0.join("exported");
     export_site(&output, &exported)?;
     for source in run["merge"]["sources"].as_array().unwrap() {

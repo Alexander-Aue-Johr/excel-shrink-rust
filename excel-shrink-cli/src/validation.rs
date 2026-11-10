@@ -114,6 +114,8 @@ enum Command {
     },
     /// List embedded corpus profiles and their pinned archive identities without downloading.
     CorpusList,
+    /// Inspect exported JSON metadata for publication concerns without changing it.
+    PublicationReview { report: PathBuf },
     /// Verify an external Enron extraction and prepare a local candidate archive.
     CorpusImportEnron {
         #[arg(long)]
@@ -661,6 +663,11 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         }
         Some(Command::Template) => {
             println!("{}", serde_json::to_string_pretty(&RunConfig::default())?);
+            Ok(())
+        }
+        Some(Command::PublicationReview { report }) => {
+            let review = crate::validation_report::review_publication(&report_root(&report)?)?;
+            println!("{}", serde_json::to_string_pretty(&review)?);
             Ok(())
         }
         Some(Command::CorpusList) => {

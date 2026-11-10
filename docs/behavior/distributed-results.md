@@ -130,3 +130,13 @@ the native report, then this snapshot inventory, and finally local recovery.
 A failed comparison keeps its failure status. Re-export can therefore preserve
 its original identity and known sheets after the source files are unavailable.
 Unavailable inventory remains unknown.
+
+`deltasieve publication-review EXPORTED_REPORT` prints a bounded inventory of
+publication concerns without changing the report. For a merged export, review
+covers every copied JSON and gzip JSON file, including nested comparison reports,
+source snapshots, Atlas data and replay channels. It excludes prior review
+inventories so findings are not recursively counted. Compressed and expanded
+JSON are each limited to 128 MiB. Replay verification retains its stricter
+independent transport limits. Findings contain file names and JSON pointers,
+with a complete count and at most 1,000 retained entries. This inventory neither
+redacts evidence nor certifies publication rights or anonymity.
