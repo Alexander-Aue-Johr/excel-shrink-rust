@@ -189,7 +189,16 @@ try {
             $response = @{success=$true;metrics=$metrics;native_result=$nativeResult;environment=$environment}
             $convertedCount++
         } catch {
-            $response = @{success=$false;kind=(Get-LegacyConversionFailureKind $_.Exception.Message $phase);phase=$phase;error=$_.Exception.Message;hresult=$_.Exception.HResult;excel_pid=$excelPid}
+            $response = @{
+                success=$false
+                kind=(Get-LegacyConversionFailureKind $_.Exception.Message $phase)
+                phase=$phase
+                error=$_.Exception.Message
+                hresult=$_.Exception.HResult
+                excel_pid=$excelPid
+                error_position=[string]$_.InvocationInfo.PositionMessage
+                script_stack_trace=$_.ScriptStackTrace
+            }
             # A failed COM operation can leave hidden workbooks or modal state.
             $recycle = $true
         }
@@ -199,7 +208,11 @@ try {
         if ($recycle) { break }
     }
 } catch {
-    Write-Receipt (Join-Path $Session 'startup-error.json') @{error=$_.Exception.Message}
+    Write-Receipt (Join-Path $Session 'startup-error.json') @{
+        error=$_.Exception.Message
+        error_position=[string]$_.InvocationInfo.PositionMessage
+        script_stack_trace=$_.ScriptStackTrace
+    }
 } finally {
     try {
         if ($null -ne $workbook) {

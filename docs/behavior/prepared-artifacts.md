@@ -476,3 +476,20 @@ failures. Unknown or inaccessible blockers retain the ordinary phase timeout.
 
 Existing prepared outputs and frozen running workers retain their original
 behavior. Updating the source does not modify a running pool's helper files.
+
+Worker request failures retain the PowerShell invocation position and script
+stack trace alongside the phase, error message, HRESULT and Excel identity.
+Startup failures retain the same diagnostic context in `startup-error.json`.
+These fields explain where automation failed. They do not establish that the
+workbook cannot be optimized in an interactive Excel session.
+
+## Manually recovered preparation artifacts
+
+A visible Excel recovery keeps the frozen original unchanged and saves its
+result to a separate output. Record the original and output hashes, the observed
+Check Performance outcome and the recovery method. If Excel first repairs the
+workbook or resolves a name conflict, save a repair-only baseline before
+optimization and retain the repair log or explicit normalization description.
+Such results form a separate baseline stratum. They cannot silently replace an
+unrepaired original in a matched cleanup comparison. Archive integrity and a
+confirmed optimization message do not complete visual validation.
