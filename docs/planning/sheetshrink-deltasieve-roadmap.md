@@ -1,5 +1,109 @@
 # SheetShrink and DeltaSieve delivery plan
 
+## Current governing scope on 2026-11-10
+
+This checkpoint supersedes the historical full-corpus launch queues below.
+The current visual evaluation freezes the top 100 complete workbooks per corpus
+by absolute compressed XLSX byte reduction, selected from the existing top-144
+manifests. Individual worksheet reductions do not add inputs. Destatis, Data.gov
+and Enron remain separate cohorts, totaling 300 workbook identities.
+
+### Completed work and verified changes
+
+- Full SheetShrink preparation completed for 1,182 Destatis workbooks, 30,301
+  converted Enron workbooks and 8,623 supported Data.gov workbooks. Another 494
+  Data.gov inputs have explicit unsupported-namespace outcomes.
+- The workspace contains SheetShrink, XLSX conversion and Check Performance
+  applications, plus shared validation, corpus-runner, Excel-automation and
+  preparation-web crates. Further extraction from the compatibility CLI remains
+  open. The existing architecture inventory needs reconciliation with these
+  newer application boundaries.
+- Web entry points, named localhost addresses, distributed collection, static
+  result exploration and recorded-progress replay have bounded acceptance
+  evidence. Their final corpus-release acceptance gates remain open.
+- Both fresh LaTeX projects exist and compile. The scheduling and four-proposal
+  performance experiments are completed within their documented scopes.
+- A genuine empty-cell font-representative regression was reproduced with native
+  controls and fixed in `ce2b2205`. A complete fresh cleanup of the 300 selected
+  originals succeeded. SHA-256 verification of every uncompressed package member
+  found changed outputs for 24 Destatis, 34 Enron and 27 Data.gov workbooks.
+  Retain earlier observations only with explicit compatible output identities.
+- Verified-work watchdog progress now includes completed setup phases, effective
+  row-height observations and completed image comparisons. Failed attempts retain
+  their working evidence and remain ineligible for completed-result reuse.
+- The 3,546-pair Data.gov hospital repeat completed without a pixel difference.
+  Its image-comparison phase took 245.093 seconds, establishing why the earlier
+  120-second idle watchdog incorrectly interrupted active work.
+- Capture policy v14 extends the finite envelope around resolved finite CF
+  application areas before qualifying a repeating solid background. Eight focused
+  background tests passed. A retained XML check bounded Kulturfinanzbericht
+  `Tabelle 4.8-1` to `A1:P79`. Native deployment of this change is still pending.
+- These fixes and their current methodological evidence are committed and pushed
+  in the software and paper repositories. Public release and final scientific
+  conclusions remain separate gates.
+
+### Current observations and remaining work
+
+An identity-based audit currently accepts 68 completed native Destatis records
+for the current outputs, with no recorded differences. Two additional explicit
+reference controls cover Auszug and Bevoelkerungsbewegung under their documented
+baseline and finite-plan scopes. A 29-file current-output/recovery batch is
+prepared. Verkehrs­unfaelle was interrupted before captures after planning
+1,160,137 regions per lane and requires a separate drawing/background diagnosis.
+The retained old progress file still says running, although its host was stopped.
+
+Enron has 96 eligible completed native records. Nine retain findings requiring
+classification and controls. The fresh current-output/recovery sub-batches
+completed 32 comparisons without a finding. Three other cases have an unresolved
+full-grid fallback on `MyC`, and one converted baseline contains three orphan
+very-hidden Module entries. These four are pending outcomes, not equal results.
+The latest 28-file sub-batch ended with 26 completed comparisons and two explicit
+fallback failures. Do not confuse this sub-batch completion with cohort completion.
+
+Data.gov continues through its 94-file current-output batch, alongside six
+identity-compatible retained observations. Reconcile live progress at each
+checkpoint instead of freezing an intermediate count as a final result.
+
+The user requested 512 MiB free-RAM and commit reserve for the prepared Destatis
+continuation. Its launch environment records this value. Automatic approval
+rejected the attempted launch with only `blocked by policy`; that runtime has
+not been started. Continue observing the already-running work while this gate
+is unresolved.
+
+### Revised execution order
+
+1. Finish the three frozen SheetShrink cohorts, including changed-output retries,
+   controlled opening recovery and the remaining drawing/background fallbacks.
+   Keep original inputs, failed attempts and explicit reference scopes intact.
+2. Classify remaining findings with same-input and repeated-output controls.
+   Fix confirmed SheetShrink regressions and selectively revalidate affected
+   output identities. Volatile formulas or small pixel counts alone do not
+   authorize suppression.
+3. Then validate the external NXPowerLite and XLStyles outputs announced by
+   LAPTOP-H86KBIH3 in the private SSH handover. Its index lists 600 combinations,
+   564 available outputs and 36 missing outputs. All 600 declared input hashes
+   match the frozen top-100 selections. Transfer and independently verify output
+   hashes before comparison. Investigate unnecessary captures and full-grid
+   fallbacks, retain external-tool regressions and do not modify those cleaners.
+4. Reconcile corpus and tool totals, provenance, environment records, exclusions,
+   reference controls and the difference ledger. Complete static export, replay,
+   privacy review and actual multi-machine collection acceptance for this release.
+5. Complete the independent-reference, controlled-mutation, ablation and matched
+   comparator-cost evidence required by Tasks 02, 12 and 13. A stress selection
+   does not replace representative sampling or establish exhaustive recall.
+6. Finish both manuscripts from verified results, including limitations and
+   examples of admitted capture-edge/volatile/rendering categories. Complete
+   release instructions and remaining application/configuration integration.
+7. Continue supervision until every selected comparison has an evidenced final
+   outcome. A prepared batch, a successful build or a finished sub-batch does
+   not complete Task 19.
+
+The older numbered tasks retain their detailed acceptance criteria. Checkmarks
+for Tasks 01, 03, 10 and 11 remain supported by their recorded experiments.
+Tasks 04–09 and 15–17 have substantial partial implementation and require final
+integration/acceptance, rather than another implementation from scratch.
+Tasks 02, 12–14, 18 and 19 remain open scientific and delivery gates.
+
 ## Full local night queue requested on 2026-11-09
 
 The queued transition was subsequently advanced to verified `runtime-a50f2e18`,
