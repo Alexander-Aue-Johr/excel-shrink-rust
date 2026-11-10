@@ -500,26 +500,26 @@ fn clean_chunks_in_parallel(
     let cloning = profiling::phase("clone_base_metrics", "", "");
     let base_metrics = make_chunk_metrics(metrics);
     profiling::drop_value("range.clone_base_metrics_span", cloning);
-    let jobs: Vec<_> = chunks
-        .iter()
-        .map(|chunk| {
-            (
-                *chunk,
-                crate::work_priority::PendingChunk::new(chunk.end - chunk.start),
-                profiling::Handoff::start(
-                    "range_chunk",
-                    &params.xlsx_file_path,
-                    &params.zip_info_filename,
-                ),
-            )
-        })
-        .collect();
     let mut output = Vec::with_capacity(sheet_data.len().min(64 * 1024 * 1024));
-    let mut remaining_jobs = jobs.into_iter();
+    let mut remaining_jobs = chunks.iter().copied();
     let batch_size = rayon::current_num_threads();
 
     loop {
-        let batch: Vec<_> = remaining_jobs.by_ref().take(batch_size).collect();
+        // Only submitted chunks may delay new sheets. Later batches cannot run
+        // until this fork/join returns, so advertising them can starve the pool.
+        let batch: Vec<_> = remaining_jobs
+            .by_ref()
+            .take(batch_size)
+            .map(|chunk| {
+                let pending = crate::work_priority::PendingChunk::new(chunk.end - chunk.start);
+                let handoff = profiling::Handoff::start(
+                    "range_chunk",
+                    &params.xlsx_file_path,
+                    &params.zip_info_filename,
+                );
+                (chunk, pending, handoff)
+            })
+            .collect();
         if batch.is_empty() {
             break;
         }

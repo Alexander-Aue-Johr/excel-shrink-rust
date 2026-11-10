@@ -3270,14 +3270,13 @@ fn process_file(
     out_path: &Path,
     cli: &Cli,
     writer_pool: &ThreadPool,
-    workbook_limiter: &WorkbookLimiter,
+    workbook_permit: WorkbookPermit,
     batch_progress: &BatchProgress,
     active_tasks: &ActiveTasks,
     analysis_tx: Option<mpsc::Sender<AnalysisCsvRow>>,
 ) {
     let input_display = input.display().to_string();
     let _profile = profiling::phase("workbook_orchestration", &input_display, "");
-    let workbook_permit = workbook_limiter.acquire(&input_display);
     if excel_shrink_core::work_events::should_stop() {
         return;
     }
@@ -3640,6 +3639,7 @@ pub(crate) fn process_file_pairs(
             run_input_files(
                 &input_files,
                 cli,
+                rayon_pool.as_ref(),
                 &writer_pool,
                 &workbook_limiter,
                 &batch_progress,
@@ -3647,11 +3647,7 @@ pub(crate) fn process_file_pairs(
                 analysis_tx.clone(),
             );
         };
-        if let Some(pool) = rayon_pool.as_ref() {
-            pool.install(run);
-        } else {
-            run();
-        }
+        run();
     }
     finish_batch(
         analysis_tx,
@@ -3775,6 +3771,7 @@ fn log_batch_plan(
 fn run_input_files(
     input_files: &[(PathBuf, PathBuf)],
     cli: &Cli,
+    rayon_pool: Option<&rayon::ThreadPool>,
     writer_pool: &ThreadPool,
     workbook_limiter: &WorkbookLimiter,
     batch_progress: &BatchProgress,
@@ -3785,32 +3782,41 @@ fn run_input_files(
         if excel_shrink_core::work_events::should_stop() {
             return;
         }
-        process_file(
-            input,
-            output,
-            cli,
-            writer_pool,
-            workbook_limiter,
-            batch_progress,
-            active_tasks,
-            analysis_tx.clone(),
-        )
+        // A workbook permit may wait for an output writer. Keep that wait and
+        // the refill loop outside Rayon, where neither can block nested joins.
+        let permit = workbook_limiter.acquire(&input.display().to_string());
+        let work = || {
+            process_file(
+                input,
+                output,
+                cli,
+                writer_pool,
+                permit,
+                batch_progress,
+                active_tasks,
+                analysis_tx.clone(),
+            )
+        };
+        match rayon_pool {
+            Some(pool) => pool.install(work),
+            None => work(),
+        }
     };
     if cli.disable_multiprocessing {
         input_files.iter().for_each(process);
     } else {
-        // Dispatch only as many orchestration loops as can hold a workbook
-        // permit. Additional Rayon workers remain available for sheet work.
-        // Each loop refills immediately, while writer-owned permits continue
-        // to bound workbook memory until output completion.
         let dispatchers = workbook_limiter.inner.max_active.min(input_files.len());
         let next_input = AtomicUsize::new(0);
-        (0..dispatchers).into_par_iter().for_each(|_| loop {
-            let index = next_input.fetch_add(1, Ordering::Relaxed);
-            let Some(input) = input_files.get(index) else {
-                break;
-            };
-            process(input);
+        std::thread::scope(|scope| {
+            for _ in 0..dispatchers {
+                scope.spawn(|| loop {
+                    let index = next_input.fetch_add(1, Ordering::Relaxed);
+                    let Some(input) = input_files.get(index) else {
+                        break;
+                    };
+                    process(input);
+                });
+            }
         });
     }
 }

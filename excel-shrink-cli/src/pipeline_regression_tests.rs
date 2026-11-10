@@ -20,6 +20,7 @@ pub(super) fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<
         path: PathBuf::from("input.xlsx"),
         output: PathBuf::from("out"),
         recursive: false,
+        largest_first: false,
         batch_report: None,
         disable_multiprocessing: false,
         rayon_threads: None,
@@ -54,6 +55,60 @@ pub(super) fn cli_with_analysis_flags(analysis_mode: bool, analysis_csv: Option<
         console_log_level: LogLevel::Info,
         file_log_level: None,
     }
+}
+
+#[test]
+fn workbook_refill_completes_multiple_chunk_batches_with_two_rayon_threads() {
+    let root = std::env::temp_dir().join(format!("workbook-refill-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let mut sheet = String::from("<worksheet><sheetData>");
+    for row in 1..=8192 {
+        sheet.push_str(&format!(
+            "<row r=\"{row}\"><c r=\"A{row}\"><v>42</v></c><c r=\"B{row}\" s=\"0\"/></row>"
+        ));
+    }
+    sheet.push_str("</sheetData></worksheet>");
+    let inputs: Vec<_> = (0..6)
+        .map(|index| {
+            let path = root.join(format!("input-{index}.xlsx"));
+            let mut writer = ZipWriter::new(File::create(&path).unwrap());
+            writer
+                .start_file("xl/worksheets/sheet1.xml", FileOptions::default())
+                .unwrap();
+            writer.write_all(sheet.as_bytes()).unwrap();
+            writer.finish().unwrap();
+            path
+        })
+        .collect();
+    let mut cli = cli_with_analysis_flags(false, None);
+    cli.output = root.join("parallel");
+    cli.rayon_threads = Some(2);
+    cli.max_active_workbooks = Some(2);
+    cli.writer_workers = Some(1);
+    cli.parallel_range_chunk_size = 4096;
+    process_files(inputs.clone(), &cli).unwrap();
+    let parallel = cli.output.clone();
+    cli.output = root.join("serial");
+    cli.disable_multiprocessing = true;
+    process_files(vec![inputs[0].clone()], &cli).unwrap();
+    let read_sheet = |path: &Path| {
+        let mut archive = ZipArchive::new(File::open(path).unwrap()).unwrap();
+        let mut bytes = Vec::new();
+        archive
+            .by_name("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        bytes
+    };
+    let expected = read_sheet(&cli.output.join(inputs[0].file_name().unwrap()));
+    for input in inputs {
+        assert_eq!(
+            read_sheet(&parallel.join(input.file_name().unwrap())),
+            expected
+        );
+    }
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 fn copy_test_entry(original: Vec<u8>, cleaned: Vec<u8>) -> ZipArchive<Cursor<Vec<u8>>> {
