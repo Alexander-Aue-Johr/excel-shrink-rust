@@ -620,7 +620,7 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
             open_browser(index.as_os_str())
         }
         Some(Command::Serve { report, port, no_open }) => {
-            serve_static_atlas(&report_root(&report)?, port, no_open)
+            serve_static_atlas(&report_or_atlas_root(&report)?, port, no_open)
         }
         Some(Command::Atlas { report, labels, cohort }) => {
             let root = report_root(&report)?;
@@ -670,7 +670,7 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
             Ok(())
         }
         Some(Command::PublicationReview { report }) => {
-            let review = crate::validation_report::review_publication(&report_root(&report)?)?;
+            let review = crate::validation_report::review_publication(&report_or_atlas_root(&report)?)?;
             println!("{}", serde_json::to_string_pretty(&review)?);
             Ok(())
         }
@@ -771,7 +771,13 @@ pub(crate) fn report_root(path: &Path) -> Result<PathBuf> {
     Ok(root)
 }
 
-/// Hand the exact path/URL to the OS without evaluating it as shell code.
+fn report_or_atlas_root(path: &Path) -> Result<PathBuf> {
+    if path.join("index.html").is_file() && path.join("atlas-data/catalog.json.gz").is_file() {
+        return Ok(path.canonicalize()?);
+    }
+    report_root(path)
+}
+
 fn serve_static_atlas(root: &Path, port: u16, no_open: bool) -> Result<()> {
     ensure!(root.join("atlas-data/catalog.json.gz").is_file(),
         "This directory has no Atlas. Export the report with this version first.");
@@ -835,6 +841,21 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn static_atlas_commands_accept_an_export_without_run_metadata() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("static-atlas-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("atlas-data"))?;
+        fs::write(root.join("index.html"), "<html></html>")?;
+        assert!(report_or_atlas_root(&root).is_err());
+        fs::write(root.join("atlas-data/catalog.json.gz"), [])?;
+        assert_eq!(report_or_atlas_root(&root)?, root.canonicalize()?);
+        assert!(report_root(&root).is_err());
+        fs::write(root.join("run.json"), "{}")?;
+        assert_eq!(report_or_atlas_root(&root.join("run.json"))?, root.canonicalize()?);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn corpus_catalog_requires_no_local_input_configuration() {

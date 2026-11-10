@@ -168,7 +168,10 @@ presentation provenance.
 This directory is a presentation artifact and cannot resume or merge as a native
 run. Its viewer supports the retained Atlas interactions and finding pages.
 Replay remains available in the original export. Publication review still runs
-on the derived directory. Workbook names, formulas, cell contents, screenshots
+on the derived directory. Use `deltasieve serve DIRECTORY` to open it locally
+and `deltasieve publication-review DIRECTORY` to inspect its publication metadata.
+Both accept the Atlas directory containing `index.html` and
+`atlas-data/catalog.json.gz`. Workbook names, formulas, cell contents, screenshots
 and distribution rights require review before public deployment. These scientific
 payloads are deliberately retained even when their contents resemble local paths.
 
