@@ -245,3 +245,19 @@ has no readme capture in this run.
 - Original RGBA `b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b`
 - Candidate RGBA `c200d295a3d87e41a6435e8f9873e213524b5aa1efe5918b27f87b27ad719a00`
 - NXPowerLite report `fac8c6eae347ee2156be4a8345460e0ab6f9986fea41bd48df63da17b7c703dd`
+
+Archive and image inspection explains the shared fixed-factor finding.
+The original readme has fill 2 on A2:L2. The heading text in C2 is
+unchanged in all three candidates. NXPowerLite, Inquire and Check
+Performance each retain filled A2:C2 and omit the nine styled empty
+cells D2:L2. Both captures have the same dimensions. Their visible
+heading band ends at x=748 in the candidate and x=1306 in the
+original, accounting for the complete 558 by 29 changed-pixel rectangle.
+
+The current SheetShrink output (SHA-256
+`34e3bd03cf03d3cfcac5c90ad901537c68bff25c79aa6a2b51fef854a287bf2a`)
+retains fill 2 across A2:L2. The earlier identity-compatible visual
+observation has 26 worksheet regions and no readme capture. The XML
+preservation is directly observed. A matched SheetShrink readme capture
+is still needed before using this as a measured four-tool illustration.
+XLStylesTool also has no matching native capture.
