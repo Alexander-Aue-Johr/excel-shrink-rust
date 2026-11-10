@@ -1,7 +1,7 @@
 //! Locate publication-sensitive metadata without rewriting scientific evidence.
 
 use super::{evidence, read_json_file};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::{fs, io::Read, path::Path};
 
@@ -21,7 +21,7 @@ pub(crate) fn audit_tree(root: &Path) -> Result<Value> {
             .strip_prefix(root)?
             .to_string_lossy()
             .replace('\\', "/");
-        if (relative.ends_with(".json") || relative.ends_with(".json.gz"))
+        if (relative.ends_with(".json") || relative.ends_with(".json.gz") || relative.ends_with(".html"))
             && !relative.ends_with("publication-review.json")
         {
             files.push(relative);
@@ -52,9 +52,28 @@ impl Findings {
 /// Workbook names, formulas, and image contents still require human review.
 pub(super) fn audit(root: &Path, files: &[String]) -> Result<Value> {
     let mut findings = Findings::default();
+    let mut json_files = 0;
+    let mut embedded_reports = 0;
     for relative in files {
         let path = evidence::confined_file(root, relative)?;
-        let value = if relative.ends_with(".json.gz") {
+        let value = if relative.ends_with(".html") {
+            anyhow::ensure!(
+                fs::metadata(&path)?.len() <= super::MAX_REPORT_BYTES,
+                "Publication HTML exceeds its read budget"
+            );
+            let html = fs::read_to_string(&path)?;
+            // This is our generated report template's exact data block. Other
+            // HTML is outside this metadata audit, not interpreted as JSON.
+            let marker = "<script type=\"application/json\" id=\"report-data\">";
+            let Some((_, data)) = html.split_once(marker) else {
+                continue;
+            };
+            let (data, _) = data.split_once("</script>")
+                .context("Unterminated embedded report data")?;
+            embedded_reports += 1;
+            serde_json::from_str(data).context("Invalid embedded report data")?
+        } else if relative.ends_with(".json.gz") {
+            json_files += 1;
             anyhow::ensure!(
                 fs::metadata(&path)?.len() <= super::MAX_REPORT_BYTES,
                 "Compressed publication JSON exceeds its read budget"
@@ -69,6 +88,7 @@ pub(super) fn audit(root: &Path, files: &[String]) -> Result<Value> {
             );
             serde_json::from_slice(&bytes)?
         } else {
+            json_files += 1;
             read_json_file(&path)?
         };
         inspect(&value, "", relative, &mut findings);
@@ -76,7 +96,8 @@ pub(super) fn audit(root: &Path, files: &[String]) -> Result<Value> {
     Ok(json!({
         "version": 1,
         "status": "publication_review_required",
-        "scanned_json_files": files.len(),
+        "scanned_json_files": json_files,
+        "scanned_embedded_reports": embedded_reports,
         "metadata_finding_count": findings.total,
         "metadata_findings_truncated": findings.total > findings.retained.len(),
         "metadata_findings": findings.retained,
@@ -172,6 +193,26 @@ fn contains_url_credentials(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tree_audit_reads_generated_html_data_without_rewriting_it() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("publication-html-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root)?;
+        let html = r#"<html><script type="application/json" id="report-data">{"error":"C:/private/book.xlsx","difference":7}</script></html>"#;
+        fs::write(root.join("report.html"), html)?;
+        fs::write(root.join("index.html"), "<html>Atlas viewer</html>")?;
+        let review = audit_tree(&root)?;
+        assert_eq!(review["scanned_json_files"], 0);
+        assert_eq!(review["scanned_embedded_reports"], 1);
+        assert_eq!(review["metadata_finding_count"], 1);
+        assert_eq!(review["metadata_findings"][0]["file"], "report.html");
+        assert_eq!(review["metadata_findings"][0]["pointer"], "/error");
+        assert_eq!(fs::read_to_string(root.join("report.html"))?, html);
+        fs::write(root.join("report.html"), r#"<script type="application/json" id="report-data">{"broken":</script>"#)?;
+        assert!(audit_tree(&root).is_err());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn tree_audit_includes_nested_compressed_viewer_data() -> Result<()> {

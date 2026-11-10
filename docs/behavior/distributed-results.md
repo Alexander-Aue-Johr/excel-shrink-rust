@@ -134,7 +134,13 @@ Unavailable inventory remains unknown.
 `deltasieve publication-review EXPORTED_REPORT` prints a bounded inventory of
 publication concerns without changing the report. For a merged export, review
 covers every copied JSON and gzip JSON file, including nested comparison reports,
-source snapshots, Atlas data and replay channels. It excludes prior review
+source snapshots, Atlas data and replay channels. It also parses the exact
+`report-data` JSON block in generated report HTML, including comparison pages.
+HTML without that block is skipped. Malformed embedded report JSON fails the
+review. The output counts JSON files and embedded reports separately. HTML
+input has the same 128 MiB read limit. This metadata check does not inspect
+arbitrary HTML text, script code, workbook contents or image pixels.
+It excludes prior review
 inventories so findings are not recursively counted. Compressed and expanded
 JSON are each limited to 128 MiB. Replay verification retains its stricter
 independent transport limits. Findings contain file names and JSON pointers,
