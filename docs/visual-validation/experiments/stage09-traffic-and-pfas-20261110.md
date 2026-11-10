@@ -275,3 +275,20 @@ were still active after the bounded tests.
 
 - SheetShrink reference receipt `523d824c815d14bdfab931e894e68e9a591485d7c915756d42ea1ae8f06dd43a`
 - XLStylesTool reference receipt `24a0ea322bdd228773b73ae5e4c69f5e6945ad0c99060167adf1e2115f10cb89`
+
+### Native QT/RR check beyond the used range
+
+A 69.17-second explicit Inquire reference captured three ranges on
+SHR1 DE. Original and candidate had identical geometry and 193 by 52
+pixel images in each range. M1:O3 changed 192 pixels in a single
+horizontal raster row. XFB1:XFD3 changed all 193 pixels of that row
+from black to white. M20:O22 was pixel-identical.
+
+This verifies that clipping at column L would miss a visible difference,
+including at the far edge of the grid. The sampled blank-body range
+and the three geometry measurements motivate separate treatment of
+finite content and inherited borders. They do not establish equivalence
+of the rest of the blank body or justify pruning the current plan.
+
+Native receipt SHA-256
+`f9a66dd439bedc52db9526d11b28233ad78a717b0b2be3b6b322c2a0f7531180`.
