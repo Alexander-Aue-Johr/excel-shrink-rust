@@ -382,8 +382,11 @@ mod tests {
         Ok(())
     }
 
-    /// Kulturfinanzbericht, Tabelle 8.2-1. Repeated width/font records up to
-    /// XFD formerly added 125 far-tail captures of the same horizontal grey band.
+    /// kulturfinanzbericht-gesamtmaterial-1023003229005.xlsx, Tabelle 8.2-1.
+    /// Repeated width/font records up to XFD added 125 far-tail grey-band findings.
+    /// Native v15 selection needs one sheet region instead of 127; all 350
+    /// selected workbook regions compare equal. The independent A1:BP114
+    /// reference also remains pixel-identical.
     #[test]
     fn unfilled_column_widths_do_not_bound_solid_row_backgrounds() -> Result<()> {
         let styles = [

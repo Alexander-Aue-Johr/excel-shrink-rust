@@ -1505,6 +1505,10 @@ rebuilt snapshots under v15 bound visual formatting to A1:BO114 and A1:BO61,
 instead of extending to column 16,235 in their union. An independent native
 A1:BP114 reference covers the finite union plus context. Both images were
 4625 by 2080 pixels with identical SHA-256 and measured geometry. The reference
-completed in 14.585 seconds. This is finite reference evidence, not yet a full
-v15 native workbook revalidation or a matched speedup measurement. Historical
-v14 findings and their original images remain retained.
+completed in 14.585 seconds. The subsequent complete v15 workbook comparison
+completed 350 selected regions without a pixel, geometry or rendering difference.
+The sheet contributes one region, compared with 127 under v14. Whole-workbook
+capture selection/transport took 119.009 seconds, compared with 624.755 seconds
+in the retained v14 observation. These are separate development runs with
+different producer versions and concurrent load, not a matched performance
+experiment. Historical v14 findings and their original images remain retained.
