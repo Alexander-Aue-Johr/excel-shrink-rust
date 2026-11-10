@@ -411,7 +411,17 @@ def run_locked(args, root):
             for member, payload in candidates:
                 scanned += 1
                 check_resources(root, args.reserve_gib)
-                if not is_graph(payload):
+                try:
+                    graph = is_graph(payload)
+                except OSError as error:
+                    failures_directory = root / "classification-failures"
+                    failures_directory.mkdir(exist_ok=True)
+                    write_json(failures_directory / (sha256(payload) + ".json"), {
+                        "source_sha256": sha256(payload), "source_member": member,
+                        "error": str(error), "state": "unclassified-invalid-ole",
+                    })
+                    continue
+                if not graph:
                     continue
                 graphs += 1
                 identity = sha256(payload)
@@ -493,6 +503,8 @@ def run_locked(args, root):
             write_json(root / "derived-workbooks.json", {
                 "version": REVISION, "kind": "microsoft-graph-derived-data",
                 "source_archive": source, "workbooks": all_receipts, "failures": failures,
+                "unclassified_candidates": [json.loads(path.read_text()) for path in
+                                            sorted((root / "classification-failures").glob("*.json"))],
             })
             write_json(root / "status.json", {
                 "state": "stopped" if sys.exc_info()[0] else "finished",

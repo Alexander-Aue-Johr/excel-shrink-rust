@@ -189,3 +189,6 @@ current Office chart format. The monitor acknowledges only that specific failure
 message and the object receives a failed receipt. The following objects continued
 successfully in the same process. Short `RPC_E_CALL_REJECTED` and server-busy
 responses during native conversion are retried within a ten-second deadline.
+Malformed OLE containers that cannot be classified retain a separate
+`unclassified-invalid-ole` receipt. They are not counted as identified Graph
+objects or successfully recovered workbooks.
