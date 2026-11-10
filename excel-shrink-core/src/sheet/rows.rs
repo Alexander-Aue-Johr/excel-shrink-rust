@@ -1253,8 +1253,14 @@ fn empty_cell_can_supply_font_representative(
             // Explicit no-fill metadata does not cancel the font's baseline role.
             let explicit_no_fill_font =
                 style.font_id.is_some() && style.apply_fill && style.fill_id == Some(0);
+            // Excel can use a cell's font for automatic height even when its XF
+            // omits applyFont and the row has no inherited style.
+            let automatic_height_font = style.font_id.is_some_and(|font| font != 0)
+                && cell.row_view.is_some_and(|row| {
+                    !(row.has_height && row.has_custom_height)
+                });
             style.has_no_empty_cell_visible_style
-                || ((explicit_no_fill_font || style.apply_font || cell.row_view.is_some_and(|row| {
+                || ((automatic_height_font || explicit_no_fill_font || style.apply_font || cell.row_view.is_some_and(|row| {
                         !(row.has_height && row.has_custom_height)
                             && row.style.is_some_and(|inherited| {
                                 inherited.font_identity() != style.font_identity()

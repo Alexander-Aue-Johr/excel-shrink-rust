@@ -622,6 +622,24 @@ fn keeps_column_font_style_representative_without_tail_anchor_when_row_has_no_cu
     assert_eq!(metrics.tail_anchor_max_row, None);
 }
 
+/// Kulturfinanzbericht, Impressum!B16 supplies Arial MT 12 without applyFont.
+/// Removing it changes Excel's automatic height from 15 to 12.75 points.
+#[test]
+fn automatic_height_keeps_font_without_apply_font_or_row_style() {
+    let styles = crate::styles::parse_xfs(
+        br#"<cellXfs><xf fontId="0"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="1" applyAlignment="1" applyProtection="1"/><xf fontId="83" applyFont="1"/></cellXfs>"#,
+    )
+    .unwrap();
+    let params = params_with_styles(&[
+        (0, styles[0].clone()),
+        (1, styles[1].clone()),
+        (2, styles[2].clone()),
+    ]);
+    let source = br#"<row r="16" spans="1:3" ht="15"><c r="A16" s="2" t="s"><v>85</v></c><c r="B16" s="1"/><c r="C16" s="1"/></row>"#;
+    let expected = br#"<row r="16" spans="1:2" ht="15"><c r="A16" s="2" t="s"><v>85</v></c><c r="B16" s="1"/></row>"#;
+    assert_eq!(replace_single_row(source, &params), expected);
+}
+
 #[test]
 fn keeps_hidden_column_font_style_representative_without_tail_anchor_when_row_has_no_custom_height()
 {
