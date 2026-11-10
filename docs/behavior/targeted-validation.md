@@ -41,6 +41,13 @@ attribution, volatile-rendering diagnosis and pre-rebuild visual evidence requir
 follow-up. Old reports retain their original execution strategy and coverage.
 Current resume requires the current capture policy and execution strategy.
 
+After O has transferred to OR, legacy save-change coordinates are not projected
+onto nonexistent pre-rebuild images. The raw XML transition records and rebuilt
+comparisons remain intact. This avoids expanding and matching potentially large
+save-control coordinate sets for an unavailable legacy comparison. The focused
+test exercises this branch without opening Excel. Whole-run savings require
+separate measurement.
+
 Original is explicitly rebuilt in this strategy. Both sides therefore receive
 Excel's full rebuild, including clearing stale-calculation visual indicators.
 A failure or timeout on either side prevents a completed comparison. Equal input

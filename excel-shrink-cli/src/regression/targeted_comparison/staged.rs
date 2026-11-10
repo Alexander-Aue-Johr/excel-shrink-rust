@@ -1031,6 +1031,13 @@ impl Workflow<'_, '_> {
     }
 
     fn project_legacy_findings(&mut self) -> Result<()> {
+        // Every legacy image comparison needs the pre-rebuild Original. The
+        // paired workflow transfers it to OR, so its save-change coordinates
+        // have no legacy images to project onto. XML transition evidence and
+        // rebuilt-pair findings have already been recorded independently.
+        if !self.states.contains_key(&LaneId::O) {
+            return Ok(());
+        }
         self.comparison.original_save_changes =
             self.project_changes(&self.comparison.original_save_changes)?;
         self.comparison.performance.save_changes =
@@ -1125,5 +1132,56 @@ fn capture_phase(id: LaneId) -> Phase {
         Phase::CaptureBefore
     } else {
         Phase::CaptureAfter
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn absent_pre_rebuild_original_skips_legacy_projection() -> Result<()> {
+        let directory = std::env::temp_dir().join(format!("legacy-projection-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&directory)?;
+        let input = directory.join("input.xlsx");
+        let mut archive = zip::ZipWriter::new(fs::File::create(&input)?);
+        archive.start_file("xl/workbook.xml", zip::write::FileOptions::default())?;
+        archive.write_all(br#"<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets/></workbook>"#)?;
+        archive.finish()?;
+        let args = super::super::Args {
+            original: input.clone(),
+            default: input,
+            output: directory.join("output"),
+            host_script: None,
+            observatory_group_dir: None,
+            workbook_label: None,
+            operation_timeout_seconds: 120,
+            skip_check_performance: true,
+            check_performance: false,
+            serial_captures: false,
+            chart_capture_mode: Default::default(),
+            prepare_artifacts_only: false,
+        };
+        let mut comparison = Comparison::prepare(&args)?;
+        let saved_change = Candidate { sheet: "Data".into(), cell: "A1:A1".into() };
+        comparison.original_save_changes.insert(saved_change.clone());
+        let mut workflow = Workflow {
+            comparison: &mut comparison,
+            states: BTreeMap::new(),
+            inspected: BTreeSet::new(),
+            requested_candidates: BTreeSet::new(),
+            content_bounds: Default::default(),
+            original_save_keys: BTreeSet::new(),
+        };
+        workflow.project_legacy_findings()?;
+        // Projection against empty bounds would discard the coordinate. With
+        // no pre-rebuild Original, that unused projection must not run at all.
+        assert_eq!(workflow.comparison.original_save_changes, BTreeSet::from([saved_change]));
+        assert!(workflow.comparison.excel.is_none());
+        drop(workflow);
+        drop(comparison);
+        fs::remove_dir_all(directory)?;
+        Ok(())
     }
 }
