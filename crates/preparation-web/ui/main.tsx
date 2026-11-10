@@ -493,15 +493,23 @@ function Observatory() {
             value={`${perHour.toFixed(1)} / h`}
             note={`${(perHour / 60).toFixed(2)} / min · since run start`}
           />
-          <Metric
-            label="Time remaining"
-            value={remaining ? eta : "0 s"}
-            note={`${remaining} pending · estimate`}
-          />
+          <article className="metric">
+            <div className="metric-label">Run time</div>
+            <div className="metric-note">
+              {update.status === "completed" ? "Total duration" : "Elapsed"}
+            </div>
+            <div className="metric-value">{seconds.toFixed(2)} s</div>
+            {active && (
+              <div className="metric-note">
+                Remaining · {remaining && remainingSeconds !== null ? "~" : ""}
+                {remaining ? eta : "0 s"}
+              </div>
+            )}
+          </article>
           <Metric
             label="Worker"
             value={`${activeWorkers} / ${update.defaults.workers}`}
-            note={`${Math.round(seconds)} s elapsed`}
+            note="Active / configured"
           />
         </section>
         <div className="pipeline-grid">
