@@ -151,3 +151,24 @@ report SHA-256 is
 `f12cc28a57dc2a5cbee348b5314d20164f1ce28b5563561a98efa667ab8eb079`.
 The 78 ms recorded selection-and-transport phase applies to that
 zero-capture observation.
+
+## Raspberries XLStylesTool opening exception
+
+Pair `11bfcc0d562a76ea178fe7fc` failed in the candidate opening lane.
+Excel displayed a content-recovery prompt. The launcher recorded
+`repair_required` and confirmed shutdown without accepting the prompt.
+The Check Performance comparison of this workbook completed with
+limited coverage in its separate run.
+
+Both input ZIPs passed CRC verification. Their member lists match.
+Only `xl/styles.xml` and `xl/workbook.xml` differ by member size or CRC.
+Both XML parts parse, and the counts of style-table entries match.
+The candidate contains 100 defined names versus 103 in the original.
+Comparing name, scope and formula tuples found three removals with
+no surviving definition of the same name in the same scope. These
+archive observations do not identify which change triggered Excel's
+repair prompt. The raw candidate remains an opening exception.
+
+- Original SHA-256 `96fd0e60120c3878da261862433e2535f308f26299704ecc5a68b6958caf4ed8`
+- Candidate SHA-256 `ed777965d9e8d793835d6e7cab19245b66eec7cff0f581e1b1a8a3c7dac1d385`
+- Dialog receipt SHA-256 `06b9aebe1d3bea7e1f32f841ea8bcc90bdcb850161849699102f4dd97f90b2b9`
