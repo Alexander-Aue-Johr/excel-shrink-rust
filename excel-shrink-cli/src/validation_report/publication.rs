@@ -138,7 +138,7 @@ fn inspect(value: &Value, pointer: &str, file: &str, findings: &mut Findings) {
     }
 }
 
-fn sensitive_field(key: &str) -> bool {
+pub(super) fn sensitive_field(key: &str) -> bool {
     matches!(
         key.to_ascii_lowercase().as_str(),
         "password"

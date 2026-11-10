@@ -116,6 +116,8 @@ enum Command {
     CorpusList,
     /// Inspect exported JSON metadata for publication concerns without changing it.
     PublicationReview { report: PathBuf },
+    /// Derive an Atlas-only public presentation without local run configurations.
+    PublicAtlas { report: PathBuf, output: PathBuf },
     /// Verify an external Enron extraction and prepare a local candidate archive.
     CorpusImportEnron {
         #[arg(long)]
@@ -668,6 +670,11 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         Some(Command::PublicationReview { report }) => {
             let review = crate::validation_report::review_publication(&report_root(&report)?)?;
             println!("{}", serde_json::to_string_pretty(&review)?);
+            Ok(())
+        }
+        Some(Command::PublicAtlas { report, output }) => {
+            crate::validation_report::export_public_atlas(&report, &output)?;
+            println!("Public Atlas presentation: {}", output.display());
             Ok(())
         }
         Some(Command::CorpusList) => {

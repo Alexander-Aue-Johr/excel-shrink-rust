@@ -6,6 +6,7 @@
 
 mod evidence;
 mod publication;
+mod public_site;
 mod replay;
 mod site;
 mod merge;
@@ -16,6 +17,7 @@ pub(crate) use inventory::read as read_workbook_inventory;
 pub(crate) use atlas::label_atlas;
 pub(crate) use atlas::set_cohort;
 pub(crate) use publication::audit_tree as review_publication;
+pub(crate) use public_site::export as export_public_atlas;
 pub(crate) use atlas::live_asset;
 
 pub(crate) use site::{export_selected_site, export_site, write_pair_page, write_site};

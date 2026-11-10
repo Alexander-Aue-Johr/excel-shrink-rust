@@ -146,3 +146,28 @@ JSON are each limited to 128 MiB. Replay verification retains its stricter
 independent transport limits. Findings contain file names and JSON pointers,
 with a complete count and at most 1,000 retained entries. This inventory neither
 redacts evidence nor certifies publication rights or anonymity.
+
+### Public Atlas presentation
+
+`deltasieve public-atlas EXPORTED_REPORT NEW_DIRECTORY` derives an Atlas-only
+website from an existing static export. It verifies each referenced comparison
+package and requires Atlas detail data to match that package. It copies images
+byte-for-byte and retains the scientific comparison, formula and dependency
+payloads. Invalid evidence fails the export, leaving an `.incomplete` marker.
+Existing destination directories are rejected.
+
+The presentation excludes native run configurations, identities, executable
+programs and replay archives. Local transition paths, process identifiers and
+diagnostic error text are omitted from the derived JSON. Omission records contain
+JSON pointers and original-value SHA-256 hashes. Source report and catalog hashes
+remain in `public-provenance.json`. Environment keys become hashes so distinct
+environments still have distinct comparison-context signatures. The source
+export remains unchanged. Derived report pages also identify their public
+presentation provenance.
+
+This directory is a presentation artifact and cannot resume or merge as a native
+run. Its viewer supports the retained Atlas interactions and finding pages.
+Replay remains available in the original export. Publication review still runs
+on the derived directory. Workbook names, formulas, cell contents, screenshots
+and distribution rights require review before public deployment. These scientific
+payloads are deliberately retained even when their contents resemble local paths.

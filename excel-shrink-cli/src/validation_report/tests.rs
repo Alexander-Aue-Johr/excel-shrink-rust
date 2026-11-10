@@ -349,6 +349,44 @@ fn static_export_retains_reuse_identity_and_never_changes_the_source_report() ->
 }
 
 #[test]
+fn public_atlas_preserves_images_and_findings_without_exporting_run_configuration() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let raw = fixture.directory("public-raw")?;
+    let root = fixture.directory("public-source")?;
+    let (left, right) = image_pair(&raw)?;
+    let mut report = report_with_pair(&left, &right);
+    report["transitions"] = json!([{"before_file":"C:/private/book.xlsx","change_count":7}]);
+    write_report(&raw, &report)?;
+    package_comparison(&raw, &root.join("pairs/one"))?;
+    let run = json!({"run_id":"fixture","status":"completed","config":{"token":"private-token"},
+        "pairs":[{"id":"one","name":"book.xlsx","status":"completed_with_limitations","report":"pairs/one/report.json"}]});
+    fs::write(root.join("run.json"), serde_json::to_vec(&run)?)?;
+    write_site(&root, &run)?;
+    let before = fs::read(root.join("pairs/one/report.json"))?;
+    let original: Value = serde_json::from_slice(&before)?;
+    let target = fixture.0.join("public-presentation");
+    export_public_atlas(&root, &target)?;
+    assert!(target.join("index.html").is_file());
+    assert!(target.join("pairs/one/index.html").is_file());
+    assert!(!target.join("run.json").exists());
+    assert!(!target.join("pairs/one/bundle.json").exists());
+    assert!(!target.join(".incomplete").exists());
+    let projected = read_json_file(&target.join("pairs/one/report.json"))?;
+    assert_eq!(projected["comparisons"], original["comparisons"]);
+    assert!(projected["transitions"][0]["before_file"].is_null());
+    assert_eq!(projected["transitions"][0]["change_count"], 7);
+    let image = original["comparisons"][0]["findings"][0]["left_png"].as_str().unwrap();
+    assert_eq!(fs::read(root.join("pairs/one").join(image))?, fs::read(target.join("pairs/one").join(image))?);
+    assert_eq!(fs::read(root.join("pairs/one/report.json"))?, before);
+    assert!(export_public_atlas(&root, &target).is_err());
+    fs::write(root.join("pairs/one").join(image), b"corrupt")?;
+    let failed = fixture.0.join("public-corrupt");
+    assert!(export_public_atlas(&root, &failed).is_err());
+    assert!(failed.join(".incomplete").exists());
+    Ok(())
+}
+
+#[test]
 fn portable_paths_reject_traversal_and_windows_absolute_syntax_on_every_host() {
     for path in [
         "../report.json",
