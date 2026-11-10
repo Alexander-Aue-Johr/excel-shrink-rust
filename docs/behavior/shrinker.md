@@ -296,7 +296,8 @@ pass checks the original row once on demand. It preserves nondefault-font masks
 when removing them would introduce the default font into the row. If that font
 already exists in an original cell or an unmasked column gap, ordinary font
 representatives remain sufficient. Merged layouts cannot establish that shortcut.
-The dense promotion below avoids retaining thousands of equivalent masks.
+Fixed-height rows can use the dense promotion below to avoid retaining thousands
+of equivalent masks.
 
 Hidden columns also participate in automatic row sizing. Their local font masks
 must survive if removal would expose a font absent from the original row,
@@ -312,8 +313,12 @@ new workbook style or change a value merely to make this transformation possible
 
 Promotion requires cleanup enabled, a nonhidden row, no existing row style/custom
 format, no active sheet protection, sufficient row content and valid ordered
-cells. Automatic-height rows use only the dense routes and must not intersect
-merges. Sparse promotion still requires an explicitly custom-height row. Cells
+cells. Every promotion route requires both an explicit `ht` and `customHeight="1"`.
+A promoted row font can reduce Excel's automatic height even when every original
+cell already carries that font. Destatis `verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx`,
+sheet `3.8_(1)`, row 105 demonstrated this with a reduction from the inherited
+12.75 points to 9 points, moving the footer upward. Automatic-height rows retain
+the ordinary cell cleanup and font-mask rules. Cells
 with unsupported attributes, unknown XFs or non-cell content prevent this
 transformation.
 

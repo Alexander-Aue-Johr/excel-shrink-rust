@@ -429,7 +429,10 @@ fn choose_promoted_row_style(
     if !params.cleanup.empty_cells_without_content
         || row.hidden
         || row.style.is_some()
-        || content.len() < if row.has_custom_height { 64 } else { 1024 * 12 }
+        // A new row font can shrink Excel's inherited automatic height even
+        // when every cell already uses that font. Only fixed heights are safe.
+        || !(row.has_height && row.has_custom_height)
+        || content.len() < 64
         || metrics.sheet_protection_enabled
     {
         return None;
@@ -444,9 +447,6 @@ fn choose_promoted_row_style(
         .merge_cell_ranges
         .iter()
         .any(|r| r.start_row <= row_num && row_num <= r.end_row);
-    if !row.has_custom_height && row_has_merge {
-        return None;
-    }
     let mut counts = std::collections::BTreeMap::<u32, usize>::new();
     let mut gaps = Vec::new();
     let mut pos = 0;
@@ -529,9 +529,6 @@ fn choose_promoted_row_style(
         if let Some(missing_cells) = restore_dense_row_gaps(&gaps, xf, params, metrics) {
             return Some(RowStylePromotion { style_id: dominant, missing_cells });
         }
-    }
-    if !row.has_custom_height {
-        return None;
     }
     // A dense row retains its explicit merged cells through the normal merge
     // policy; sparse merged rows need a stronger inheritance proof.

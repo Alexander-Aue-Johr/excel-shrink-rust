@@ -1583,24 +1583,25 @@ fn automatic_row_preserves_masks_without_retaining_redundant_font_bloat() {
     assert!(cleaned.len() < source.len());
 }
 
-/// A full-width automatic row can use one existing row XF instead of 16K masks.
+/// Destatis traffic, 3.8_(1), row 105: promoting a dense row font reduced
+/// Excel's inherited 12.75-point height to 9 points and moved the footer.
 #[test]
-fn dense_automatic_row_compacts_without_exposing_a_new_font() {
+fn dense_row_promotion_requires_an_explicit_fixed_height() {
     let params = promotion_params();
     for missing in [vec![], vec![16384]] {
-        let source = String::from_utf8(dense_row_with_missing_cells(&missing, false))
-            .unwrap().replace(" customHeight=\"1\"", "");
-        let cleaned = replace_single_row_with_metrics(
-            source.as_bytes(), &params, &mut CleanSheetMetrics::default());
-        let text = String::from_utf8(cleaned.clone()).unwrap();
-        assert!(text.contains("s=\"2\" customFormat=\"1\""));
-        assert!(cleaned.len() < 150);
-        if !missing.is_empty() {
-            assert!(text.contains("<c r=\"XFD1\" s=\"0\"/>"));
+        let fixed = String::from_utf8(dense_row_with_missing_cells(&missing, false)).unwrap();
+        for height in ["", " ht=\"9\"", " customHeight=\"1\"", " ht=\"9\" customHeight=\"0\""] {
+            let source = fixed.replace(" ht=\"9\" customHeight=\"1\"", height);
+            // The ordinary cell cleanup may still compact redundant cells.
+            let cleaned = replace_single_row_with_metrics(
+                source.as_bytes(), &params, &mut CleanSheetMetrics::default());
+            let text = String::from_utf8(cleaned.clone()).unwrap();
+            assert!(text.starts_with(&format!("<row r=\"1\"{height}")));
+            assert!(!text.contains("customFormat"));
+            let repeated = replace_single_row_with_metrics(
+                &cleaned, &params, &mut CleanSheetMetrics::default());
+            assert_eq!(repeated, cleaned);
         }
-        let repeated = replace_single_row_with_metrics(
-            &cleaned, &params, &mut CleanSheetMetrics::default());
-        assert_eq!(repeated, cleaned);
     }
 }
 

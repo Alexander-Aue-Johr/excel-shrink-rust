@@ -1,0 +1,127 @@
+{
+  "date": "2026-11-10",
+  "source_base_commit": "fd428d3",
+  "input_sha256": "b320dc4f614eec1a1251efc5ca5041948761283ef33e29a5939652eab1fee806",
+  "sheet": "3.8_(1)",
+  "range": "A1:U110",
+  "core_tests": {
+    "passed": 296,
+    "failed": 0,
+    "ignored": 1
+  },
+  "comparisons": {
+    "before": {
+      "original_geometry": {
+        "height": 1005.1875,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 1017.75
+      },
+      "default_geometry": {
+        "height": 1001.4375,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 1017.75
+      },
+      "image_dimensions": [
+        [
+          1358,
+          1327
+        ],
+        [
+          1358,
+          1322
+        ]
+      ],
+      "geometry_differs": true,
+      "pixels_differ": true,
+      "images": [
+        {
+          "bytes": 91145,
+          "file": "reference-0-O.png",
+          "sha256": "b65be480beefdd4827ff52bfbcdf0c0b97cac56cb96789350359a2ec353cdb44"
+        },
+        {
+          "bytes": 91018,
+          "file": "reference-0-SD.png",
+          "sha256": "d7bafda00de32ecf9503cda06672bfdcccff55098e66e43e9c3489b96850b436"
+        }
+      ],
+      "changed_common_pixels": 3408,
+      "producer_sha256": "72b6b6cc2d8071d9178e08a2ab22ecb7281bf7ec8ebf5c3dead42bbe9d295224",
+      "candidate_sha256": "00397cf88a84bcec11f6d5b9980568f108686c6bb614b76e24e09575021b6a5e",
+      "native_row_105_height_points": {
+        "original": 12.75,
+        "candidate": 9.0
+      }
+    },
+    "after": {
+      "original_geometry": {
+        "height": 1005.1875,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 1017.75
+      },
+      "default_geometry": {
+        "height": 1005.1875,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 1017.75
+      },
+      "image_dimensions": [
+        [
+          1358,
+          1327
+        ],
+        [
+          1358,
+          1327
+        ]
+      ],
+      "geometry_differs": false,
+      "pixels_differ": false,
+      "images": [
+        {
+          "bytes": 91145,
+          "file": "reference-0-O.png",
+          "sha256": "b65be480beefdd4827ff52bfbcdf0c0b97cac56cb96789350359a2ec353cdb44"
+        },
+        {
+          "bytes": 91145,
+          "file": "reference-0-SD.png",
+          "sha256": "b65be480beefdd4827ff52bfbcdf0c0b97cac56cb96789350359a2ec353cdb44"
+        }
+      ],
+      "changed_common_pixels": 0,
+      "producer_sha256": "72b6b6cc2d8071d9178e08a2ab22ecb7281bf7ec8ebf5c3dead42bbe9d295224",
+      "candidate_sha256": "71e8344db1742cb3347c877b99c5547e9afc5f38bd1ea46a20d6a043fbe050d2",
+      "native_row_105_height_points": {
+        "original": 12.75,
+        "candidate": 12.75
+      }
+    }
+  },
+  "fixed_cleanup": {
+    "binary_sha256": "51a034787e0d768c40852e8c769e6f56db2902a39d5fea1467953fef0b77d846",
+    "output_sha256": "71e8344db1742cb3347c877b99c5547e9afc5f38bd1ea46a20d6a043fbe050d2",
+    "output_bytes": 2654536,
+    "metrics": {
+      "seconds": 13.28110509999533,
+      "exit_code": 0,
+      "timed_out": false,
+      "resources": {
+        "status": "measured",
+        "scope": "direct_child_process",
+        "cpu_user_seconds": 7.109375,
+        "cpu_kernel_seconds": 5.46875,
+        "observed_os_peak_working_set_bytes": 379904000,
+        "observed_os_peak_pagefile_usage_bytes": 392097792,
+        "sampled_peak_private_bytes": 392081408,
+        "memory_samples": 771,
+        "memory_query_after_exit_succeeded": true,
+        "sampling_interval_seconds": 0.01,
+        "memory_limit": "Maximum observed OS peaks; an unsampled final peak may be missed. Private usage is sampled, not an exact lifetime maximum."
+      }
+    }
+  }
+}
