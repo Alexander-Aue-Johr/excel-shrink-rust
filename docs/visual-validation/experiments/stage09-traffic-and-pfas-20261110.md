@@ -342,3 +342,12 @@ These two observations do not resolve whole-grid or other-sheet coverage.
 
 - SheetShrink output SHA-256 `7bc32656bf8739dc3e876f240dad6c4d3bad79fec80c81ac33387d1714e622da`
 - Native reference SHA-256 `93112746436eae2d7c3fd6434f5566e61b3ff6ad009e4b0875a9b666b6869e03`
+
+A separate ordinary Inquire attempt used the same prepared original and
+candidate as the pending Raspberries slot. It ended with unresolved
+whole-grid coverage on By Country!A1:XFD1048576. The failure is distinct
+from the XLStylesTool opening exception. It also remains separate from
+the bounded, equal SheetShrink reference above.
+
+Inquire failure receipt SHA-256
+`36fe36f0b7a6cf1fdb393ad6e1a142d9a0eb1c8a54d08026fc74f8d8d2de4f67`.
