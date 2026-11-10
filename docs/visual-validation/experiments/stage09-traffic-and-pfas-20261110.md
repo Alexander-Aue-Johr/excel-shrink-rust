@@ -172,3 +172,33 @@ repair prompt. The raw candidate remains an opening exception.
 - Original SHA-256 `96fd0e60120c3878da261862433e2535f308f26299704ecc5a68b6958caf4ed8`
 - Candidate SHA-256 `ed777965d9e8d793835d6e7cab19245b66eec7cff0f581e1b1a8a3c7dac1d385`
 - Dialog receipt SHA-256 `06b9aebe1d3bea7e1f32f841ea8bcc90bdcb850161849699102f4dd97f90b2b9`
+
+## Hospital Data capture cost by candidate
+
+Four completed comparisons of Data.gov pair `206ec7d9d777560e7dbb7626`
+have identical original package-member SHA-256 inventories. They all
+reported zero differing regions under limited coverage.
+
+| Candidate producer | Worksheet captures per side | Selection and transport (s) | Image comparison (s) |
+|---|---:|---:|---:|
+| Inquire | 3,553 | 1,296.010 | 260.367 |
+| NXPowerLite | 4 | 1.921 | 0.293 |
+| Check Performance | 4 | 1.389 | 0.295 |
+| XLStylesTool | 0 | 0.087 | 0.007 |
+
+NXPowerLite recorded 4,530,112 original-to-candidate input XML changes.
+After rebuild and selection, 904 requested candidates on Financial and
+Utilization Data produced eight grid tiles and four measured capture
+regions. Inquire had 905 requested candidates on that same sheet and
+recorded 3,297 measured regions there, plus 256 on Cost Allocation Data.
+An early XML count and a pre-grid candidate count therefore cannot
+predict the capture cost without accounting for candidate geometry.
+The variants and selected scopes differ, so these measurements provide
+neither a matched algorithm speedup nor a whole-workbook equality claim.
+
+Pair report SHA-256 values:
+
+- Inquire `8be72b8885bd1676665054b0f79ec05d6ed50de34f3556f494dcbbd8c25d9650`
+- NXPowerLite `8b438a95ed2c84da3cc0ff563eaa1bd8f54ba3e6b277b3ee23b970ab4ebb6585`
+- Check Performance `5896dbfd84a90fc91c531fc3b7f0721b4069fd12d89812c12c614aae5da0bc96`
+- XLStylesTool `fd0a1de5e483933c5018341192e30136d4d52cbb57d3bc4e2674e8bbc5c1d916`
