@@ -12,7 +12,7 @@ One changed pixel is sufficient to offer an explanation. The explanation is a
 possible dependency path and does not establish the cause of every changed pixel.
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v11`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v12`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -1453,3 +1453,23 @@ accept their completion as v11 coverage. A live study upgrade therefore needs an
 explicit selection/revalidation plan. The two current long Destatis attempts
 remain on their immutable v10 runtime while native acceptance is pending.
 
+
+## Empty trailing row exclusion
+
+Policy v12 clips cell capture rectangles at the last content row in the union
+of raw, saved and rebuilt states, matching the existing height dependency scope.
+Upper and side context remain. The legacy `content_envelope_with_one_cell_margin`
+field records these effective capture bounds, with no lower context row.
+Content and potentially visible formatting in any included state extend the
+boundary. The planner reuses its existing envelope and adds no Excel calls.
+
+In Wanderungen, Tabelle 2.6.1 ends at row 84. The empty original row 85 has
+12.75 point height and becomes hidden after cleanup. Capturing IG1:JL85 formerly
+reported that trailing height change even though the columns have zero width.
+The region now stops at row 84. Frozen reports retain their original policy.
+
+Native revalidation on 2026-11-10 completed with 38 regions and 37 pixel
+comparisons. IG1:JL84 measured 1086 points high in both rebuilt workbooks.
+No capture region reported pixel, geometry or rendering differences. Separate
+height observations in Tabelle 1.1 and Tabelle 1.6 remain recorded. This result
+uses the targeted capture scope and retains its existing coverage limitations.

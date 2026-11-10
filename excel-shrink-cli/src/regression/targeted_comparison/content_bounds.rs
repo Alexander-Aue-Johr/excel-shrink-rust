@@ -38,6 +38,14 @@ impl Rectangle {
         }
     }
 
+    /// Preserve context above and beside content without measuring empty trailing rows.
+    fn capture_bounds(self) -> Self {
+        Self {
+            bottom: self.bottom,
+            ..self.padded()
+        }
+    }
+
     fn intersection(self, other: Self) -> Option<Self> {
         let result = Self {
             top: self.top.max(other.top),
@@ -199,7 +207,7 @@ impl ContentBounds {
                 .bounds
                 .get(&candidate.sheet)
                 .copied()
-                .map(Rectangle::padded);
+                .map(Rectangle::capture_bounds);
             let entry = coverage
                 .entry(candidate.sheet.clone())
                 .or_insert_with(|| Coverage {
@@ -260,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn height_scope_stops_at_content_while_captures_keep_their_context_margin() -> Result<()> {
+    fn captures_and_height_checks_stop_at_the_last_content_row() -> Result<()> {
         let bounds = bounds("B1:XFD83")?;
         assert_eq!(bounds.last_relevant_row("Data"), 83);
         assert_eq!(bounds.last_relevant_row("Missing"), 0);
@@ -272,7 +280,23 @@ mod tests {
         let (selected, _) = bounds.select(&requested)?;
         assert!(selected
             .iter()
-            .all(|candidate| { Rectangle::parse(&candidate.cell).unwrap().bottom == 84 }));
+            .all(|candidate| { Rectangle::parse(&candidate.cell).unwrap().bottom == 83 }));
+        Ok(())
+    }
+
+    #[test]
+    fn wanderungen_zero_width_region_excludes_only_rows_below_the_union_content() -> Result<()> {
+        let requested = BTreeSet::from([Candidate {
+            sheet: "Data".into(),
+            cell: "IG1:JL85".into(),
+        }]);
+        for (last_content_row, expected_bottom) in [(84, 84), (96, 96)] {
+            let content = bounds(&format!("A1:XFD{last_content_row}"))?;
+            let (selected, _) = content.select(&requested)?;
+            assert!(!selected.is_empty());
+            assert!(selected.iter().all(|candidate|
+                Rectangle::parse(&candidate.cell).unwrap().bottom == expected_bottom));
+        }
         Ok(())
     }
 
@@ -288,7 +312,7 @@ mod tests {
             selected,
             BTreeSet::from([Candidate {
                 sheet: "Data".into(),
-                cell: "S9:X21".into()
+                cell: "S9:X20".into()
             }])
         );
         assert_eq!(coverage[0].skipped_outside_content, 0);
@@ -322,7 +346,7 @@ mod tests {
         assert_eq!(selected.len(), 8);
         assert!(selected
             .iter()
-            .all(|candidate| Rectangle::parse(&candidate.cell).unwrap().bottom <= 1001));
+            .all(|candidate| Rectangle::parse(&candidate.cell).unwrap().bottom <= 1000));
         Ok(())
     }
 
@@ -337,10 +361,10 @@ mod tests {
             .collect();
         let (selected, coverage) = bounds.select(&requested)?;
         assert_eq!(selected.len(), 1);
-        assert_eq!(coverage[0].skipped_outside_content, 99_998);
+        assert_eq!(coverage[0].skipped_outside_content, 99_999);
         assert!(selected
             .iter()
-            .all(|candidate| Rectangle::parse(&candidate.cell).unwrap().bottom <= 11));
+            .all(|candidate| Rectangle::parse(&candidate.cell).unwrap().bottom <= 10));
         Ok(())
     }
 
@@ -362,7 +386,7 @@ mod tests {
             selected,
             BTreeSet::from([Candidate {
                 sheet: "Data".into(),
-                cell: "B4:G11".into()
+                cell: "B4:G10".into()
             }])
         );
         assert_eq!(coverage[0].clipped_to_content, 1);
