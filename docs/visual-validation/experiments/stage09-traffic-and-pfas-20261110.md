@@ -227,3 +227,21 @@ require new, matched reference captures for the remaining variants.
 
 - Inquire report SHA-256 `435f1e66389fc978fc6c2a5f6af217c1d399e6f50125ada8fc4d8ae022a956eb`
 - Check Performance report SHA-256 `a783acd72f0a82371fa260caf69ade8bdca30fb03cb5198b13f527ccd101b406`
+
+### Adage fixed factor shares a rendered difference
+
+On the distinct fixed-factor workbook, pair
+`c569d1a453c80a90c0b8033b`, NXPowerLite, Inquire and Check
+Performance all retained readme!A1:M22 at 1368 by 466 pixels on both
+sides. Decoded RGBA SHA-256 values agree across runs within each
+state. All three candidates change exactly 16,182 pixels in the
+same bounding box (748, 20, 1306, 49), using zero-based coordinates
+with exclusive upper bounds. The shared change is one rendered
+outcome across three candidates. Its cause is unresolved. The
+NXPowerLite input archives contain no formulas on readme, while the
+report's dependency diagnostic exceeded its cell budget. XLStylesTool
+has no readme capture in this run.
+
+- Original RGBA `b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b`
+- Candidate RGBA `c200d295a3d87e41a6435e8f9873e213524b5aa1efe5918b27f87b27ad719a00`
+- NXPowerLite report `fac8c6eae347ee2156be4a8345460e0ab6f9986fea41bd48df63da17b7c703dd`
