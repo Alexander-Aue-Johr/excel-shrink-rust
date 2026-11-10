@@ -264,6 +264,16 @@ def worker(root):
                 (root / "convert-active").unlink(missing_ok=True)
                 if not presentation.Slides(1).Shapes(1).HasChart:
                     raise RuntimeError("PowerPoint did not create a modern chart")
+                diagnostic_delay = request.get("diagnostic_delay_seconds", 0)
+                if diagnostic_delay:
+                    stage = "wait for diagnostic rendering"
+                    deadline = time.monotonic() + diagnostic_delay
+                    while time.monotonic() < deadline:
+                        pythoncom.PumpWaitingMessages()
+                        time.sleep(0.1)
+                    stage = "export diagnostic slide"
+                    com_call(lambda: presentation.Slides(1).Export(
+                        str(directory / "converted-slide.png"), "PNG", 1600, 900))
                 stage = "save converted chart"
                 com_call(lambda: presentation.SaveAs(str(directory / "converted.pptx"), 24))
                 payload = extracted_workbook(directory / "converted.pptx")
@@ -462,7 +472,10 @@ def run_locked(args, root):
                     wait_for(session / "ready.json", process, root, 60, args.reserve_gib)
                 (directory / "source.bin").write_bytes(payload)
                 (directory / "response.json").unlink(missing_ok=True)
-                write_json(session / "request.json", {"directory": str(directory)})
+                write_json(session / "request.json", {
+                    "directory": str(directory),
+                    "diagnostic_delay_seconds": args.diagnostic_delay_seconds,
+                })
                 started = time.monotonic()
                 try:
                     response = wait_for(directory / "response.json", process, root, args.timeout, args.reserve_gib)
@@ -488,6 +501,8 @@ def run_locked(args, root):
                 # Keep sources and receipts. Carrier files are reproducible and
                 # cannot be used to claim visual equivalence to the old chart.
                 for name in ("carrier.pptx", "converted.pptx"):
+                    if name == "converted.pptx" and args.diagnostic_delay_seconds:
+                        continue
                     for attempt in range(10):
                         try:
                             (directory / name).unlink(missing_ok=True)
@@ -537,6 +552,8 @@ def main():
     parser.add_argument("--output", type=Path, help="Separate resumable Graph recovery directory")
     parser.add_argument("--limit", type=int, default=0, help="Maximum new attempts, 0 for all")
     parser.add_argument("--timeout", type=int, default=90)
+    parser.add_argument("--diagnostic-delay-seconds", type=float, default=0,
+                        help="Pause after conversion and retain a slide PNG and converted PPTX for inspection")
     parser.add_argument("--reserve-gib", type=float, default=8)
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--retry-error-containing", action="append", default=[],
@@ -548,7 +565,8 @@ def main():
     else:
         if (args.candidates is None and args.extraction_workspace is None) or args.output is None:
             parser.error("An input source and --output are required")
-        if args.limit < 0 or args.timeout <= 0 or args.reserve_gib <= 0:
+        if (args.limit < 0 or args.timeout <= 0 or args.reserve_gib <= 0
+                or not 0 <= args.diagnostic_delay_seconds <= 30):
             parser.error("Invalid limit, timeout or memory reserve")
         if args.pipeline:
             if not args.extraction_workspace or not args.source_url or not args.seven_zip:
