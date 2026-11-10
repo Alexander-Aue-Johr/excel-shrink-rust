@@ -118,6 +118,8 @@ enum Command {
     PublicationReview { report: PathBuf },
     /// Derive an Atlas-only public presentation without local run configurations.
     PublicAtlas { report: PathBuf, output: PathBuf },
+    /// Import a completed explicit reference capture as a separately scoped report.
+    ImportReference(crate::validation_report::reference_import::ImportReference),
     /// Verify an external Enron extraction and prepare a local candidate archive.
     CorpusImportEnron {
         #[arg(long)]
@@ -676,6 +678,9 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
             crate::validation_report::export_public_atlas(&report, &output)?;
             println!("Public Atlas presentation: {}", output.display());
             Ok(())
+        }
+        Some(Command::ImportReference(args)) => {
+            crate::validation_report::reference_import::import(args)
         }
         Some(Command::CorpusList) => {
             let catalog = crate::validation_corpora::catalog()?;

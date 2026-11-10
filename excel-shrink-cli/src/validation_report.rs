@@ -7,6 +7,7 @@
 mod evidence;
 mod publication;
 mod public_site;
+pub(crate) mod reference_import;
 mod replay;
 mod site;
 mod merge;

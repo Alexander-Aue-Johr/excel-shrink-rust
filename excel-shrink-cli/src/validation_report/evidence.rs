@@ -99,7 +99,9 @@ impl ImageStore {
         let mut aliases = BTreeMap::new();
         for original in references {
             let source = self.source_image(&original)?;
-            let compress = equal.contains(&original) && !protected.contains(&original);
+            let compress = report["preserve_image_encoding"] != true
+                && equal.contains(&original)
+                && !protected.contains(&original);
             let retained = self.retain_image(&source, compress)?;
             aliases.insert(original, retained);
         }
@@ -121,11 +123,19 @@ impl ImageStore {
             report["capture_receipts"] = Value::Array(receipts);
         }
         replace_references(report, &aliases);
-        report["equal_image_encoding"] = serde_json::json!({
-            "format":"PNG", "compression":"best", "filter":"adaptive",
-            "pixel_preservation":"decoded RGBA equality checked before accepting a smaller encoding",
-            "scope":"verified equal images only; shared differing or unverified references preserve original bytes"
-        });
+        report["equal_image_encoding"] = if report["preserve_image_encoding"] == true {
+            serde_json::json!({
+                "format":"source encoding", "compression":"unchanged",
+                "pixel_preservation":"original encoded bytes retained",
+                "scope":"explicit preservation requested by source report"
+            })
+        } else {
+            serde_json::json!({
+                "format":"PNG", "compression":"best", "filter":"adaptive",
+                "pixel_preservation":"decoded RGBA equality checked before accepting a smaller encoding",
+                "scope":"verified equal images only; shared differing or unverified references preserve original bytes"
+            })
+        };
         Ok(())
     }
 

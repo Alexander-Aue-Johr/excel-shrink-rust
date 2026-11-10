@@ -171,3 +171,24 @@ Replay remains available in the original export. Publication review still runs
 on the derived directory. Workbook names, formulas, cell contents, screenshots
 and distribution rights require review before public deployment. These scientific
 payloads are deliberately retained even when their contents resemble local paths.
+
+### Explicit native reference observations
+
+`deltasieve import-reference REFERENCE_DIRECTORY NEW_REPORT --workbook NAME
+--corpus CORPUS --variant TOOL --scope-note EXPLANATION` adapts a completed
+`explicit-reference-plan-v1` receipt to the ordinary Atlas/report format.
+The importer verifies the retained rebuilt workbooks and every image against
+the native receipt before creating a destination. It preserves the exact source
+receipt text and its SHA-256, inventories the retained workbook and associates
+that inventory with the receipt's original-input identity. It copies scientific
+geometry and difference observations without rerunning Excel or candidate
+selection. Original image encoding is retained for matching cross-tool contexts.
+
+Imported references always use a separate corpus view with the suffix
+`(explicit reference controls)`. Their selection metadata sets `recall_evidence`
+to false. The required scope note must disclose posthoc selection when applicable.
+These observations can illustrate a measured difference and compare identical
+reference contexts. They do not complete an ordinary targeted comparison, establish
+whole-sheet coverage or supply a blinded recall estimate. The original source
+directory remains unchanged. Ordinary merge, export and public-Atlas presentation
+are available for the derived report.
