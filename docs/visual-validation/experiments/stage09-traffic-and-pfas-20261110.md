@@ -379,3 +379,21 @@ in rank order, are:
 - `990e281b92163b4579ca33145961f878fe2213484964aee3a0d1a701c7d92a68`
 - `a7f2526fe95c5afc6a22b453a25d083805f6f152bf98f62ef2989b1dd808757f`
 - `9a091bdb450f45fdc33e883630aa47a4f94a3084c809497819a4e7b01ff580a9`
+
+### Enron rank 30 raw opening exception
+
+The top-49 identity audit has no eligible comparison for rank 30,
+workbook `632d959be36ff9610d832c34b55c60ae4691f09d727f7f575c3c467e27b5ac0d.xlsx`.
+An original-only native opening control stopped at an Excel
+`repair_required` dialog and confirmed shutdown without accepting it.
+Separate COM opening controls also returned HRESULT -2146827284 for
+both the original and the historical SheetShrink output.
+
+The XLS reconversion control produced an alternate XLSX successfully
+(SHA-256 `8836f59174c865cfde29dffe99ed98aa9b768694352d6d962dd2cb166988c7c0`).
+It would require an independent opening check and a new comparison
+using that input identity. The conversion receipt supplies no visual
+coverage for the original selected workbook.
+
+- Native failure receipt `3840d9c90043beef104fd553fd950e0f95fe432c387f470f24364c8d02da6b49`
+- Reconversion receipt `a7b588fed3a3a597271378b2fdedd5d2d17930956f0d985834a877268f71f9e6`
