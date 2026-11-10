@@ -216,6 +216,25 @@ pub(super) fn read(bytes: &[u8]) -> Result<Vec<Frame>> {
         path.push(local.to_owned());
         let mut attrs = attributes(tag.attrs)?;
         attrs.retain(|name, _| name != "xmlns" && !name.starts_with("xmlns:"));
+        if local == "srgbClr" && attrs.contains_key("a14:legacySpreadsheetColorIndex") {
+            // Excel's legacy palette hint changes no line geometry. Keep the
+            // explicit RGB value and require the exact ignorable extension scope.
+            ensure!(
+                namespaces
+                    .element(b"a14:legacySpreadsheetColorIndex")?
+                    .as_deref()
+                    == Some("http://schemas.microsoft.com/office/drawing/2010/main")
+                    && namespaces.element(b"mc:Ignorable")?.as_deref()
+                        == Some("http://schemas.openxmlformats.org/markup-compatibility/2006")
+                    && attrs.get("mc:Ignorable").map(String::as_str) == Some("a14")
+                    && attrs["a14:legacySpreadsheetColorIndex"]
+                        .parse::<u8>()
+                        .is_ok_and(|index| index <= 65),
+                "Unsupported legacy line color metadata"
+            );
+            attrs.remove("a14:legacySpreadsheetColorIndex");
+            attrs.remove("mc:Ignorable");
+        }
         if tag.depth == 0 {
             ensure!(
                 !root_seen && local == "wsDr" && attrs.is_empty(),
@@ -286,6 +305,44 @@ mod tests {
             }
         );
         assert_eq!(frames[0].stroke_points, 0.85);
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_palette_hint_keeps_geometry_and_rejects_unknown_metadata() -> Result<()> {
+        let color = r#"<a:srgbClr val="000000" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="a14" xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" a14:legacySpreadsheetColorIndex="64"/>"#;
+        let xml = LINE.replace(r#"<a:srgbClr val="000000"/>"#, color);
+        assert_eq!(
+            read(xml.as_bytes())?[0].geometry,
+            read(LINE.as_bytes())?[0].geometry
+        );
+        for changed in [
+            xml.replace(
+                "legacySpreadsheetColorIndex=\"64\"",
+                "legacySpreadsheetColorIndex=\"66\"",
+            ),
+            xml.replace("drawing/2010/main", "drawing/2010/unknown"),
+            xml.replace("mc:Ignorable=\"a14\"", "mc:Ignorable=\"other\""),
+        ] {
+            assert!(read(changed.as_bytes()).is_err());
+        }
+        Ok(())
+    }
+
+    /// bevoelkerungsbewegung-2010110157005.xlsx, sheet 2.11, Line 1.
+    /// The unsupported palette hint formerly forced A1:XFD1048576 coverage.
+    #[test]
+    #[ignore = "requires LEGACY_LINE_FIXTURE pointing to the retained XLSX"]
+    fn retained_bevoelkerungsbewegung_palette_line_is_bounded() -> Result<()> {
+        let path = std::env::var("LEGACY_LINE_FIXTURE")?;
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(path)?)?;
+        let mut xml = Vec::new();
+        std::io::Read::read_to_end(&mut archive.by_name("xl/drawings/drawing7.xml")?, &mut xml)?;
+        let frames = read(&xml)?;
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].name, "Line 1");
+        assert_eq!(frames[0].geometry.height, 0.0);
+        assert_eq!(frames[0].stroke_points, 0.75);
         Ok(())
     }
 
