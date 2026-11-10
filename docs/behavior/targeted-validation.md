@@ -313,6 +313,8 @@ Audit transitions separately:
 Each changed location stores before/after fingerprints or absence, sheet,
 location, context identities and an overlap flag. A change also observed in the
 Original opening/saving control is labeled as overlapping that transition.
+The control itself records overlap while inserting its change keys. Subsequent
+transitions look up each change against those keys.
 Exact fingerprint/location/context matching supports **overlap**, not exclusive
 causal attribution. It does not prove a difference is harmless or solely volatile.
 

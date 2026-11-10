@@ -435,11 +435,16 @@ impl Workflow<'_, '_> {
         self.publish_candidate_count()?;
         let attribution_started = Instant::now();
         if label == "original opening/saving control" {
-            self.original_save_keys = changes.iter().map(change_key).collect::<Result<_>>()?;
-        }
-        for change in &mut changes {
-            change.also_in_original_open_save =
-                self.original_save_keys.contains(&change_key(change)?);
+            self.original_save_keys.clear();
+            for change in &mut changes {
+                self.original_save_keys.insert(change_key(change)?);
+                change.also_in_original_open_save = true;
+            }
+        } else if !self.original_save_keys.is_empty() {
+            for change in &mut changes {
+                change.also_in_original_open_save =
+                    self.original_save_keys.contains(&change_key(change)?);
+            }
         }
         let attribution = attribution_started.elapsed().as_millis() as u64;
         let write_started = Instant::now();
