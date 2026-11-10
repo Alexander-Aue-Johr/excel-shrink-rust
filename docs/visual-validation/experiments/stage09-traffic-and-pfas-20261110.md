@@ -436,3 +436,18 @@ This narrows the work needed for a defensible plan. It must still
 qualify the effective default widths and heights and preserve the
 native inherited border extent. The existing three native samples
 only establish equal geometry at their measured coordinates.
+
+An independent reference on the 2015b workbook repeated the three
+SHR1 DE probes in 75.15 seconds. The three region receipts match the
+first workbook's receipts exactly, including geometry, image hashes,
+and the missing border at XFD. The rebuilt OR packages across the two
+workbooks differ only in docProps/core.xml and xl/workbook.xml, and
+the same holds independently for the rebuilt SDR packages. The
+changed XML children are modified in core.xml and AlternateContent
+and revisionPtr in workbook.xml. Workbook roots and all worksheet,
+style and shared-string members match between the corresponding
+states. The distinct source identities and incomplete ordinary
+comparison records remain separate.
+
+2015b native reference SHA-256
+`876bdc2e7eadc76fa38f8ec3bcd4e7dc0e132dc5b01548c8952cfd4f209a700b`.
