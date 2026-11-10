@@ -550,40 +550,6 @@ function Observatory() {
               {update.history_limit} recent jobs retained in memory
             </p>
           </section>
-          <aside className="panel focus-panel">
-            <div className="panel-header">
-              <h3>In focus</h3>
-            </div>
-            {focused ? (
-              <div className="focus-book">
-                <h4>{focused.name}</h4>
-                <p className={focused.error ? "failure" : "mint"}>
-                  {names[focused.status] ?? focused.status}
-                </p>
-                <p>
-                  {detailed
-                    ? "Workbook"
-                    : `Worker ${(focused.worker ?? 0) + 1}`}{" "}
-                  ·{" "}
-                  {(
-                    ((focused.ended_ms ?? update.elapsed_ms) -
-                      focused.started_ms) /
-                    1000
-                  ).toFixed(1)}{" "}
-                  s
-                </p>
-                <p>
-                  {fmtBytes(focused.before?.file_bytes ?? focused.source_bytes)}{" "}
-                  → {fmtBytes(focused.after?.file_bytes ?? null)}
-                </p>
-                {focused.error && <p className="failure">{focused.error}</p>}
-              </div>
-            ) : (
-              <p className="view-note">
-                Workbook details appear when the first job starts.
-              </p>
-            )}
-          </aside>
         </div>
         {detailed && atlas && (
           <section className="panel atlas-panel">

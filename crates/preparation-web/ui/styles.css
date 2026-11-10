@@ -1,3 +1,7 @@
+.pipeline-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .atlas-controls {
   display: flex;
   flex-wrap: wrap;
