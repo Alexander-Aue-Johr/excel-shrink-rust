@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sheet Atlas · Live captures</title>
+  <link rel="stylesheet" href="./atlas-assets/style.css">
+  <link rel="stylesheet" href="./atlas-assets/atlas.css">
+  <link rel="stylesheet" href="./atlas-assets/live.css">
+</head>
+<body>
+  <main class="live-atlas">
+    <header>
+      <div class="eyebrow">DELTASIEVE / SHEET ATLAS / LIVE</div>
+      <h1 id="workbook">Waiting for capture receipts…</h1>
+      <p id="status" role="status">Loading recorded native captures.</p>
+      <label><input id="follow" type="checkbox" checked> Follow new captures</label>
+      <button id="flat" type="button">Flat view</button>
+      <button id="three" type="button">3D view</button>
+      <select id="sheets" aria-label="Worksheet"></select>
+    </header>
+    <section id="gallery" aria-label="Live worksheet atlas"></section>
+    <section>
+      <h2 id="capture-title">Native capture</h2>
+      <p>These are received images. A capture receipt alone does not establish pixel equality.</p>
+      <div id="captures" class="live-captures"></div>
+    </section>
+  </main>
+  <script type="module" src="./atlas-assets/live.js"></script>
+</body>
+</html>

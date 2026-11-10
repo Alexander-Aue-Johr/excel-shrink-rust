@@ -32,6 +32,7 @@ mod application;
 mod preparation;
 mod preparation_job;
 mod corpus_job;
+mod live_atlas;
 pub(crate) use application::Application;
 
 struct Room {
@@ -124,6 +125,9 @@ async fn serve_async(config: RunConfig, port: u16, open: bool, application: Appl
         )
         .route("/api/session", get(session))
         .route("/api/state", get(state))
+        .route("/api/live-atlas/{run}", get(live_atlas::catalog))
+        .route("/api/live-atlas/{run}/images/{id}", get(live_atlas::image))
+        .route("/live-atlas/{*path}", get(live_atlas::asset))
         .route("/api/browse", get(browse))
         .route("/api/pick", post(pick))
         .route("/api/workbooks", get(workbooks))
@@ -361,13 +365,14 @@ async fn state(State(room): State<Arc<Room>>) -> ApiResult {
             progress.comparisons.clone(),
         )
     };
-    let telemetry = if let Some(path) = &telemetry_path {
+    let mut telemetry = if let Some(path) = &telemetry_path {
         read_small_json(path, 4 * 1024 * 1024)
             .await
             .unwrap_or(Value::Null)
     } else {
         Value::Null
     };
+    live_atlas::enrich_heartbeats(&mut telemetry).await;
     let report_base = room
         .report
         .lock()

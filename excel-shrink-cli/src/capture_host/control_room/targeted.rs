@@ -360,7 +360,7 @@ async fn enrich_addin_heartbeats(
 }
 
 /// Bind real received counts and timestamps to the exact Excel process identity.
-fn apply_addin_sample(lane: &mut Value, client: &Value) {
+pub(crate) fn apply_addin_sample(lane: &mut Value, client: &Value) {
     if lane["pid"].as_u64().is_none()
         || lane["process_started_at"].as_i64().is_none()
         || lane["pid"] != client["pid"]

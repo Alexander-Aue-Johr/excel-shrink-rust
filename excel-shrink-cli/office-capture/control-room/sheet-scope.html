@@ -180,7 +180,7 @@
             <label>Excel operation timeout (seconds)<input id="operation-timeout" type="number" min="1" max="86400" value="120"></label>
             <label>Capture progress timeout (seconds)<input id="idle-timeout" type="number" min="1" max="86400" value="120"></label>
             <label class="check wide"><input id="serial-captures" type="checkbox"> Serial capture requests for diagnostics</label>
-            <label class="check wide"><input id="retain-equal-images" type="checkbox"> Retain images of verified equal regions</label>
+            <label class="check wide"><input id="retain-equal-images" type="checkbox" checked> Retain images of verified equal regions</label>
           </div>
         </details></section>
       </fieldset>
@@ -223,7 +223,7 @@
         <label>Geometry ranges per sync<input name="geometry_batch_ranges" type="number" min="1" max="4096" required></label>
         <label>Capture ranges per sync<input name="capture_batch_ranges" type="number" min="1" max="64" required></label>
         <label>Capture batch megapixel budget<input name="capture_batch_megapixels" type="number" min="1" required></label>
-        <label class="check wide"><input name="retain_equal_images" type="checkbox"> Retain verified-equal images</label>
+        <label class="check wide"><input name="retain_equal_images" type="checkbox" checked> Retain verified-equal images</label>
         <label class="check wide"><input name="reuse_webview_profiles" type="checkbox"> Reuse isolated WebView profiles (warm browser caches)</label>
       </div></details>
       <p class="help wide">SQLite metadata and a 512 MiB free-RAM reserve are enabled. The run saves its source hash, configuration and immutable executable. Worker and batch settings remain adjustable in its Observatory.</p>

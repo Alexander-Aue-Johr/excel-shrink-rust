@@ -117,7 +117,7 @@ function populate(config) {
   set('operation-timeout', config.capture?.operation_timeout_seconds ?? 120);
   set('idle-timeout', config.capture?.idle_timeout_seconds ?? 120);
   check('serial-captures', config.capture?.serial_captures);
-  check('retain-equal-images', config.capture?.retain_equal_images);
+  check('retain-equal-images', config.capture?.retain_equal_images ?? true);
   document.querySelector(`input[name=mode][value=${config.steps?.length ? 'process' : 'compare'}]`).checked = true;
   stageModels = structuredClone(config.steps || []);
   renderStages();

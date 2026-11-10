@@ -138,7 +138,28 @@ pub(super) struct Lane {
     pub decision_note: Option<String>,
     pub capture_selection_complete: bool,
     pub current_sheet: Option<String>,
+    /// Bounded image receipts for live inspection, separate from scientific verdicts.
+    pub recent_captures: Vec<Value>,
     pub current_range: Option<String>,
+}
+
+impl Lane {
+    pub fn record_capture(
+        &mut self,
+        sheet: &str,
+        range: &str,
+        path: &std::path::Path,
+        geometry: &Value,
+    ) {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.recent_captures.push(json!({
+            "id": id, "at": now(), "sheet": sheet,
+            "range": range, "image": path, "geometry": geometry, "lane": self.id
+        }));
+        if self.recent_captures.len() > 128 {
+            self.recent_captures.remove(0);
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -316,6 +337,7 @@ impl Telemetry {
             decision_note: None,
             capture_selection_complete: false,
             current_sheet: None,
+            recent_captures: Vec::new(),
             current_range: None,
         })
         .collect();

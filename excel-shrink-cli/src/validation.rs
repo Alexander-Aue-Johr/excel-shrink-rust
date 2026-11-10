@@ -292,7 +292,7 @@ impl Default for CaptureOptions {
             operation_timeout_seconds: 120,
             idle_timeout_seconds: 120,
             serial_captures: false,
-            retain_equal_images: false,
+            retain_equal_images: true,
         }
     }
 }
@@ -797,6 +797,15 @@ pub(crate) fn open_browser(target: &OsStr) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn equal_images_are_retained_unless_explicitly_disabled() {
+        let defaults: super::CaptureOptions = serde_json::from_str("{}").unwrap();
+        assert!(defaults.retain_equal_images);
+        let discard: super::CaptureOptions =
+            serde_json::from_str(r#"{"retain_equal_images":false}"#).unwrap();
+        assert!(!discard.retain_equal_images);
+    }
+
     use super::*;
 
     #[test]

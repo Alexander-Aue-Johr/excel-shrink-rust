@@ -49,12 +49,17 @@ export function captureProgress(lane) {
 export function heartbeatRow(comparison, lane) {
   return {
     id: `targeted/${comparison.run_id}/${lane.id}/${lane.pid || 'pending'}/${lane.process_started_at || 0}`,
+    runId: comparison.run_id,
     kind: 'Excel / Office.js', active: !comparisonFinished(comparison), alive: lane.process_alive,
     processStarted: lane.process_started_at,
     heartbeat: lane.addin_heartbeat_at,
     heartbeatCount: lane.addin_heartbeat_at == null ? undefined : lane.addin_heartbeat_count,
     heartbeatSource: 'Office.js heartbeat received by host · not calculation progress',
-    state: lane.lifecycle, events: [],
+    state: lane.lifecycle,
+    events: (lane.recent_captures || []).map(capture => ({
+      kind: 'image_received', at: capture.at, sequence: capture.id,
+      details: { sheet_name: capture.sheet, range: capture.range, capture_id: capture.id },
+    })),
   };
 }
 

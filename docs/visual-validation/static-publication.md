@@ -77,3 +77,23 @@ Generate a release-level SHA-256 inventory before upload and verify the hosted
 downloads against it. Keep the release immutable so a paper's link continues to
 identify the evaluated snapshot. The publication destination and its access
 policy remain deployment choices.
+# Live capture inspection and retained equal images
+
+New configurations retain verified-equal images by default. Setting
+`capture.retain_equal_images` to `false` explicitly keeps the discard policy.
+Saved configurations retain their explicit choice.
+
+Packaging may recompress verified-equal PNG images with lossless PNG DEFLATE,
+the encoder's best compression setting and adaptive filters. It accepts the new
+encoding only when it is smaller and its decoded RGBA pixels exactly match the
+capture. Images referenced by differing or unverified observations preserve their
+original encoding. Integrity manifests describe the final retained bytes.
+
+The live Sheet Atlas reads bounded image receipts from the active comparison.
+Worker signal timelines put capture glyphs on the heartbeat line. Capture glyphs
+take visual precedence over nearby heartbeat pulses, while recorded heartbeat
+events remain intact. Clicking a glyph opens that receipt in the live Atlas.
+The live view reuses the Atlas spatial renderer, shows available native states,
+and labels them as received captures without claiming a comparison verdict.
+Recent inspection retains at most 128 receipts per native state. Completed static
+reports and merged reports remain independent of this live inspection window.

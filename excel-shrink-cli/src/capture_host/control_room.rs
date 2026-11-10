@@ -15,6 +15,7 @@ mod snapshots;
 mod snapshot_cache;
 mod summary;
 mod targeted;
+pub(crate) use targeted::apply_addin_sample;
 mod targeted_history;
 mod workbook_index;
 

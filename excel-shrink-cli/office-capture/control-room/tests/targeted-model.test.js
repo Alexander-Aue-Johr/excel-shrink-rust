@@ -3,6 +3,12 @@ import { acceptComparison, captureProgress, comparisonFinished, comparisonPresen
 export function runTests() {
   let passed = 0;
   const assert = (condition, message) => { if (!condition) throw new Error(message); passed++; };
+  const captureRow = heartbeatRow({ run_id: 'live-one', status: 'running', lanes: [] }, {
+    id: 'OR', recent_captures: [{ id: 'receipt-one', at: 1000, sheet: 'Data', range: 'A1:C9' }],
+  });
+  assert(captureRow.runId === 'live-one', 'Capture navigation retains the comparison identity.');
+  assert(captureRow.events[0].details.capture_id === 'receipt-one', 'Capture events retain the exact image receipt.');
+  assert(captureRow.events[0].details.range === 'A1:C9', 'Spatial glyphs receive the captured cell range.');
   assert(phaseComplete([{ steps: { open: 'done' } }, { steps: { open: 'skipped' } }], 'open'), 'Skipped lanes do not block completed phases.');
   assert(!phaseComplete([{ steps: { open: 'done' } }, { steps: { open: 'running' } }], 'open'), 'Running lanes prevent completion.');
   assert(!phaseComplete([{ steps: { open: 'skipped' } }], 'open'), 'An entirely skipped phase is not certified complete.');

@@ -113,7 +113,7 @@ export function createSignalStore({ windowMs = 60000, maxWorkers = 512, maxEvent
         if (event.kind === 'image_received') {
           add('capture', event);
           if (at != null) {
-            const details = Object.fromEntries(['sheet_index', 'sheet_name', 'tile_index', 'range', 'command_id']
+            const details = Object.fromEntries(['sheet_index', 'sheet_name', 'tile_index', 'range', 'command_id', 'capture_id']
               .filter(key => typeof event.details?.[key] === 'string' || Number.isFinite(event.details?.[key]))
               .map(key => [key, typeof event.details[key] === 'string' ? event.details[key].slice(0, 256) : event.details[key]]));
             const key = `capture:${event.sequence ?? ''}:${at}:${JSON.stringify(details)}`;

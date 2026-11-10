@@ -34,7 +34,13 @@ function createLaneCard() {
   const current = node('p', 'targeted-current');
   const progress = node('progress', 'targeted-progress');
   const progressText = node('p', 'targeted-progress-label');
-  const signals = createSignalMonitor({ compact: true, heartbeatOnly: true });
+  const signals = createSignalMonitor({ compact: true, unifiedCaptureLine: true,
+    onCaptureNavigate: ({ row, capture }) => {
+      const query = new URLSearchParams({ run: row.runId });
+      if (capture?.details?.capture_id) query.set('capture', capture.details.capture_id);
+      window.open(`/live-atlas/index.html?${query}`, 'deltasieve-live-atlas');
+    },
+  });
   const source = node('p', 'targeted-source');
   const metrics = createProcessMetrics();
   root.append(heading, state, current, progress, progressText, metrics.element, signals.element, source);

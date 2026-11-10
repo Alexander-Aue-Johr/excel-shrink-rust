@@ -54,7 +54,7 @@ impl Default for Configuration {
             partitions: 1,
             partition: 0,
             check_performance: false,
-            retain_equal_images: false,
+            retain_equal_images: true,
             reuse_webview_profiles: false,
             warm_workers: true,
             geometry_batch_ranges: 256,

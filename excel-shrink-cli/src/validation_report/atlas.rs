@@ -12,6 +12,8 @@ use std::{
 };
 
 const ASSETS: &[(&str, &str)] = &[
+    ("live.js", include_str!("../../office-capture/sheet-atlas/live.js")),
+    ("live.css", include_str!("../../office-capture/sheet-atlas/live.css")),
     (
         "app.js",
         include_str!("../../office-capture/sheet-atlas/app.js"),
@@ -61,6 +63,17 @@ const ASSETS: &[(&str, &str)] = &[
         include_str!("../../office-capture/sheet-atlas/vendor/THREE-LICENSE.txt"),
     ),
 ];
+
+pub(crate) fn live_asset(path: &str) -> Option<(&'static str, &'static str)> {
+    if path == "" || path == "index.html" {
+        return Some(("text/html; charset=utf-8", include_str!("../../office-capture/sheet-atlas/live.html")));
+    }
+    let name = path.strip_prefix("atlas-assets/")?;
+    let (_, content) = ASSETS.iter().find(|(candidate, _)| *candidate == name)?;
+    let mime = if name.ends_with(".js") { "text/javascript" }
+        else if name.ends_with(".css") { "text/css" } else { "text/plain" };
+    Some((mime, content))
+}
 
 pub(crate) fn label_atlas(root: &Path, labels: &Path) -> Result<()> {
     let root = root.canonicalize()?;

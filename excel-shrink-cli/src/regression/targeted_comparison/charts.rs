@@ -170,6 +170,7 @@ fn export(
     telemetry.update(|state| {
         state.capture_success_sequence += 1;
         state.capture_progress_sequence += 1;
+        state.lane(lane).record_capture(&chart.sheet, &format!("Chart: {}", chart.name), &path, &geometry);
     })?;
     Ok(Capture {
         geometry,

@@ -1,0 +1,35 @@
+body {
+  overflow: auto;
+}
+.live-atlas {
+  max-width: 1600px;
+  margin: auto;
+  padding: 24px;
+}
+.live-atlas header {
+  margin-bottom: 20px;
+}
+.live-atlas h1 {
+  overflow-wrap: anywhere;
+  font-size: 22px;
+}
+#gallery {
+  height: 50vh;
+  min-height: 320px;
+  position: relative;
+  overflow: hidden;
+}
+.live-captures {
+  display: flex;
+  gap: 16px;
+  overflow: auto;
+}
+.live-captures figure {
+  flex: 1 0 40%;
+  margin: 0;
+  min-width: 240px;
+}
+.live-captures img {
+  max-width: 100%;
+  height: auto;
+}

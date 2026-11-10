@@ -108,6 +108,7 @@ function drawCaptureGlyph(ctx, pack, x, y, dimensions) {
     // A count is honest when coordinates or the worksheet are not known.
     ctx.fillStyle = '#d6e8f0'; ctx.font = `${w < 30 ? 8 : 10}px Consolas, monospace`; ctx.textAlign = 'center';
     ctx.fillText(String(pack.count), x, y+3);
+    boxes.push({ x: x-w/2, y: y-h/2, width: w, height: h, pack, capture: pack.events?.at(-1) });
   }
   if (pack.count > 1 || pack.groupCount > 1) {
     ctx.fillStyle = '#b5d7e4'; ctx.font = '9px Consolas, monospace'; ctx.textAlign = 'center';
@@ -175,7 +176,7 @@ function drawStates(ctx, snapshot, now, windowMs, left, width, y) {
 }
 
 /** Reuse the event-driven heartbeat trace alone when captures/stages have their own UI. */
-export function createSignalMonitor({ compact = false, onCaptureNavigate = null, heartbeatOnly = false } = {}) {
+export function createSignalMonitor({ compact = false, onCaptureNavigate = null, heartbeatOnly = false, unifiedCaptureLine = false } = {}) {
   const root = element('span', `signal-monitor${compact ? ' signal-compact' : ''}`);
   root.classList.toggle('signal-heartbeat-only', heartbeatOnly);
   const heading = element('span', 'signal-heading');
@@ -270,7 +271,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null,
     if (!destroyed) view.draw();
   });
   resize.observe(root);
-  const spatial = heartbeatOnly ? null : createCaptureSpatialView({ compact, onCaptureNavigate: onCaptureNavigate
+  const spatial = heartbeatOnly || unifiedCaptureLine ? null : createCaptureSpatialView({ compact, onCaptureNavigate: onCaptureNavigate
     ? payload => { if (row) onCaptureNavigate({ row, ...payload }); } : null });
   const follow = onCaptureNavigate ? element('button', 'signal-follow', '↗ Follow captures') : null;
   if (follow) {
@@ -285,7 +286,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null,
     canvas.setAttribute('aria-hidden', 'false');
     canvas.setAttribute('role', 'button');
     canvas.tabIndex = 0;
-    canvas.setAttribute('aria-label','Capture timeline: press Enter to open and follow current images in the Atelier. Select a capture to open that region.');
+    canvas.setAttribute('aria-label','Capture timeline: press Enter to open current images. Select a capture to open that region.');
     canvas.addEventListener('click', event => {
       if (!row || !layout) return;
       const bounds = canvas.getBoundingClientRect();
@@ -373,7 +374,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null,
         : `${status}. ${heartbeatCount} observed heartbeats; ${heartbeatAge}. ${captureCount} capture events and ${stepCount} completed steps in ${settings.windowSeconds} seconds. Unreported channels remain unknown.`;
       if (root.getAttribute('aria-label') !== label) root.setAttribute('aria-label', label);
       if (follow) {
-        const disabled = row.kind === 'Rust / Host' || !row.groupId;
+        const disabled = row.kind === 'Rust / Host' || !(row.groupId || row.runId);
         if (follow.disabled !== disabled) follow.disabled = disabled;
       }
       if (document.hidden || !view.visible || !root.isConnected) return;
@@ -397,14 +398,16 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null,
       const graphWidth = Math.max(1, width - left - 7);
       const traceHeight = heartbeatOnly ? height - 28 : expanded ? height * .58 : small ? 44 : 56;
       const heartY = 4 + traceHeight * .57;
-      const capY = expanded ? height * .79 : small ? 83 : 103;
+      const capY = unifiedCaptureLine ? heartY : expanded ? height * .79 : small ? 83 : 103;
       const stateY = height - (expanded ? 30 : 20);
       layout = { width, height, capY };
 
       const rendered = trace.draw(ctx, {
         left, top: 4, width: graphWidth, height: height - 22,
         traceTop: 0, traceHeight,
-        points: snapshot.points.heartbeat, now, windowMs,
+        points: unifiedCaptureLine ? snapshot.points.heartbeat.filter(at =>
+          !snapshot.captureEvents.some(capture => Math.abs(capture.at - at) < windowMs * 35 / graphWidth))
+          : snapshot.points.heartbeat, now, windowMs,
         pixelRatio: ratio, reducedMotion: motion.matches,
         live: view.live, showTrace: snapshot.supported.heartbeat,
       });
@@ -421,6 +424,7 @@ export function createSignalMonitor({ compact = false, onCaptureNavigate = null,
         ['HB', heartY, '#75edc0'], ['CAP', capY, '#79dce8'], ['STATE', stateY, '#9bb3c2'],
       ]) {
         if (heartbeatOnly && text !== 'HB') continue;
+        if (unifiedCaptureLine && text === 'CAP') continue;
         ctx.fillStyle = color;
         ctx.font = `${expanded ? 11 : 8}px Consolas, monospace`;
         ctx.fillText(text, 2, y + 3);

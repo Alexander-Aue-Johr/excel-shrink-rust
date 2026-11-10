@@ -30,6 +30,46 @@ pub(super) struct ImageStore {
     source: PathBuf,
     destination: PathBuf,
     images: BTreeMap<String, FileIdentity>,
+    compressed: BTreeMap<String, String>,
+}
+
+/// An image shared with a differing or unverified finding keeps its original encoding.
+fn classify_image_references(
+    value: &Value,
+    equal: &mut BTreeSet<String>,
+    protected: &mut BTreeSet<String>,
+) {
+    match value {
+        Value::Object(fields) => {
+            let verified_equal = fields.get("pixels_compared") == Some(&Value::Bool(true))
+                && [
+                    "pixels_differ",
+                    "geometry_differs",
+                    "presence_differs",
+                    "rendering_differs",
+                ]
+                .iter()
+                .all(|key| fields.get(*key) != Some(&Value::Bool(true)));
+            for key in ["left_png", "right_png", "left_image", "right_image"] {
+                if let Some(path) = fields.get(key).and_then(Value::as_str) {
+                    if verified_equal {
+                        equal.insert(path.into());
+                    } else {
+                        protected.insert(path.into());
+                    }
+                }
+            }
+            for child in fields.values() {
+                classify_image_references(child, equal, protected);
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                classify_image_references(child, equal, protected);
+            }
+        }
+        _ => {}
+    }
 }
 
 impl ImageStore {
@@ -44,6 +84,7 @@ impl ImageStore {
             source,
             destination,
             images: BTreeMap::new(),
+            compressed: BTreeMap::new(),
         })
     }
 
@@ -52,13 +93,39 @@ impl ImageStore {
     pub fn retain_report_images(&mut self, report: &mut Value) -> Result<()> {
         let mut references = BTreeSet::new();
         collect_image_references(report, &mut references)?;
+        let mut equal = BTreeSet::new();
+        let mut protected = BTreeSet::new();
+        classify_image_references(report, &mut equal, &mut protected);
         let mut aliases = BTreeMap::new();
         for original in references {
             let source = self.source_image(&original)?;
-            let retained = self.retain_image(&source)?;
+            let compress = equal.contains(&original) && !protected.contains(&original);
+            let retained = self.retain_image(&source, compress)?;
             aliases.insert(original, retained);
         }
+        let telemetry_path = self.source.join("telemetry.json");
+        if telemetry_path.is_file() {
+            let telemetry = read_json_file(&telemetry_path)?;
+            let mut receipts = Vec::new();
+            for lane in telemetry["lanes"].as_array().into_iter().flatten() {
+                for capture in lane["recent_captures"].as_array().into_iter().flatten() {
+                    if let Some(retained) =
+                        capture["image"].as_str().and_then(|path| aliases.get(path))
+                    {
+                        let mut receipt = capture.clone();
+                        receipt["image"] = Value::String(retained.clone());
+                        receipts.push(receipt);
+                    }
+                }
+            }
+            report["capture_receipts"] = Value::Array(receipts);
+        }
         replace_references(report, &aliases);
+        report["equal_image_encoding"] = serde_json::json!({
+            "format":"PNG", "compression":"best", "filter":"adaptive",
+            "pixel_preservation":"decoded RGBA equality checked before accepting a smaller encoding",
+            "scope":"verified equal images only; shared differing or unverified references preserve original bytes"
+        });
         Ok(())
     }
 
@@ -92,7 +159,7 @@ impl ImageStore {
         )
     }
 
-    fn retain_image(&mut self, source: &Path) -> Result<String> {
+    fn retain_image(&mut self, source: &Path, compress: bool) -> Result<String> {
         let reader = image::ImageReader::open(source)?.with_guessed_format()?;
         let extension = match reader.format() {
             Some(image::ImageFormat::Png) => "png",
@@ -102,6 +169,41 @@ impl ImageStore {
                 source.display()
             ),
         };
+        if compress && extension == "png" {
+            let original = fs::read(source)?;
+            let original_identity = bytes_identity(&original);
+            if let Some(relative) = self.compressed.get(&original_identity.sha256) {
+                return Ok(relative.clone());
+            }
+            let pixels = image::load_from_memory(&original)?.into_rgba8();
+            let mut encoded = Vec::new();
+            image::codecs::png::PngEncoder::new_with_quality(
+                &mut encoded,
+                image::codecs::png::CompressionType::Best,
+                image::codecs::png::FilterType::Adaptive,
+            )
+            .write_image(
+                pixels.as_raw(),
+                pixels.width(),
+                pixels.height(),
+                image::ExtendedColorType::Rgba8,
+            )?;
+            if encoded.len() < original.len() {
+                ensure!(
+                    image::load_from_memory(&encoded)?.into_rgba8() == pixels,
+                    "Lossless PNG recompression changed capture pixels"
+                );
+                let identity = bytes_identity(&encoded);
+                let relative = format!("evidence/{}.png", identity.sha256);
+                if !self.images.contains_key(&relative) {
+                    write_new(&self.destination.join(&relative), &encoded)?;
+                    self.images.insert(relative.clone(), identity);
+                }
+                self.compressed
+                    .insert(original_identity.sha256, relative.clone());
+                return Ok(relative);
+            }
+        }
         let identity = file_identity(source)?;
         let relative = format!("evidence/{}.{}", identity.sha256, extension);
         if !self.images.contains_key(&relative) {
@@ -478,4 +580,54 @@ pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     output.write_all(bytes)?;
     output.sync_all()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod compression_tests {
+    use super::*;
+
+    #[test]
+    fn equal_png_recompression_preserves_pixels_and_protects_differences() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("equal-png-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root)?;
+        let source = root.join("raw");
+        fs::create_dir(&source)?;
+        let path = source.join("capture.png");
+        let pixels = image::RgbaImage::from_pixel(512, 256, image::Rgba([255, 255, 255, 255]));
+        image::codecs::png::PngEncoder::new_with_quality(
+            File::create(&path)?,
+            image::codecs::png::CompressionType::Fast,
+            image::codecs::png::FilterType::NoFilter,
+        )
+        .write_image(
+            pixels.as_raw(),
+            pixels.width(),
+            pixels.height(),
+            image::ExtendedColorType::Rgba8,
+        )?;
+        let original = fs::read(&path)?;
+        let mut store = ImageStore::create(&source, &root.join("compressed"))?;
+        let retained = store.retain_image(&path, true)?;
+        let encoded = fs::read(store.destination.join(retained))?;
+        assert!(encoded.len() < original.len());
+        assert_eq!(image::load_from_memory(&encoded)?.into_rgba8(), pixels);
+        assert_eq!(fs::read(&path)?, original);
+        let mut protected = ImageStore::create(&source, &root.join("protected"))?;
+        let retained = protected.retain_image(&path, false)?;
+        assert_eq!(fs::read(protected.destination.join(retained))?, original);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn an_image_shared_with_a_difference_is_protected() {
+        let report = serde_json::json!([
+            {"pixels_compared":true,"left_png":"shared.png","pixels_differ":false},
+            {"pixels_compared":true,"left_png":"shared.png","pixels_differ":true}
+        ]);
+        let mut equal = BTreeSet::new();
+        let mut protected = BTreeSet::new();
+        classify_image_references(&report, &mut equal, &mut protected);
+        assert!(equal.contains("shared.png") && protected.contains("shared.png"));
+    }
 }

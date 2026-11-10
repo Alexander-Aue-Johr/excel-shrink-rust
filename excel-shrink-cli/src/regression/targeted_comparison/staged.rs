@@ -729,6 +729,12 @@ impl Workflow<'_, '_> {
                     for (id, _, _) in batch {
                         state.lane(*id).captures_done += 1;
                     }
+                    for (id, candidate, _) in batch {
+                        let evidence = &self.states[id].captures[candidate];
+                        if let Some(path) = &evidence.path {
+                            state.lane(*id).record_capture(&candidate.sheet, &candidate.cell, path, &evidence.geometry);
+                        }
+                    }
                 })?;
             }
         }
