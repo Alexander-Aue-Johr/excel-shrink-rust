@@ -311,3 +311,14 @@ NXPowerLite candidate has not been measured.
 - PFAS report `f2860a56d712b5199ef75aa5d83d00bcd8208876b6978274d55c5b9246b8f98c`
 - QT/RR report `e8dc4d011e283534e3fe1d78aa1e398e5d3fa0eb1a1cffc49c052fbf492a8b0c`
 - LCCA report `9fba7cceb7c6e78521db3293657a4b77e30038a6476df02ad0b1de8ad250a1b6`
+
+The live Inquire region index has 90,112 measured rectangles. Of these,
+704 intersect columns A:L and 1,408 intersect row 1, with eleven in
+both groups. Their union contains 2,101 rectangles. The other 88,011
+intersect neither the declared finite content columns nor the verified
+inherited border row. This is an accounting bound on a potential
+layout-aware plan, not an accepted reduction. Before excluding the
+other rectangles, the planner must account for all layout changes
+(including effective default geometry), visible objects and inherited
+appearance across both rebuilt workbooks. The running v15 plan remains
+the reference for its recorded scope.
