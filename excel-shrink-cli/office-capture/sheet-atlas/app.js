@@ -268,6 +268,22 @@ async function start() {
   attachControls();
   if (!corpora.length) { $('gallery-title').textContent = 'No recorded workbooks'; return; }
   corpusChanged();
+  const query = new URLSearchParams(location.search);
+  const book = catalog.books.find(entry => entry.id === query.get('book'));
+  if (!book) return;
+
+  $('corpus-select').value = book.corpus;
+  corpusChanged();
+  const sheet = book.sheets.find(entry => entry.name === query.get('sheet'));
+  if (!sheet) {
+    openBook(book);
+    return;
+  }
+
+  await openSheet(book, sheet);
+  if (state.book !== book || state.sheet !== sheet) return;
+  const finding = state.detail?.changes.find(entry => entry.range === query.get('range'));
+  if (finding) await openFinding(book, sheet, finding.id);
 }
 
 start().catch(error => {

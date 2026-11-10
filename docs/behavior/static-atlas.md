@@ -155,3 +155,15 @@ node --test excel-shrink-cli/office-capture/sheet-atlas/tests/model.test.mjs
 The focused contracts cover independent variants, complete blank-sheet inventory,
 nested source labels, failed legacy runs, source-package integrity, gzip transport,
 context matching, complete slot layout and unusual worksheet names.
+
+### Direct links to retained comparisons
+
+An exported Atlas accepts a `book` query parameter with the workbook ID
+from its catalog, and an optional `sheet` with the exact worksheet name.
+Add `range` with the recorded A1 range to open the first matching changed
+capture in that sheet. The comparison still applies its normal context
+matching before grouping variants. URL-encode parameter values.
+
+An unknown workbook opens the overview. An unknown sheet opens the
+workbook. An unknown or unchanged range leaves the selected sheet open.
+The link needs only the static Atlas directory and its retained assets.
