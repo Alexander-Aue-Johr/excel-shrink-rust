@@ -249,8 +249,12 @@ function Observatory() {
   const seconds = update.elapsed_ms / 1000;
   const perHour = seconds > 0 ? (completed / seconds) * 3600 : 0;
   const remaining = Math.max(0, update.counts.total - completed);
+  const remainingSeconds =
+    perHour > 0 ? Math.ceil((remaining / perHour) * 3600) : null;
   const eta =
-    perHour > 0 ? `${Math.ceil((remaining / perHour) * 60)} min` : "—";
+    remainingSeconds === null
+      ? "—"
+      : `${remainingSeconds >= 60 ? `${Math.floor(remainingSeconds / 60)} min ` : ""}${remainingSeconds % 60} s`;
   const focused = jobs.find((job) => job.id === selected) ?? jobs.at(-1);
   const activeWorkers = new Set(
     rendering.snapshot.activeJobs.map((job) => job.workerIndex),
@@ -491,7 +495,7 @@ function Observatory() {
           />
           <Metric
             label="Time remaining"
-            value={remaining ? eta : "0 min"}
+            value={remaining ? eta : "0 s"}
             note={`${remaining} pending · estimate`}
           />
           <Metric
