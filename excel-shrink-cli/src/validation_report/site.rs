@@ -131,20 +131,17 @@ pub(crate) fn export_selected_site(
     let source = source_root
         .canonicalize()
         .context("Resolve source report")?;
+    let original_metadata = fs::read(source.join("run.json"))?;
     let mut run = crate::validation::read_run(&source)?;
+    ensure!(
+        original_metadata == fs::read(source.join("run.json"))?,
+        "Source run metadata changed during export inspection"
+    );
     if run["merge"].is_object() {
         ensure!(pair_ids.is_empty(), "Select pairs before merging reports");
         return super::merge::export_collection(&source, &run, destination);
     }
-    let original_metadata = fs::read(source.join("run.json"))?;
     if !pair_ids.is_empty() {
-        ensure!(
-            matches!(
-                run["status"].as_str(),
-                Some("completed" | "completed_with_limitations" | "completed_with_errors" | "failed")
-            ),
-            "Finish the source run before selecting observations"
-        );
         ensure!(
             run["observation_selection"].is_null(),
             "Select from the original run, not a previous selection"
@@ -168,12 +165,20 @@ pub(crate) fn export_selected_site(
             retained.len() == selected.len(),
             "Selected pair IDs are missing or ambiguous in the source report"
         );
+        ensure!(
+            retained.iter().all(|pair| matches!(
+                pair["status"].as_str(),
+                Some("completed_with_limitations" | "reused" | "failed")
+            )),
+            "Finish each selected comparison before exporting it"
+        );
         run["observation_selection"] = json!({
             "source_run_sha256": format!("{:x}", sha2::Sha256::digest(&original_metadata)),
             "source_metadata": "selection-source-run.json",
             "pair_ids": pair_ids,
             "source_pair_count": source_pair_count,
             "source_summary": run["summary"],
+            "source_status": run["status"],
             "meaning": "Selected recorded observations. Original run status and timing describe the full source run."
         });
         run["summary"] = json!({
@@ -182,6 +187,11 @@ pub(crate) fn export_selected_site(
             "failed_pairs": failed
         });
         run["pairs"] = json!(retained);
+        run["status"] = json!(if failed == 0 {
+            "completed_with_limitations"
+        } else {
+            "completed_with_errors"
+        });
     }
     // The exported index is a complete snapshot of the recovered journal. Its
     // validation status is unchanged, including interrupted or failed runs.

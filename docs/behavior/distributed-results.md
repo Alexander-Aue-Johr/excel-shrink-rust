@@ -81,7 +81,7 @@ collection adaptation and the multi-machine rehearsal remain open.
 
 ## Selected observation exports
 
-A staged report can reuse a finished standalone run by selecting recorded pair IDs.
+A staged report can reuse terminal observations from a standalone run by selecting recorded pair IDs.
 
 ```powershell
 deltasieve.exe export 'V:\results\full-run' 'V:\publication\stage-09' `
@@ -93,8 +93,10 @@ packages retain their original verdicts and integrity manifests. Unselected
 packages are omitted. The source run remains unchanged. Its exact metadata bytes
 are retained in `selection-source-run.json`, with SHA-256 and the selected IDs in
 `observation_selection`. Overview counts describe the selected observations.
-Original timing and status still describe the entire source run. Its full summary
+The original timing still describes the entire source run. Its status and full summary
 remains in the selection provenance. The broader replay is unavailable for this
 subset. Re-export and subsequent merge retain and verify the original metadata.
-Select from the original standalone report before merging. Publication review
+Select from the original standalone report before merging. An active source is
+allowed only when every selected comparison is terminal. Selection status and
+counts describe that snapshot, while the full run keeps working. Publication review
 also includes the retained full source metadata.

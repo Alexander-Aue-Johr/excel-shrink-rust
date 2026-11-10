@@ -408,7 +408,7 @@ fn selected_export_preserves_source_and_reexports_only_selected_packages() -> Re
         "id":id,"name":format!("{id}.xlsx"),"status":"completed_with_limitations",
         "report":format!("pairs/{id}/report.json"),"different_regions":0
     })).collect();
-    let run = json!({"schema":1,"tool":"DeltaSieve","status":"completed","index_complete":true,
+    let run = json!({"schema":1,"tool":"DeltaSieve","status":"validating","index_complete":true,
         "summary":{"total":2},"pairs":pairs});
     let original = serde_json::to_vec(&run)?;
     fs::write(root.join("run.json"), &original)?;
@@ -418,6 +418,8 @@ fn selected_export_preserves_source_and_reexports_only_selected_packages() -> Re
     assert_eq!(selected["pairs"].as_array().unwrap().len(), 1);
     assert_eq!(selected["pairs"][0]["id"], "two");
     assert_eq!(selected["summary"]["total"], 1);
+    assert_eq!(selected["observation_selection"]["source_status"], "validating");
+    assert_eq!(selected["status"], "completed_with_limitations");
     assert_eq!(selected["observation_selection"]["source_pair_count"], 2);
     assert_eq!(selected["replay"]["available"], false);
     assert!(!output.join("pairs/one").exists());
@@ -445,5 +447,11 @@ fn selected_export_rejects_unknown_and_duplicate_ids_before_creating_output() ->
         assert!(export_selected_site(&root, &output, &ids).is_err());
         assert!(!output.exists());
     }
+    let mut run = read_json_file(&root.join("run.json"))?;
+    run["pairs"][0]["status"] = json!("running");
+    fs::write(root.join("run.json"), serde_json::to_vec(&run)?)?;
+    let output = fixture.0.join("unfinished");
+    assert!(export_selected_site(&root, &output, &["one".to_owned()]).is_err());
+    assert!(!output.exists());
     Ok(())
 }
