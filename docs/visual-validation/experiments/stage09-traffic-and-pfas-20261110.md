@@ -322,3 +322,23 @@ other rectangles, the planner must account for all layout changes
 (including effective default geometry), visible objects and inherited
 appearance across both rebuilt workbooks. The running v15 plan remains
 the reference for its recorded scope.
+
+## Raspberries SheetShrink bounded reference
+
+The ordinary SheetShrink comparison reported an unresolved full-grid
+requirement on By Country. In the current raw input packages the sheet
+dimension remains C5:AA53. Both inputs retain the same column definitions,
+including the style-45 tail through XFD, and the same row-style assignment.
+The sheet's only changed top-level XML element is sheetData. SheetShrink
+removed 91 empty cell records. The removed cell styles and the inherited
+column style all have fill 6 and border 0 in the respective style tables.
+The drawing, chart and media member size/CRC inventories match.
+
+An explicit native reference of By Country!A1:AB54 and XFB50:XFD55
+finished in 17.52 seconds. Each pair had equal measured geometry and
+equal rendered pixels. The first range includes the declared cell
+dimension with context. The second samples the far-right inherited fill.
+These two observations do not resolve whole-grid or other-sheet coverage.
+
+- SheetShrink output SHA-256 `7bc32656bf8739dc3e876f240dad6c4d3bad79fec80c81ac33387d1714e622da`
+- Native reference SHA-256 `93112746436eae2d7c3fd6434f5566e61b3ff6ad009e4b0875a9b666b6869e03`
