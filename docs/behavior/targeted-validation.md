@@ -56,6 +56,11 @@ and excluded from Shrink's visual regression requirement. Flaky Excel rendering
 is the suspected explanation; that attribution remains a hypothesis.
 
 Retain the raw pixel/geometry observation and the reviewed acceptance reason.
+A raw pixel difference requires attribution before it becomes a product-defect
+finding. Within the retained comparison scope, every changed pixel remains a
+reported difference. No global numeric color tolerance or changed-pixel allowance
+is defined. Review even small differences affecting text, chart points, lines or
+objects. Keep unreviewed differences unresolved and retain the underlying evidence.
 
 Policy v10 compares captures with matching measured capture/content origins only
 within their common top-left-aligned pixel rectangle. Right/bottom overhangs,
