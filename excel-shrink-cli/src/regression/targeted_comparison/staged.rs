@@ -289,7 +289,9 @@ impl Workflow<'_, '_> {
             let rectangle = super::content_bounds::Rectangle {
                 top: 1,
                 left: 1,
-                bottom: (sheet.bottom_row + 1).min(1_048_576),
+                // A line on the first context-row boundary still needs room
+                // for its stroke and rasterization padding.
+                bottom: (sheet.bottom_row + 2).min(1_048_576),
                 right: (sheet.base_right_column + 1).min(16_384),
             };
             let area = Candidate {
