@@ -87,6 +87,9 @@ enum Command {
     /// Refresh the derived Atlas without copying retained evidence or opening Excel.
     Atlas {
         report: PathBuf,
+        /// Frozen workbook identities and ranks, including inputs without observations.
+        #[arg(long)]
+        cohort: Option<PathBuf>,
         #[arg(long)]
         labels: Option<PathBuf>,
     },
@@ -613,8 +616,11 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         Some(Command::Serve { report, port, no_open }) => {
             serve_static_atlas(&report_root(&report)?, port, no_open)
         }
-        Some(Command::Atlas { report, labels }) => {
+        Some(Command::Atlas { report, labels, cohort }) => {
             let root = report_root(&report)?;
+            if let Some(cohort) = cohort {
+                crate::validation_report::set_cohort(&root, &cohort)?;
+            }
             if let Some(labels) = labels {
                 crate::validation_report::label_atlas(&root, &labels)?;
             } else {

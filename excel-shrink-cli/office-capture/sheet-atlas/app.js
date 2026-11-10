@@ -138,7 +138,7 @@ function render() {
     $('gallery-description').textContent = `${state.detail.changes.length} recorded findings · ${state.detail.captures.length} retained contexts · Map shows recorded extent`;
   } else if (state.book) {
     $('gallery-description').textContent = `${state.book.sheets.length} sheets · ${changedSheets(state.book)} with recorded changes${coverageText(state.book)}`
-      + (state.book.inventory_complete ? '' : ' · Legacy inventory is incomplete');
+      + (state.book.inventory_complete ? '' : ' · Sheet inventory is unavailable');
   } else {
     $('gallery-description').textContent = `${books().length} workbooks · ${books().reduce((sum, book) => sum + book.sheets.length, 0)} sheets · ${catalog.variants.length} recorded runs`;
   }

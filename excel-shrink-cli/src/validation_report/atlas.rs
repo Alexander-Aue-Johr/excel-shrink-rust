@@ -98,11 +98,64 @@ pub(crate) fn label_atlas(root: &Path, labels: &Path) -> Result<()> {
 }
 
 pub(super) fn copy_labels(source: &Path, destination: &Path) -> Result<()> {
+    if source.join("atlas-cohort.json").is_file() {
+        let path = evidence::confined_file(source, "atlas-cohort.json")?;
+        evidence::write_new(&destination.join("atlas-cohort.json"), &fs::read(path)?)?;
+    }
     if source.join("atlas-labels.json").is_file() {
         let labels = evidence::confined_file(source, "atlas-labels.json")?;
         evidence::write_new(&destination.join("atlas-labels.json"), &fs::read(labels)?)?;
     }
     Ok(())
+}
+
+pub(crate) fn set_cohort(root: &Path, manifest: &Path) -> Result<()> {
+    let cohort = read_json_file(manifest)?;
+    cohort_books(&cohort)?;
+    let root = root.canonicalize()?;
+    site::write_derived(
+        &root,
+        &root.join("atlas-cohort.json"),
+        &serde_json::to_vec_pretty(&cohort)?,
+    )
+}
+
+fn cohort_books(cohort: &Value) -> Result<BTreeMap<String, Value>> {
+    anyhow::ensure!(cohort["schema"] == 1, "Unsupported Atlas cohort schema");
+    let mut books = BTreeMap::new();
+    let mut ranks = std::collections::BTreeSet::new();
+    for entry in cohort["workbooks"]
+        .as_array()
+        .context("Cohort requires workbooks")?
+    {
+        let corpus = entry["corpus"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .context("Missing cohort corpus")?;
+        let name = entry["name"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .context("Missing cohort workbook name")?;
+        let original = entry["original_sha256"]
+            .as_str()
+            .context("Missing original SHA-256")?
+            .to_ascii_lowercase();
+        anyhow::ensure!(
+            original.len() == 64 && original.bytes().all(|b| b.is_ascii_hexdigit()),
+            "Invalid original SHA-256"
+        );
+        let rank = entry["rank"]
+            .as_u64()
+            .filter(|rank| *rank > 0)
+            .context("Invalid cohort rank")?;
+        anyhow::ensure!(ranks.insert((corpus, rank)), "Duplicate cohort rank");
+        let id = digest(&json!([corpus, name, original]))?;
+        let book = json!({"id":id,"name":name,"corpus":corpus,"rank":rank,
+            "original_identity":original,"inventory_complete":false,"sheets":[],"observations":[],
+            "cohort_entry":entry});
+        anyhow::ensure!(books.insert(id, book).is_none(), "Duplicate cohort workbook");
+    }
+    Ok(books)
 }
 
 pub(super) fn write(root: &Path, run: &Value) -> Result<std::path::PathBuf> {
@@ -129,7 +182,11 @@ pub(super) fn write(root: &Path, run: &Value) -> Result<std::path::PathBuf> {
     } else {
         Value::Null
     };
-    let mut books = BTreeMap::<String, Value>::new();
+    let mut books = if root.join("atlas-cohort.json").is_file() {
+        cohort_books(&read_json_file(&evidence::confined_file(root, "atlas-cohort.json")?)?)?
+    } else {
+        BTreeMap::new()
+    };
     let mut variants = BTreeMap::<String, Value>::new();
     for pair in run["pairs"].as_array().context("Atlas run has no pairs")? {
         append_observation(root, run, pair, &labels, &mut books, &mut variants)?;
@@ -147,10 +204,16 @@ pub(super) fn write(root: &Path, run: &Value) -> Result<std::path::PathBuf> {
                     },
             )
         })?;
+    let mut books: Vec<_> = books.into_values().collect();
+    books.sort_by(|a, b| {
+        a["corpus"].as_str().cmp(&b["corpus"].as_str())
+            .then(a["rank"].as_u64().unwrap_or(u64::MAX).cmp(&b["rank"].as_u64().unwrap_or(u64::MAX)))
+            .then(a["name"].as_str().cmp(&b["name"].as_str()))
+    });
     let catalog = json!({"schema":1,"run_id":run["run_id"],"status":run["status"],
         "storage":{"bytes_before_index":bytes,"github_pages_budget_bytes":1_000_000_000u64,
             "within_budget":bytes + 1024 * 1024 < 1_000_000_000u64},
-        "books":books.into_values().collect::<Vec<_>>(),"variants":variants.into_values().collect::<Vec<_>>(),
+        "books":books,"variants":variants.into_values().collect::<Vec<_>>(),
         "scope":"Recorded observations under each source run's selection policy. Neutral sheets do not establish whole-sheet pixel equality."});
     write_gzip(root, "atlas-data/catalog.json.gz", &catalog)?;
     let html = include_str!("../../office-capture/sheet-atlas/index.html").replace(
@@ -234,6 +297,14 @@ fn append_observation(
         "original_identity":original,"inventory_complete":inventory.as_ref().is_some_and(|v| v["complete"]==true),
         "sheets":inventory.as_ref().map(|v|v["sheets"].clone()).unwrap_or(json!([])),"observations":[]
     }));
+    if book["inventory_complete"] != true {
+        if let Some(inventory) = inventory.as_ref() {
+            if inventory["complete"] == true {
+                book["sheets"] = inventory["sheets"].clone();
+                book["inventory_complete"] = json!(true);
+            }
+        }
+    }
     let report_digest = report.as_ref().map(digest).transpose()?;
     let observation_id = digest(&json!([variant, pair["id"], relative, report_digest]))?;
     let mut summary = json!({"id":observation_id,"variant":variant,"run_id":run_id,"status":pair["status"],
@@ -419,7 +490,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("atlas-contract-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(root.join("raw"))?;
         let raw = json!({"status":"completed_with_limitations","workbook_inventory":{
-            "complete":true,"original_sha256":"original-fixture","sheets":[
+            "complete":true,"original_sha256":"0".repeat(64),"sheets":[
                 {"id":"1","name":"Data","order":0,"state":"visible"},
                 {"id":"2","name":"Empty","order":1,"state":"hidden"}]},
             "comparisons":[{"left":"OR","right":"SDR","findings":[
@@ -435,6 +506,10 @@ mod tests {
             "pairs":[
                 {"id":"one","name":"book.xlsx","status":"completed_with_limitations","report":"pairs/one/report.json","merge_source":{"source_run_sha256":"a"}},
                 {"id":"two","name":"book.xlsx","status":"completed_with_limitations","report":"pairs/one/report.json","merge_source":{"source_run_sha256":"b"}}]});
+        fs::write(root.join("atlas-cohort.json"), serde_json::to_vec(&json!({
+            "schema":1,"workbooks":[{"corpus":"Corpus","name":"book.xlsx",
+                "rank":1,"original_sha256":"0".repeat(64)}]
+        }))?)?;
         write(&root, &run)?;
         let catalog = catalog(&root)?;
         assert_eq!(catalog["books"].as_array().unwrap().len(), 1);
@@ -467,6 +542,39 @@ mod tests {
         assert_eq!(observations[1]["run_id"], "run-b");
         assert_ne!(observations[0]["id"], observations[1]["id"]);
         assert_eq!(original_bytes, fs::read(root.join("pairs/one/report.json"))?);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_cohort_keeps_unobserved_workbooks_in_rank_order() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("atlas-cohort-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root)?;
+        let entries = json!([
+            {"corpus":"Corpus","name":"second.xlsx","rank":2,"original_sha256":"2".repeat(64)},
+            {"corpus":"Corpus","name":"first.xlsx","rank":1,"original_sha256":"1".repeat(64)}
+        ]);
+        let manifest = json!({"schema":1,"workbooks":entries});
+        fs::write(root.join("atlas-cohort.json"), serde_json::to_vec(&manifest)?)?;
+        write(&root, &json!({"run_id":"empty","pairs":[]}))?;
+        let catalog = catalog(&root)?;
+        let books = catalog["books"].as_array().unwrap();
+        assert_eq!(books.len(), 2);
+        assert_eq!(books[0]["name"], "first.xlsx");
+        assert_eq!(books[1]["rank"], 2);
+        assert_eq!(books[0]["inventory_complete"], false);
+        assert!(books[0]["observations"].as_array().unwrap().is_empty());
+        assert!(books[0]["sheets"].as_array().unwrap().is_empty());
+        let mut invalid = manifest.clone();
+        invalid["workbooks"][1]["rank"] = json!(2);
+        assert!(cohort_books(&invalid).is_err());
+        invalid = manifest.clone();
+        invalid["workbooks"][0]["original_sha256"] = json!("invalid");
+        assert!(cohort_books(&invalid).is_err());
+        invalid = manifest;
+        invalid["workbooks"][1] = invalid["workbooks"][0].clone();
+        invalid["workbooks"][1]["rank"] = json!(3);
+        assert!(cohort_books(&invalid).is_err());
         fs::remove_dir_all(root)?;
         Ok(())
     }

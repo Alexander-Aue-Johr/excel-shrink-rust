@@ -108,3 +108,17 @@ their separate IDs, run IDs, native evidence and validation signatures. Grouping
 does not establish methodological equivalence. Use separate keys and names for
 normalized baselines and distinct tool profiles. Without this explicit field,
 variant identity retains the original per-run behavior.
+
+## Frozen Atlas cohorts
+
+`deltasieve atlas REPORT --cohort cohort.json` retains a presentation selection
+as `atlas-cohort.json`. Its schema is `{"schema":1,"workbooks":[...]}`. Each
+workbook entry needs `corpus`, `name`, `original_sha256` and a positive `rank`.
+Ranks are unique within each corpus. Duplicate identities and malformed hashes
+are rejected. The Atlas orders each corpus by these ranks before other entries.
+
+An expected workbook stays visible even with no recorded observations. It has
+an unknown sheet inventory and no invented comparison verdict. Actual matching
+original identities supply the recorded sheets and observations when available.
+Different original hashes remain separate. Re-export carries the cohort file.
+This presentation selection does not alter native results or establish coverage.
