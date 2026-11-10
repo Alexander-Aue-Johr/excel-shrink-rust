@@ -429,6 +429,14 @@ fn selected_export_preserves_source_and_reexports_only_selected_packages() -> Re
     export_site(&output, &repeated)?;
     assert_eq!(fs::read(repeated.join("selection-source-run.json"))?, original);
     assert!(!repeated.join("pairs/one").exists());
+    let merged = fixture.0.join("selected-collection");
+    merge_reports(&[output.clone(), repeated], &merged)?;
+    let collection = read_json_file(&merged.join("run.json"))?;
+    assert_eq!(collection["pairs"].as_array().unwrap().len(), 2);
+    for source in collection["merge"]["sources"].as_array().unwrap() {
+        let snapshot = merged.join(source["snapshot"].as_str().unwrap());
+        assert_eq!(fs::read(snapshot.with_file_name("selection-source-run.json"))?, original);
+    }
     fs::write(output.join("selection-source-run.json"), b"{}")?;
     assert!(export_site(&output, &fixture.0.join("corrupt-selection")).is_err());
     Ok(())
