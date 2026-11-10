@@ -26,7 +26,10 @@ export interface HitTarget {
   id: string;
   workbookId?: string;
   sheetId?: string;
+  sheetVariant?: "original" | "optimized";
   position: Vec3;
+  /** Extend picking along the projected column body up to position. */
+  pickBase?: Vec3;
   radius?: number;
   title: string;
   lines: string[];

@@ -82,6 +82,7 @@ export function sceneSvg(spec: SceneSpec, camera: CameraView): string {
     .filter((hit) => hit.sheetId)
     .map((hit) => ({
       sheetId: hit.sheetId,
+      variant: hit.sheetVariant,
       color: hit.color,
       ...project(hit.position, matrix, width, height),
     }))
@@ -101,6 +102,7 @@ export function figureSvg(
   subtitle: string,
   light: boolean,
   sheetId: string | null,
+  variant: "original" | "optimized" = "optimized",
 ): string {
   const background = light ? "#ffffff" : "#0c1317";
   const text = light ? "#192b40" : "#e3eae8";
@@ -120,7 +122,11 @@ export function figureSvg(
     );
     anchors.push(
       points
-        .filter((point: { sheetId: string }) => point.sheetId === sheetId)
+        .filter(
+          (point: { sheetId: string; variant?: string }) =>
+            point.sheetId === sheetId &&
+            (index === 0 || (point.variant ?? "optimized") === variant),
+        )
         .map((point: { x: number; y: number; color: string }) => ({
           x: 40 + (1840 - width * scale) / 2 + point.x * scale,
           y: y + (frameHeight - height * scale) / 2 + point.y * scale,

@@ -17,7 +17,9 @@ The browser loads the full event history for replay, so its memory use grows
 with the recording. Ordinary live polling retains its bounded history.
 
 Each worksheet has a stable color across the worker timeline and Workbook Atlas.
-Hovering links its work items to the atlas. Clicking or using **Link worksheet**
+Hovering either original or optimized columns links their work items to that
+column. Hovering a work item targets the optimized column. Column bodies and
+their top surfaces are hover targets. Clicking or using **Link worksheet**
 pins that selection. The atlas brings the focused workbook into view. Colors
 distinguish worksheets within a workbook and can repeat across a large corpus.
 Identity and links use worksheet IDs, independently of color.

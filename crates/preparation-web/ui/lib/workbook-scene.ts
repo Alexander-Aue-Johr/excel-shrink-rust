@@ -13,6 +13,7 @@ import {
   shade,
   sheetColor,
   type SceneSpec,
+  type HitTarget,
   type Shape,
   type Vec3,
 } from "./scene";
@@ -636,14 +637,23 @@ export function buildWorkbookScene(
 
       const label =
         options.labelMode === "xml" ? `sheet${sheet.index}.xml` : sheet.name;
-      result.hits.push({
-        id: `sheet:${sheet.id}`,
+      const sheetTarget = (
+        variant: "original" | "optimized",
+        height: number,
+        depth: number,
+      ): HitTarget => ({
+        id:
+          variant === "original"
+            ? `sheet-original:${sheet.id}`
+            : `sheet:${sheet.id}`,
         workbookId: book.id,
         sheetId: sheet.id,
+        sheetVariant: variant,
+        pickBase: [sx + square / 2, FLOOR_Y, depth + sz + square / 2],
         position: [
           sx + square / 2,
-          FLOOR_Y + ch + 0.03,
-          afterZ + sz + square / 2,
+          FLOOR_Y + height + 0.03,
+          depth + sz + square / 2,
         ],
         radius: Math.max(10, Math.min(23, square * 24)),
         title: label,
@@ -664,6 +674,9 @@ export function buildWorkbookScene(
         },
         color,
       });
+      result.hits.push(sheetTarget("optimized", ch, afterZ));
+      if (split && completed)
+        result.hits.push(sheetTarget("original", sh, beforeZ));
 
       // Detailed labels are reserved for the selected Workbook, keeping the overview legible.
       if (

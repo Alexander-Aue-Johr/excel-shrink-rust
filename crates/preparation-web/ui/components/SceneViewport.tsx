@@ -23,6 +23,7 @@ interface Props {
   onSelect?: (hit: HitTarget) => void;
   onHover?: (hit: HitTarget | null) => void;
   focusSheetId?: string | null;
+  focusSheetVariant?: HitTarget["sheetVariant"];
   onRenderer?: (kind: RendererKind) => void;
 }
 export default function SceneViewport({
@@ -35,6 +36,7 @@ export default function SceneViewport({
   onSelect,
   onHover,
   focusSheetId,
+  focusSheetVariant = "optimized",
   onRenderer,
 }: Props) {
   const wrapper = useRef<HTMLDivElement>(null),
@@ -72,10 +74,14 @@ export default function SceneViewport({
     pointer: number;
   } | null>(null);
   latest.current = scene;
-  const interaction = useRef({ onHover, focusSheetId });
-  interaction.current = { onHover, focusSheetId };
+  const interaction = useRef({ onHover, focusSheetId, focusSheetVariant });
+  interaction.current = { onHover, focusSheetId, focusSheetVariant };
   const hovered = useRef<string | null>(null);
   onRendererRef.current = onRenderer;
+
+  useEffect(() => {
+    dirty.current = true;
+  }, [focusSheetId, focusSheetVariant]);
 
   useEffect(() => {
     fallbackToCanvas.current = false;
@@ -184,7 +190,12 @@ export default function SceneViewport({
       element.exportScene = () => sceneSvg(latest.current, view.current);
       if (interaction.current.focusSheetId) {
         const points = spec.hits
-          .filter((hit) => hit.sheetId === interaction.current.focusSheetId)
+          .filter(
+            (hit) =>
+              hit.sheetId === interaction.current.focusSheetId &&
+              (!hit.sheetVariant ||
+                hit.sheetVariant === interaction.current.focusSheetVariant),
+          )
           .map((hit) => ({
             ...project(hit.position, m, rect.width, rect.height),
             color: hit.color,
@@ -343,13 +354,38 @@ export default function SceneViewport({
       bestDistance = Infinity;
     for (const h of latest.current.hits) {
       const p = project(h.position, matrix.current, rect.width, rect.height);
-      if (!p.visible) continue;
+      if (!p.visible && !h.pickBase) continue;
       const radius = h.radius ?? 0.5;
       const r =
         radius > 4
           ? radius
           : Math.max(12, (radius * rect.width) / view.current.span);
-      const d = Math.hypot(px - p.x, py - p.y);
+      let d = Math.hypot(px - p.x, py - p.y);
+      if (h.pickBase) {
+        const base = project(
+          h.pickBase,
+          matrix.current,
+          rect.width,
+          rect.height,
+        );
+        const dx = p.x - base.x,
+          dy = p.y - base.y;
+        const lengthSquared = dx * dx + dy * dy;
+        const fraction =
+          lengthSquared > 0
+            ? Math.max(
+                0,
+                Math.min(
+                  1,
+                  ((px - base.x) * dx + (py - base.y) * dy) / lengthSquared,
+                ),
+              )
+            : 0;
+        d = Math.hypot(
+          px - base.x - fraction * dx,
+          py - base.y - fraction * dy,
+        );
+      }
       if (d <= r && d < bestDistance) {
         best = h;
         bestDistance = d;

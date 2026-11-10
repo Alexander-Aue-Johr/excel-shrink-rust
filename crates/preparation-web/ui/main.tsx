@@ -62,7 +62,7 @@ function Observatory() {
   const [liveTasks, setTasks] = useState<WorkTask[]>([]);
   const [theme, setTheme] = useState<Theme>("dark");
   const [paperMode, setPaperMode] = useState(false);
-  const [hoverSheet, setHoverSheet] = useState<string | null>(null);
+  const [hoverSheet, setHoverSheet] = useState<HitTarget | null>(null);
   const [pinnedSheet, setPinnedSheet] = useState<string | null>(null);
   const [recording, setRecording] = useState<{
     source: Update;
@@ -81,7 +81,8 @@ function Observatory() {
   const update = replay?.update ?? liveUpdate;
   const jobs = replay?.jobs ?? liveJobs;
   const tasks = replay?.tasks ?? liveTasks;
-  const focusSheet = hoverSheet ?? pinnedSheet;
+  const focusSheet = hoverSheet?.sheetId ?? pinnedSheet;
+  const focusVariant = hoverSheet?.sheetVariant ?? "optimized";
   const replaying = replayTime !== null;
 
   useEffect(() => {
@@ -449,6 +450,7 @@ function Observatory() {
       subtitle,
       theme === "light",
       focusSheet,
+      focusVariant,
     );
     downloadSvg("sheetshrink-recorded-figure.svg", svg);
   }
@@ -838,7 +840,8 @@ function Observatory() {
                 title="Worker timeline"
                 className="worker-viewport"
                 focusSheetId={focusSheet}
-                onHover={(hit) => setHoverSheet(hit?.sheetId ?? null)}
+                focusSheetVariant={focusVariant}
+                onHover={setHoverSheet}
                 onSelect={selectSheet}
               />
               <p className="view-note">
@@ -939,7 +942,8 @@ function Observatory() {
                 title="Workbook-Atlas"
                 className="atlas-viewport"
                 focusSheetId={focusSheet}
-                onHover={(hit) => setHoverSheet(hit?.sheetId ?? null)}
+                focusSheetVariant={focusVariant}
+                onHover={setHoverSheet}
                 onSelect={selectSheet}
               />
             </section>

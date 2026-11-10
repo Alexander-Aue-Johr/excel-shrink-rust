@@ -160,6 +160,52 @@ test("worksheet identity has the same hue across chunks and filtered atlas pages
   );
 });
 
+test("atlas original and optimized targets share worksheet identity and cover their columns", async () => {
+  const bundle = await build({
+    entryPoints: ["lib/workbook-scene.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { buildWorkbookScene } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
+  );
+  const job = {
+    id: "workbook-1",
+    name: "example.xlsx",
+    worker: 0,
+    started_ms: 0,
+    ended_ms: 1000,
+    status: "prepared",
+    before: packageSize(100, 1000000),
+    after: packageSize(10, 100),
+    source_bytes: 100,
+    error: null,
+  };
+  const snapshot = atlasSnapshot(scenes(base, [job]).snapshot, [job]);
+  const scene = buildWorkbookScene(snapshot, {
+    view: "all",
+    sort: "size",
+    resultStyle: "split",
+    labelMode: "name",
+  });
+  const targets = scene.hits.filter((hit) => hit.sheetId);
+  assert.equal(targets.length, 2);
+  const original = targets.find((hit) => hit.sheetVariant === "original");
+  const optimized = targets.find((hit) => hit.sheetVariant === "optimized");
+  assert.equal(original.sheetId, optimized.sheetId);
+  assert.equal(original.workbookId, optimized.workbookId);
+  assert.notEqual(original.id, optimized.id);
+  assert.equal(original.color, optimized.color);
+  assert.deepEqual(original.lines, optimized.lines);
+  assert.ok(original.position[1] > optimized.position[1]);
+  assert.notEqual(original.position[2], optimized.position[2]);
+  assert.equal(original.pickBase[0], original.position[0]);
+  assert.equal(original.pickBase[2], original.position[2]);
+  assert.ok(original.pickBase[1] < original.position[1]);
+});
+
 test("worksheet colours distinguish sheets and identify their phase", async () => {
   const bundled = await build({
     entryPoints: ["lib/worker-scene.ts"],
