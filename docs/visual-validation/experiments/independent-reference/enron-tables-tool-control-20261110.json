@@ -1,0 +1,178 @@
+{
+  "scope": "Development control selected after observing a Check Performance finding; not a blinded recall sample; Tables A1:I157 only; graphical qualification not requested",
+  "observations": [
+    {
+      "tool": "SheetShrink",
+      "original_sha256": "025d2f43723df45fc7a19d921a47733a6c934444c87b658909ffcacf9bbf16f3",
+      "variant_sha256": "468f35567c0d9c49a58d8b92aa83b521a3a4fe3277366f096946137fa0169a00",
+      "status": "completed",
+      "region": "A1:I157",
+      "sheet": "Tables",
+      "image_dimensions": [
+        [
+          859,
+          2679
+        ],
+        [
+          859,
+          2679
+        ]
+      ],
+      "geometry_differs": false,
+      "pixels_differ": false,
+      "changed_common_rgba_pixels": 0,
+      "changed_common_bbox": null,
+      "common_pixels": 2301261,
+      "original_geometry": {
+        "height": 2008.5,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 643.5
+      },
+      "variant_geometry": {
+        "height": 2008.5,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 643.5
+      },
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "original_image_sha256": "827f0c61f9af7ed4ecc821d8bae02e1346c45f76249164009288100054eeaa2d",
+      "variant_image_sha256": "827f0c61f9af7ed4ecc821d8bae02e1346c45f76249164009288100054eeaa2d",
+      "native_object_qualification": false
+    },
+    {
+      "tool": "Excel Check Performance",
+      "original_sha256": "025d2f43723df45fc7a19d921a47733a6c934444c87b658909ffcacf9bbf16f3",
+      "variant_sha256": "44c027a5b9e1e1151a96edbebc4626fbadbeec1c8338a66e49e21f51055065ff",
+      "status": "completed",
+      "region": "A1:I157",
+      "sheet": "Tables",
+      "image_dimensions": [
+        [
+          859,
+          2679
+        ],
+        [
+          859,
+          2677
+        ]
+      ],
+      "geometry_differs": true,
+      "pixels_differ": true,
+      "changed_common_rgba_pixels": 126404,
+      "changed_common_bbox": [
+        88,
+        16,
+        514,
+        2677
+      ],
+      "common_pixels": 2299543,
+      "original_geometry": {
+        "height": 2008.5,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 643.5
+      },
+      "variant_geometry": {
+        "height": 2007.0,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 643.5
+      },
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "original_image_sha256": "827f0c61f9af7ed4ecc821d8bae02e1346c45f76249164009288100054eeaa2d",
+      "variant_image_sha256": "825792d4484368590d1839a9a2453e9a312e2b54841ce83c3527467458ca28f2",
+      "native_object_qualification": false
+    },
+    {
+      "tool": "Inquire",
+      "original_sha256": "025d2f43723df45fc7a19d921a47733a6c934444c87b658909ffcacf9bbf16f3",
+      "variant_sha256": "e5d1dfe0e320353be8428fbac686681cd3fc5c928e30e48be856a560bc5d4322",
+      "status": "completed",
+      "region": "A1:I157",
+      "sheet": "Tables",
+      "image_dimensions": [
+        [
+          859,
+          2679
+        ],
+        [
+          834,
+          2678
+        ]
+      ],
+      "geometry_differs": true,
+      "pixels_differ": true,
+      "changed_common_rgba_pixels": 490,
+      "changed_common_bbox": [
+        88,
+        2661,
+        514,
+        2678
+      ],
+      "common_pixels": 2233452,
+      "original_geometry": {
+        "height": 2008.5,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 643.5
+      },
+      "variant_geometry": {
+        "height": 2007.75,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 624.75
+      },
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "original_image_sha256": "827f0c61f9af7ed4ecc821d8bae02e1346c45f76249164009288100054eeaa2d",
+      "variant_image_sha256": "d1aa9f2c3a0a6cd2b35cdcd275997b9bf51caa1213936d9af024b68f978bee94",
+      "native_object_qualification": false
+    },
+    {
+      "tool": "XLStylesTool",
+      "original_sha256": "025d2f43723df45fc7a19d921a47733a6c934444c87b658909ffcacf9bbf16f3",
+      "variant_sha256": "20056308279f4af71a3210e7d2e235087223b7488c6804951ac059a1082fbd7d",
+      "status": "completed",
+      "region": "A1:I157",
+      "sheet": "Tables",
+      "image_dimensions": [
+        [
+          859,
+          2679
+        ],
+        [
+          859,
+          2679
+        ]
+      ],
+      "geometry_differs": false,
+      "pixels_differ": false,
+      "changed_common_rgba_pixels": 0,
+      "changed_common_bbox": null,
+      "common_pixels": 2301261,
+      "original_geometry": {
+        "height": 2008.5,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 643.5
+      },
+      "variant_geometry": {
+        "height": 2008.5,
+        "left": 0.0,
+        "top": 0.0,
+        "width": 643.5
+      },
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "original_image_sha256": "827f0c61f9af7ed4ecc821d8bae02e1346c45f76249164009288100054eeaa2d",
+      "variant_image_sha256": "827f0c61f9af7ed4ecc821d8bae02e1346c45f76249164009288100054eeaa2d",
+      "native_object_qualification": false
+    }
+  ],
+  "original_images_repeat_identically": true,
+  "limits": [
+    "One developer-selected reference area after inspecting an initial finding",
+    "No whole-workbook equivalence claim",
+    "NXPowerLite output unavailable for this input",
+    "Inquire bottom-edge finding remains unclassified"
+  ]
+}

@@ -1,5 +1,34 @@
 # Explicit native reference comparisons
 
+## Enron Tables cross-tool development control on 2026-11-10
+
+After inspecting an initial Check Performance finding, a separate reference plan
+rendered `Tables!A1:I157` in Enron workbook
+`106bb183b73704d6e7324eb6c879ad6e8536e52b1f5643f8c725e2ca7a74cb7e.xlsx`.
+The original SHA-256 is
+`025d2f43723df45fc7a19d921a47733a6c934444c87b658909ffcacf9bbf16f3`.
+The four original reference images have identical SHA-256 identities across
+fresh comparisons. SheetShrink and XLStylesTool each retain the original
+859-by-2679 image exactly. Check Performance produces 859 by 2677 pixels, with
+126,404 changed common RGBA pixels. Its targeted height observations record
+rows 1 and 157 decreasing from 13.5 to 12.75 points. Inquire produces 834 by
+2678 pixels, with 490 changed common pixels restricted to the bottom edge.
+The latter remains an unclassified edge finding. NXPowerLite has no available
+output for this input.
+
+The checksum and geometry evidence is in
+`enron-tables-tool-control-20261110.json`. Native raw receipts and images remain
+in the private stage-09 reference evidence. The initial direct CLI attempt
+failed its required private-desktop guard before rendering. Four subsequent
+bounded private-desktop launcher attempts completed. Each used a 90-second
+operation timeout and a 240-second total limit.
+
+This is a developer-selected illustration, not an outcome-blind detection or
+recall sample. Native object qualification was not requested. It covers only
+the supplied rectangle and cannot establish whole-workbook preservation or
+that only SheetShrink preserved this area. The matching XLStylesTool result
+must remain part of the interpretation.
+
 `regression reference-compare` renders an externally specified plan after rebuilding
 and saving both working copies in their resident Excel processes. It bypasses the
 targeted selector, its dependency exclusions and content-envelope clipping. Both
