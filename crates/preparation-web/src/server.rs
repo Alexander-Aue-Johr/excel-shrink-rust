@@ -270,7 +270,16 @@ impl Observer for RunObserver {
 }
 
 pub fn serve(operation: Operation, defaults: Defaults, port: u16) -> Result<()> {
-    serve_inner(operation, defaults, port, None)
+    serve_inner(operation, defaults, port, None, false)
+}
+
+pub fn serve_with_browser(
+    operation: Operation,
+    defaults: Defaults,
+    port: u16,
+    open_browser: bool,
+) -> Result<()> {
+    serve_inner(operation, defaults, port, None, open_browser)
 }
 
 pub fn serve_sheetshrink(
@@ -283,6 +292,7 @@ pub fn serve_sheetshrink(
         defaults,
         port,
         Some(Arc::new(runner)),
+        false,
     )
 }
 
@@ -291,6 +301,7 @@ fn serve_inner(
     defaults: Defaults,
     port: u16,
     shrink_runner: Option<ShrinkRunner>,
+    open_browser: bool,
 ) -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -337,6 +348,22 @@ fn serve_inner(
                 ))
                 .with_state(app);
             println!("Preparation Observatory: http://{authority}/");
+            if open_browser {
+                use std::os::windows::process::CommandExt;
+                // Dispatch the loopback URL through the user's Windows URL association.
+                let launcher = std::path::PathBuf::from(
+                    std::env::var_os("SystemRoot").context("SystemRoot is unavailable")?,
+                )
+                .join("System32/rundll32.exe");
+                std::process::Command::new(launcher)
+                    .args([
+                        "url.dll,FileProtocolHandler",
+                        &format!("http://{authority}/"),
+                    ])
+                    .creation_flags(0x0800_0000)
+                    .spawn()
+                    .context("Could not launch the default browser")?;
+            }
             axum::serve(listener, routes).await?;
             Ok(())
         })

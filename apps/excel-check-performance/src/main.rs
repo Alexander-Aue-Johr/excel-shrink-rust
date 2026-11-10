@@ -28,6 +28,9 @@ fn main() -> anyhow::Result<()> {
         /// Open a local configuration and progress web server.
         #[arg(long)]
         web: bool,
+        /// Start the web interface and open it in the default browser.
+        #[arg(long)]
+        open_browser: bool,
         /// Loopback port. Zero chooses an available port.
         #[arg(long, default_value_t = 0)]
         port: u16,
@@ -44,11 +47,12 @@ fn main() -> anyhow::Result<()> {
 
     let mut command = Command::parse();
     if command.web
+        || command.open_browser
         || (command.input.is_empty()
             && command.source_manifest.is_none()
             && command.output.is_none())
     {
-        return preparation_web::serve(
+        return preparation_web::serve_with_browser(
             Operation::CheckPerformance,
             preparation_web::Defaults {
                 inputs: command.input,
@@ -62,6 +66,7 @@ fn main() -> anyhow::Result<()> {
                 parallel_range_chunk_size: None,
             },
             command.port,
+            command.open_browser,
         );
     }
     if !command.input.is_empty() {
