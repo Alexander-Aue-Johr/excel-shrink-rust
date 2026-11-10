@@ -35,6 +35,7 @@ visual equivalence of the cleaned workbooks.
 Timeline and atlas share one panel, with atlas selection and pagination beneath
 both charts. The panel's maximize control expands both diagrams and their
 connections together. Escape or the restore control returns to the normal view.
+The shared SVG export remains in the panel header when maximized.
 
 ## Implemented run-progress channel
 

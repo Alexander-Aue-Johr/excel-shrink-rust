@@ -490,9 +490,6 @@ function Observatory() {
           >
             Figure view
           </button>
-          {detailed && (
-            <button onClick={exportFigure}>Export figure SVG</button>
-          )}
           <button
             disabled={active || busy || !liveUpdate?.counts.total}
             onClick={() => void startReplay()}
@@ -813,21 +810,31 @@ function Observatory() {
           sheetId={focusSheet}
           controls={
             detailed ? (
-              <label className="step-height-control">
-                Step height
-                <input
-                  aria-label="Workbook step height"
-                  type="range"
-                  min="0"
-                  max="0.3"
-                  step="0.001"
-                  value={stepHeight}
-                  onChange={(event) =>
-                    setStepHeight(Number(event.target.value))
-                  }
-                />
-                <output>{stepHeight.toFixed(3)}</output>
-              </label>
+              <>
+                <label className="step-height-control">
+                  Step height
+                  <input
+                    aria-label="Workbook step height"
+                    type="range"
+                    min="0"
+                    max="0.3"
+                    step="0.001"
+                    value={stepHeight}
+                    onChange={(event) =>
+                      setStepHeight(Number(event.target.value))
+                    }
+                  />
+                  <output>{stepHeight.toFixed(3)}</output>
+                </label>
+                <button
+                  className="linked-export"
+                  aria-label="Export figure SVG"
+                  title="Export both diagrams as SVG"
+                  onClick={exportFigure}
+                >
+                  Export SVG
+                </button>
+              </>
             ) : undefined
           }
           worker={

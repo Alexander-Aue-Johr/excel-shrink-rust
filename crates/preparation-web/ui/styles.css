@@ -73,8 +73,21 @@
 }
 .linked-header-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 16px;
+}
+.linked-export {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 11px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 12px;
+}
+.linked-export:hover {
+  border-color: var(--mint);
 }
 .linked-expand {
   width: 32px;
