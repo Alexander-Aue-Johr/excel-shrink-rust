@@ -122,6 +122,14 @@ Static HTTP and browser checks reached a retained Data.gov/Inquire finding
 through its workbook and sheet. The Atlas reports about 3.53 GB of assets.
 Additional Data.gov comparisons remain in progress.
 
+The completed PFAS/Inquire run retained 129 pixel findings over 4,277
+regions. A sampled three-pixel colored stripe changed to white inside the
+shared image rectangle. The Verkehrsunfälle archive review identifies a
+full-height explicit hidden tail and two preceding rows with custom heights
+in the original rebuild of sheet 10.1. Its drawing and visible-row coverage
+still require a native check.
+See [the retained diagnostics](../visual-validation/experiments/stage09-traffic-and-pfas-20261110.md).
+
 The Enron stage ledger accounts for all 45 tool slots across the nine frozen
 workbooks. It records 37 completed raw-baseline observations, one completed
 normalized-baseline observation, four unavailable raw variants and three
