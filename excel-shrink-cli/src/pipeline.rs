@@ -3599,11 +3599,21 @@ pub fn process_files(input_files: Vec<PathBuf>, cli: &Cli) -> anyhow::Result<()>
 }
 
 pub(crate) fn process_file_pairs(
-    input_files: Vec<(PathBuf, PathBuf)>,
+    mut input_files: Vec<(PathBuf, PathBuf)>,
     cli: &Cli,
 ) -> anyhow::Result<()> {
     let _profile = profiling::phase("batch", "", "");
     let started = Instant::now();
+    if cli.largest_first {
+        let mut sized_inputs = input_files
+            .into_iter()
+            .map(|pair| std::fs::metadata(&pair.0).map(|metadata| (metadata.len(), pair)))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        sized_inputs.sort_by(|left, right| {
+            right.0.cmp(&left.0).then_with(|| left.1.0.cmp(&right.1.0))
+        });
+        input_files = sized_inputs.into_iter().map(|(_, pair)| pair).collect();
+    }
     // A study worker runs several profiles in one process. Give each cleanup
     // its own Rayon pool so the thread count belongs to this invocation.
     let rayon_pool = cli

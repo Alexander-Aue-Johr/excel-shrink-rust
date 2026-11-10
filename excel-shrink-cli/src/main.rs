@@ -85,6 +85,10 @@ pub struct Cli {
     #[arg(long)]
     recursive: bool,
 
+    /// Admit larger XLSX files first (compressed file bytes, then path).
+    #[arg(long)]
+    largest_first: bool,
+
     /// Write a JSON summary with the outcome of every input file.
     #[arg(long)]
     batch_report: Option<PathBuf>,
