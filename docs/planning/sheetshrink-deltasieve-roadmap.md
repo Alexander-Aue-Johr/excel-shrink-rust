@@ -78,8 +78,24 @@ Publication review now includes nested JSON, gzip JSON and the embedded JSON
 in generated HTML reports. The actual third preview contains 528 JSON files
 and 92 embedded reports, with 5,967 metadata concerns including repeated
 derived occurrences. Review does not alter evidence or automatically sanitize
-it. A public presentation export and its verification remain required before
-this preview can be described as ready for GitHub Pages.
+it. The subsequent public-Atlas checkpoint below records the derived
+presentation export. Full cohort completion and public release remain open.
+
+The public Atlas exporter now verifies the referenced native packages, preserves
+scientific finding payloads and encoded images, and derives a separate static
+presentation without run configurations or local diagnostic paths. A real
+preview passed an independent check of 72 report-bearing observations and 1,854
+byte-identical images. Its 30 displayed identities comprise the nine frozen
+ordinary workbooks per corpus plus three explicitly separate normalized
+baselines. The presentation occupies about 564 MiB. Browser acceptance reached
+a workbook, its sheet and its retained original/candidate image comparison
+without a validation API. Forty-four report tests passed.
+
+The remaining automated metadata findings are 72 hashed environment keys.
+Workbook contents, names, screenshots and distribution rights still require
+publication review. The public presentation does not yet include replay.
+Native replay remains in the unchanged evidence archive. Neither this partial
+preview nor the current 3-by-3 stage has been publicly deployed.
 
 Destatis/Inquire completed eight available stage inputs. Two produced rendered
 observations and six failed. Four failures concern unresolved whole-grid
