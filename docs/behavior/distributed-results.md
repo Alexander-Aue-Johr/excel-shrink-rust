@@ -206,3 +206,28 @@ Within a comparison package, byte-identical equal PNGs reuse the result of the
 first compression attempt. This includes the original encoding when the attempt
 did not reduce the file size. Captures required for differing or unverified
 observations retain their original encoding.
+
+## Hosting the staged comparison Atlas
+
+GitHub Pages limits a published site to 1 GB. Measure the entire assembled
+site before deployment, including other stages already hosted there. The
+size reported by `public-atlas` describes that export only.
+
+In the partial stage-nine preview assembled on 2026-11-10, the manifests
+referenced 2,490,155,707 encoded image bytes for ordinary Data.gov comparisons
+alone. Destatis and Enron added 552,194,161 and 146,546,638 bytes, respectively,
+before normalized comparisons, controls, thumbnails, and viewer assets.
+Splitting by corpus therefore would still leave Data.gov over budget.
+
+Keep the complete self-contained projection as the reference publication
+artifact. If it exceeds the limit, a Pages deployment needs independently
+hosted static evidence assets or a link to the complete Atlas on a host
+that accommodates it. For a split deployment, acceptance requires opening
+deep links over HTTP and exercising every image consumer, including overlays
+and zoom views that read pixels through a canvas. Remote images must permit
+that access from the final site origin. A release download can preserve the
+complete artifact for offline use but does not establish that the interactive
+page can load individual captures. Verify the deployed site before adding
+its URL to the manuscript.
+
+[GitHub Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
