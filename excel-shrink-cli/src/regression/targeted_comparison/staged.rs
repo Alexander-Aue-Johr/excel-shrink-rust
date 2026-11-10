@@ -600,6 +600,11 @@ impl Workflow<'_, '_> {
             .height_runs(id, sheet, spans, &self.comparison.telemetry)?;
         let runs: Vec<HeightRun> = serde_json::from_value(response["runs"].clone())?;
         heights::validate(&runs, spans)?;
+        // A validated height reply is native geometry progress. Large workbooks
+        // can spend longer than the idle deadline measuring many small sheets.
+        self.comparison
+            .telemetry
+            .progress(|state| state.capture_progress_sequence += 1)?;
         self.states
             .get_mut(&id)
             .unwrap()
