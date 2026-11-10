@@ -76,6 +76,20 @@ fn font_and_apply_fill_style(fill_id: u32) -> Xf {
         .build_xf()
 }
 
+/// Pruefungen Hochschulen, TAB-04: an explicit default font on an otherwise
+/// blank no-fill cell changes the text baseline even with a fixed row height.
+#[test]
+fn fixed_height_text_row_keeps_explicit_default_font_with_no_fill() {
+    let params = params_with_styles(&[
+        (7, apply_font_only_style(1)),
+        (9, font_and_apply_fill_style(0)),
+    ]);
+    let mut metrics = CleanSheetMetrics::default();
+    let source = br#"<row r="134" ht="9" customHeight="1"><c r="A134" s="7"><v>7896</v></c><c r="L134" s="9"/><c r="M134" s="9"/></row>"#;
+    let cleaned = replace_single_row_with_metrics(source, &params, &mut metrics);
+    assert_eq!(cleaned, br#"<row r="134" ht="9" customHeight="1"><c r="A134" s="7"><v>7896</v></c><c r="L134" s="9"/></row>"#);
+}
+
 fn apply_font_and_fill_style(font_id: u32, fill_id: u32) -> Xf {
     Xf::builder()
         .font_id(Some(font_id))
