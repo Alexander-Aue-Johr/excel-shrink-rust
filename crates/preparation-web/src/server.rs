@@ -74,6 +74,7 @@ struct Job {
     source_bytes: Option<u64>,
     error: Option<String>,
     sheet_names: Value,
+    sheet_order: Value,
 }
 
 #[derive(Default, Serialize)]
@@ -195,12 +196,14 @@ impl RunState {
                     source_bytes: None,
                     error: None,
                     sheet_names: Value::Null,
+                    sheet_order: Value::Null,
                 });
             }
             if let Some(job) = self.jobs.iter_mut().find(|job| job.id == *id) {
                 match event.event_type.as_str() {
                     "workbook.metadata" => {
                         job.sheet_names = event.payload["sheet_names"].clone();
+                        job.sheet_order = event.payload["sheet_order"].clone();
                         job.before = serde_json::from_value(event.payload["package"].clone()).ok();
                         job.source_bytes = event.payload["file_bytes"].as_u64();
                     }

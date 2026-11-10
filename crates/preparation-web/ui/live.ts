@@ -28,6 +28,7 @@ export interface Job {
   source_bytes: number | null;
   error: string | null;
   sheet_names?: Record<string, string> | null;
+  sheet_order?: string[] | null;
 }
 
 export interface WorkTask {
@@ -72,6 +73,7 @@ interface NativeEvent {
     };
     error?: string;
     sheet_names?: Record<string, string>;
+    sheet_order?: string[];
     task_id?: number;
     sheet?: string;
     phase?: WorkTask["phase"];
@@ -129,6 +131,7 @@ export function applyUpdate(previous: Job[], update: Update): Job[] {
     if (event.event_type === "workbook.metadata") {
       job.before = event.payload.package ?? null;
       job.sheet_names = event.payload.sheet_names ?? null;
+      job.sheet_order = event.payload.sheet_order ?? null;
       job.source_bytes = event.payload.file_bytes ?? null;
     }
     if (
@@ -211,21 +214,32 @@ export function scenes(
     chunks.set(key, Math.max(chunks.get(key) ?? 1, task.chunk_count));
   }
   const books: WorkbookState[] = jobs.map((job, index) => {
+    const sourceIndex = /^workbook-(\d+)$/.exec(job.id);
+    const workbookHue = (155 + Number(sourceIndex?.[1] ?? index) * 67) % 360;
     const after = new Map(
       job.after?.worksheets.map((sheet) => [sheet.part, sheet]) ?? [],
     );
     const sheets: SheetState[] = (job.before?.worksheets ?? []).map(
-      (sheet, sheetIndex) => ({
-        id: `${job.id}:${sheet.part}`,
-        workbookId: job.id,
-        index: sheetIndex + 1,
-        name: job.sheet_names?.[sheet.part] ?? sheet.part,
-        originalBytes: sheet.uncompressed_bytes,
-        cleanedBytes: after.get(sheet.part)?.uncompressed_bytes ?? null,
-        chunkCount: chunks.get(`${job.id}:${sheet.part}`) ?? 1,
-        hue: (155 + sheetIndex * 67) % 360,
-        done: job.status === "prepared",
-      }),
+      (sheet, sheetIndex) => {
+        const position = job.sheet_order?.indexOf(sheet.part) ?? -1;
+        const xmlIndex = /sheet(\d+)\.xml$/.exec(sheet.part)?.[1];
+        const index =
+          position >= 0 ? position + 1 : Number(xmlIndex ?? sheetIndex + 1);
+        let indexLabel = xmlIndex ? `XML${xmlIndex}` : "Sheet";
+        if (position >= 0) indexLabel = `S${index}`;
+        return {
+          id: `${job.id}:${sheet.part}`,
+          workbookId: job.id,
+          index,
+          indexLabel,
+          name: job.sheet_names?.[sheet.part] ?? sheet.part,
+          originalBytes: sheet.uncompressed_bytes,
+          cleanedBytes: after.get(sheet.part)?.uncompressed_bytes ?? null,
+          chunkCount: chunks.get(`${job.id}:${sheet.part}`) ?? 1,
+          hue: workbookHue,
+          done: job.status === "prepared",
+        };
+      },
     );
     return {
       id: job.id,
@@ -288,6 +302,7 @@ export function scenes(
               visibleEnd: (task.ended_ms ?? update.elapsed_ms) / 1000,
               chunkIndex: task.chunk_index ?? 0,
               chunkCount: task.chunk_count,
+              phase: task.phase,
               done: task.ended_ms !== null,
               sheet,
             },

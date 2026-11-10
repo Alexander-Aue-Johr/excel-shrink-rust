@@ -270,7 +270,7 @@ export function buildWorkbookScene(
           square,
           Math.max(0.002, height),
           square,
-          sheetColor(sheet.hue, segments - 1, segments),
+          sheetColor(sheet.hue),
           opacity,
           true,
         ),
@@ -278,7 +278,7 @@ export function buildWorkbookScene(
       if (segments > 1) {
         for (let segment = 1; segment < segments; segment++) {
           const y = FLOOR_Y + (height * segment) / segments;
-          const color = sheetColor(sheet.hue, segment - 1, segments);
+          const color = sheetColor(sheet.hue);
           shapes.push(
             line([x, y, z], [x + square, y, z], color, opacity * 0.65, true),
           );
@@ -297,22 +297,14 @@ export function buildWorkbookScene(
     }
     if (height <= 0.00001) {
       shapes.push(
-        plane(
-          x,
-          FLOOR_Y,
-          z,
-          square,
-          square,
-          sheetColor(sheet.hue, segments - 1, segments),
-          opacity,
-        ),
+        plane(x, FLOOR_Y, z, square, square, sheetColor(sheet.hue), opacity),
       );
       return;
     }
     for (let segment = 0; segment < segments; segment++) {
       const y = FLOOR_Y + (height * segment) / segments;
       const top = FLOOR_Y + (height * (segment + 1)) / segments;
-      const color = sheetColor(sheet.hue, segment, segments);
+      const color = sheetColor(sheet.hue);
       // Two pairs of vertical faces; inner chunk ceilings are invisible and omitted.
       // Each face pair uses eight corners; the final top closes the complete
       // column once with four vertices instead of a box's redundant eight.
@@ -576,11 +568,7 @@ export function buildWorkbookScene(
           (finalSheetBytes - sheet.originalBytes) * transition) *
         byteScale *
         reveal;
-      const color = sheetColor(
-        sheet.hue,
-        Math.max(0, sheet.chunkCount - 1),
-        sheet.chunkCount,
-      );
+      const color = sheetColor(sheet.hue);
 
       if (split && completed) {
         addSheetColumn(

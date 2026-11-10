@@ -7,6 +7,7 @@ import {
   cameraMatrix,
   defaultView,
   project,
+  surfaceLabelMatrix,
   type CameraView,
 } from "@/lib/camera";
 import { createPainter, type Painter } from "@/lib/renderer";
@@ -188,8 +189,27 @@ export default function SceneViewport({
           if (!pos.visible) continue;
           const size = label.size ?? 10,
             anchor = label.anchor ?? "center";
-          const w = Math.min(230, label.text.length * size * 0.53),
-            hh = size + 3;
+          const textWidth = label.text.length * size * 0.62;
+          const textHeight = size * 1.25;
+          const surface = label.surface
+            ? surfaceLabelMatrix(
+                label.position,
+                label.surface,
+                textWidth,
+                textHeight,
+                m,
+                rect.width,
+                rect.height,
+              )
+            : null;
+          const w = surface
+              ? Math.abs(surface.a) * textWidth +
+                Math.abs(surface.c) * textHeight
+              : Math.min(230, textWidth),
+            hh = surface
+              ? Math.abs(surface.b) * textWidth +
+                Math.abs(surface.d) * textHeight
+              : size + 3;
           const xx =
             pos.x - (anchor === "left" ? 0 : anchor === "right" ? w : w / 2);
           const group = label.id.startsWith("job-label")
@@ -231,7 +251,11 @@ export default function SceneViewport({
           el.className = `world-label${label.pill ? " pill-label" : ""}${label.muted ? " muted" : ""}`;
           el.style.color = label.color ?? "";
           el.style.fontSize = `${size}px`;
-          el.style.transform = `translate(${pos.x}px,${pos.y}px) translate(${anchor === "left" ? "0" : anchor === "right" ? "-100%" : "-50%"},-50%)`;
+          el.style.maxWidth = surface ? "none" : "";
+          el.style.transformOrigin = surface ? "0 0" : "";
+          el.style.transform = surface
+            ? `matrix(${surface.a},${surface.b},${surface.c},${surface.d},${surface.x},${surface.y}) translate(-50%,-50%)`
+            : `translate(${pos.x}px,${pos.y}px) translate(${anchor === "left" ? "0" : anchor === "right" ? "-100%" : "-50%"},-50%)`;
         }
         for (const [id, el] of existing)
           if (!active.has(id)) {

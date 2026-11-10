@@ -38,6 +38,140 @@ const base = {
   history_limit: 256,
 };
 
+test("worksheet and chunk bars share their workbook colour and identify their phase", async () => {
+  const bundled = await build({
+    entryPoints: ["lib/worker-scene.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { buildWorkerScene } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].contents).toString("base64")}`
+  );
+  const jobs = [7, 8].map((index) => ({
+    id: `workbook-${index}`,
+    name: `book-${index}.xlsx`,
+    worker: null,
+    started_ms: 0,
+    ended_ms: null,
+    status: "running",
+    before: {
+      file_bytes: 100,
+      worksheets: [
+        { part: "xl/worksheets/sheet1.xml", uncompressed_bytes: 1000 },
+        { part: "xl/worksheets/sheet2.xml", uncompressed_bytes: 2000 },
+      ],
+    },
+    after: null,
+    sheet_names: {
+      "xl/worksheets/sheet1.xml": "Power BI",
+      "xl/worksheets/sheet2.xml": "Data",
+    },
+    sheet_order: ["xl/worksheets/sheet2.xml", "xl/worksheets/sheet1.xml"],
+  }));
+  const tasks = [
+    {
+      workbook_id: "workbook-7",
+      sheet: "xl/worksheets/sheet1.xml",
+      phase: "chunk",
+      chunk_index: 0,
+      chunk_count: 2,
+    },
+    {
+      workbook_id: "workbook-7",
+      sheet: "xl/worksheets/sheet2.xml",
+      phase: "chunk",
+      chunk_index: 1,
+      chunk_count: 2,
+    },
+    {
+      workbook_id: "workbook-8",
+      sheet: "xl/worksheets/sheet1.xml",
+      phase: "finalize",
+      chunk_index: null,
+      chunk_count: 1,
+    },
+  ].map((task, index) => ({
+    ...task,
+    id: index,
+    worker: index,
+    started_ms: 0,
+    ended_ms: null,
+  }));
+  const update = { ...base, operation: "sheet-shrink", elapsed_ms: 4000 };
+  const { snapshot, run } = scenes(update, jobs, tasks);
+  const scene = buildWorkerScene(snapshot, run, {
+    workUnit: "worksheet",
+    stepHeight: 0.01,
+    labelMode: "name",
+    jobStyle: "blocks",
+    windowSeconds: 4,
+    overview: false,
+  });
+  assert.equal(scene.hits[0].color, scene.hits[1].color);
+  assert.notEqual(scene.hits[0].color, scene.hits[2].color);
+  const labels = scene.labels.filter((label) =>
+    label.id.startsWith("job-label"),
+  );
+  assert.match(labels[0].text, /S2.*Power BI.*Chunk 1\/2/);
+  assert.match(labels[1].text, /S1.*Data.*Chunk 2\/2/);
+  assert.match(labels[2].text, /Finalize/);
+  assert.ok(labels.every((label) => label.surface.width > 0));
+  const retained = scenes(update, jobs.slice(1), tasks).snapshot;
+  assert.equal(retained.sheets[0].hue, snapshot.workbooks[1].sheets[0].hue);
+  const legacy = scenes(
+    update,
+    [{ ...jobs[0], sheet_order: undefined }],
+    tasks,
+  ).snapshot;
+  assert.equal(legacy.sheets[0].indexLabel, "XML1");
+});
+
+test("surface nameplates rotate and foreshorten with the worker plane", async () => {
+  const bundled = await build({
+    entryPoints: ["lib/camera.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { cameraMatrix, defaultView, project, surfaceLabelMatrix } =
+    await import(
+      `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].contents).toString("base64")}`
+    );
+  const view = defaultView({ target: [0, 0, 0], span: 24 }, 1200, 600);
+  view.yaw = 0.8;
+  const matrix = cameraMatrix(view);
+  const position = [1, 0, 2];
+  const transform = surfaceLabelMatrix(
+    position,
+    { width: 10, height: 1 },
+    100,
+    20,
+    matrix,
+    1200,
+    600,
+  );
+  const center = project(position, matrix, 1200, 600);
+  assert.equal(transform.x, center.x);
+  assert.equal(transform.y, center.y);
+  assert.notEqual(transform.b, 0);
+  assert.notEqual(transform.c, 0);
+  view.yaw = 0;
+  const aligned = surfaceLabelMatrix(
+    position,
+    { width: 10, height: 1 },
+    100,
+    20,
+    cameraMatrix(view),
+    1200,
+    600,
+  );
+  assert.equal(aligned.b, 0);
+  assert.equal(aligned.c, 0);
+});
+
 test("incremental metadata and completion use optimization controls, not saved baseline sizes", () => {
   const events = [
     {

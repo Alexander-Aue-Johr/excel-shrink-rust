@@ -399,20 +399,29 @@ function Observatory() {
                 />
               </label>
               <label>
-                Maximum chunk size · bytes
+                Maximum chunk size · MiB
                 <input
                   aria-label="Chunk size"
                   type="number"
+                  step="any"
                   min="0"
                   disabled={active}
-                  value={config.parallel_range_chunk_size ?? 16777216}
+                  value={
+                    (config.parallel_range_chunk_size ?? 16777216) / 1048576
+                  }
                   onChange={(event) =>
                     change(
                       "parallel_range_chunk_size",
-                      Number(event.target.value),
+                      Math.round(Number(event.target.value) * 1048576),
                     )
                   }
                 />
+                <small>
+                  {(
+                    config.parallel_range_chunk_size ?? 16777216
+                  ).toLocaleString("en-US")}{" "}
+                  bytes · 0 disables chunking
+                </small>
               </label>
             </>
           )}

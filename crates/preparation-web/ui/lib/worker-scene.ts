@@ -239,7 +239,7 @@ export function buildWorkerScene(
     if (x1 - x0 < 0.003) continue;
     const y = (job.workbookIndex - baselineIndex) * step + 0.045;
     const z = job.workerIndex * lanePitch;
-    const colour = sheetColor(job.sheet.hue, job.chunkIndex, job.chunkCount);
+    const colour = sheetColor(job.sheet.hue);
     const dimmed =
       !!options.selectedWorkbookId &&
       options.selectedWorkbookId !== job.workbookId;
@@ -320,8 +320,7 @@ export function buildWorkerScene(
         options.labelMode === "xml"
           ? `sheet${job.sheet.index}.xml`
           : job.sheet.name;
-      const chunk =
-        job.chunkCount > 1 ? ` · ${job.chunkIndex + 1}/${job.chunkCount}` : "";
+      const phase = taskLabel(job);
       const budget = Math.max(5, Math.floor(width * 7.3));
       scene.labels.push({
         id: `job-label-${job.id}`,
@@ -330,9 +329,13 @@ export function buildWorkerScene(
           y + (options.jobStyle === "threads" ? 0.18 : 0.025),
           z + laneWidth / 2,
         ],
-        text: shorten(name + chunk, budget),
+        text:
+          options.workUnit === "workbook"
+            ? shorten(name, budget)
+            : `${job.sheet.indexLabel ?? `S${job.sheet.index}`} · ${shorten(name, Math.max(5, budget - phase.length - 8))} · ${phase}`,
         size: options.jobStyle === "threads" ? 9 : 10,
         color: options.jobStyle === "threads" ? "#d7e6e3" : "#16292a",
+        surface: { width: width * 0.92, height: laneWidth * 0.7 },
       });
     }
     scene.hits.push({
@@ -346,8 +349,8 @@ export function buildWorkerScene(
           options.workUnit === "workbook"
             ? job.workbookName
             : `${job.workbookName} · sheet${job.sheet.index}.xml`,
-          `Worker ${job.workerIndex + 1}${job.chunkCount > 1 ? ` · Chunk ${job.chunkIndex + 1} / ${job.chunkCount}` : options.workUnit === "workbook" ? " · entire workbook" : " · entire worksheet"}`,
-          `${fmtTime(job.startAt)} → ${fmtTime(job.visibleEnd)} · ${(job.visibleEnd - job.startAt).toFixed(1).replace(".", ",")} s${job.done ? " · abgeschlossen" : " · in Bearbeitung"}`,
+          `Worker ${job.workerIndex + 1} · ${taskLabel(job)}`,
+          `${fmtTime(job.startAt)} → ${fmtTime(job.visibleEnd)} · ${(job.visibleEnd - job.startAt).toFixed(1)} s${job.done ? " · completed" : " · running"}`,
           `${options.workUnit === "workbook" ? "Workbook" : "Worksheet"} before: ${fmtBytes(job.sheet.originalBytes)}`,
           ...(job.sheet.cleanedBytes === null
             ? ["Output report pending"]
@@ -451,6 +454,14 @@ export function buildWorkerScene(
   );
   scene.shapes = [...batches.values()];
   return scene;
+}
+
+function taskLabel(job: VisibleJob): string {
+  if (job.phase === "initial") return "Initial scan";
+  if (job.phase === "finalize") return "Finalize";
+  if (job.phase === "chunk" || job.chunkCount > 1)
+    return `Chunk ${job.chunkIndex + 1}/${job.chunkCount}`;
+  return "Whole range";
 }
 
 function shorten(value: string, max: number) {

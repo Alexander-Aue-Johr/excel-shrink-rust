@@ -60,6 +60,7 @@ export interface SheetState {
   id: string;
   workbookId: string;
   index: number;
+  indexLabel?: string;
   name: string;
   originalBytes: number;
   cleanedBytes: number | null;
@@ -81,6 +82,7 @@ export interface WorkbookState {
   progress: number;
 }
 export interface VisibleJob extends JobSpec {
+  phase?: "initial" | "finalize" | "chunk";
   visibleEnd: number;
   done: boolean;
   sheet: SheetState;

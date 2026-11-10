@@ -54,7 +54,8 @@ impl Observer for Bridge {
         let metadata = package_sizes::inspect(input);
         let payload = match metadata {
             Ok(package) => {
-                json!({"package": package, "sheet_names": sheet_names(input).unwrap_or_default()})
+                let (names, order) = sheet_metadata(input).unwrap_or_default();
+                json!({"package": package, "sheet_names": names, "sheet_order": order})
             }
             Err(error) => json!({"error": format!("{error:#}")}),
         };
@@ -160,7 +161,7 @@ impl Observer for Bridge {
     }
 }
 
-fn sheet_names(path: &Path) -> Result<HashMap<String, String>> {
+fn sheet_metadata(path: &Path) -> Result<(HashMap<String, String>, Vec<String>)> {
     use std::io::Read;
     let mut zip = zip::ZipArchive::new(std::fs::File::open(path)?)?;
     let mut parts = Vec::new();
@@ -175,10 +176,12 @@ fn sheet_names(path: &Path) -> Result<HashMap<String, String>> {
         parts.push(xml);
     }
     let targets = pipeline::extract_rid_to_target(&parts[1]);
-    Ok(pipeline::extract_sheet_id_name_and_rid_in_order(&parts[0])
+    let ordered: Vec<_> = pipeline::extract_sheet_id_name_and_rid_in_order(&parts[0])
         .into_iter()
         .filter_map(|(_, name, rid)| targets.get(&rid).map(|part| (part.clone(), name)))
-        .collect())
+        .collect();
+    let order = ordered.iter().map(|(part, _)| part.clone()).collect();
+    Ok((ordered.into_iter().collect(), order))
 }
 
 pub fn run(options: Options, context: RunContext) -> Result<()> {

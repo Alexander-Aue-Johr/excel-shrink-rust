@@ -19,6 +19,8 @@ export interface SceneLabel {
   muted?: boolean;
   pill?: boolean;
   anchor?: "left" | "center" | "right";
+  /** Size of a label attached to the X/Z surface, in scene units. */
+  surface?: { width: number; height: number };
 }
 export interface HitTarget {
   id: string;

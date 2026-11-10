@@ -85,3 +85,37 @@ export function defaultView(
     height,
   };
 }
+
+/** Project a nameplate fixed to the same X/Z plane as a worker bar. */
+export function surfaceLabelMatrix(
+  position: Vec3,
+  surface: { width: number; height: number },
+  textWidth: number,
+  textHeight: number,
+  matrix: Float32Array,
+  viewportWidth: number,
+  viewportHeight: number,
+) {
+  const unit = Math.min(surface.width / textWidth, surface.height / textHeight);
+  const center = project(position, matrix, viewportWidth, viewportHeight);
+  const right = project(
+    [position[0] + unit, position[1], position[2]],
+    matrix,
+    viewportWidth,
+    viewportHeight,
+  );
+  const down = project(
+    [position[0], position[1], position[2] + unit],
+    matrix,
+    viewportWidth,
+    viewportHeight,
+  );
+  return {
+    a: right.x - center.x,
+    b: right.y - center.y,
+    c: down.x - center.x,
+    d: down.y - center.y,
+    x: center.x,
+    y: center.y,
+  };
+}
