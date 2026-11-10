@@ -100,3 +100,11 @@ Select from the original standalone report before merging. An active source is
 allowed only when every selected comparison is terminal. Selection status and
 counts describe that snapshot, while the full run keeps working. Publication review
 also includes the retained full source metadata.
+
+Atlas labels may explicitly set `variant_group` alongside `corpus` and `variant`
+when independently retained runs belong under one presentation selector. The
+shared key and display name determine this presentation group. Observations keep
+their separate IDs, run IDs, native evidence and validation signatures. Grouping
+does not establish methodological equivalence. Use separate keys and names for
+normalized baselines and distinct tool profiles. Without this explicit field,
+variant identity retains the original per-run behavior.

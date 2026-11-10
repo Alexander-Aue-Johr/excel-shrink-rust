@@ -192,14 +192,21 @@ fn append_observation(
         .filter(|s| !s.is_empty())
         .or_else(|| source["config"]["steps"].as_array()?.last()?["name"].as_str())
         .unwrap_or("Candidate");
-    let variant = digest(&json!([
-        run_id,
-        source["validation_signature"],
-        source["config"]
-    ]))?;
-    variants
+    // Explicit presentation groups share a selector entry, never an observation.
+    let presentation_group = atlas["variant_group"].as_str().filter(|group| !group.is_empty());
+    let variant = if let Some(group) = presentation_group {
+        digest(&json!(["presentation-group", group, variant_name]))?
+    } else {
+        digest(&json!([run_id, source["validation_signature"], source["config"]]))?
+    };
+    let variant_entry = variants
         .entry(variant.clone())
-        .or_insert_with(|| json!({"id":variant,"name":variant_name,"run_id":run_id}));
+        .or_insert_with(|| json!({"id":variant,"name":variant_name,"run_id":run_id,
+            "presentation_group":presentation_group,"run_ids":[]}));
+    let run_ids = variant_entry["run_ids"].as_array_mut().unwrap();
+    if !run_ids.iter().any(|id| id == run_id) {
+        run_ids.push(json!(run_id));
+    }
     let name = pair["name"].as_str().unwrap_or("Unnamed workbook");
     let display = pair["display_name"].as_str().unwrap_or(name);
     let suffix = pair["merge_source"]["source_run_sha256"]
@@ -229,7 +236,7 @@ fn append_observation(
     }));
     let report_digest = report.as_ref().map(digest).transpose()?;
     let observation_id = digest(&json!([variant, pair["id"], relative, report_digest]))?;
-    let mut summary = json!({"id":observation_id,"variant":variant,"status":pair["status"],
+    let mut summary = json!({"id":observation_id,"variant":variant,"run_id":run_id,"status":pair["status"],
         "errors":pair["errors"],"error":pair["error"],"sheets":{}});
     if let (Some(relative), Some(report)) = (relative, report) {
         let parent = Path::new(relative)
@@ -446,6 +453,20 @@ mod tests {
             fs::read(root.join("pairs/one/report.json"))?
         );
         super::super::verify_comparison(&root.join("pairs/one"))?;
+        fs::write(root.join("atlas-labels.json"), serde_json::to_vec(&json!({
+            "run-a":{"corpus":"Corpus","variant":"Shared tool","variant_group":"tool-profile"},
+            "run-b":{"corpus":"Corpus","variant":"Shared tool","variant_group":"tool-profile"}
+        }))?)?;
+        write(&root, &run)?;
+        let grouped = self::catalog(&root)?;
+        assert_eq!(grouped["variants"].as_array().unwrap().len(), 1);
+        assert_eq!(grouped["variants"][0]["run_ids"], json!(["run-a", "run-b"]));
+        let observations = grouped["books"][0]["observations"].as_array().unwrap();
+        assert_eq!(observations.len(), 2);
+        assert_eq!(observations[0]["run_id"], "run-a");
+        assert_eq!(observations[1]["run_id"], "run-b");
+        assert_ne!(observations[0]["id"], observations[1]["id"]);
+        assert_eq!(original_bytes, fs::read(root.join("pairs/one/report.json"))?);
         fs::remove_dir_all(root)?;
         Ok(())
     }
