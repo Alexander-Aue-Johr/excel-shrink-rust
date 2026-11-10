@@ -132,3 +132,22 @@ Rebuilt archive SHA-256 values:
 
 - Original `b43aee196cd16c562d85a6b88bf0278f31bb0b7e178af88194b0d14e7a28b8e4`
 - Inquire `1607f68b64841e025660c7b95dfd0c99264ff16853c8bd515f789e87a984d25f`
+
+The full rebuilt worksheet XML confirms exactly eleven explicit row
+styles in the original: style 2 on row 1 of each affected sheet. The
+Inquire candidate has no explicit row styles. Style 2 resolves to a thin
+bottom border (border 1, indexed color 64) and no fill in both style
+tables. A full-width inherited border is therefore a concrete candidate
+for a visual difference outside column L. The earlier suggestion to
+probe the row background should include this border explicitly.
+A bounded reference can capture row 1 beyond L and sample it across the
+tail, independently of the default-width measurement. Any future
+analytical pruning must preserve this signal and distinguish the two
+dependencies.
+
+XLStylesTool completed the same workbook with zero selected worksheet
+regions and zero chart captures under limited coverage. Its terminal
+report SHA-256 is
+`f12cc28a57dc2a5cbee348b5314d20164f1ce28b5563561a98efa667ab8eb079`.
+The 78 ms recorded selection-and-transport phase applies to that
+zero-capture observation.
