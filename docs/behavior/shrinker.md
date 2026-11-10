@@ -128,8 +128,12 @@ An explicit non-default font can supply automatic height even when its XF omits
 not fix that height. In `kulturfinanzbericht-gesamtmaterial-1023003229005.xlsx`,
 `Impressum!B16` has an empty Arial MT 12 cell alongside Arial 10 text. Removing
 it reduced the observed rebuilt row height from 15 to 12.75 points. The regression
-test keeps one such font representative and removes duplicates. Native acceptance
-of the corrected workbook is tracked separately from this Core test.
+test keeps one such font representative and removes duplicates. A separate native
+reference control rebuilt both complete workbooks and captured the preselected
+`Impressum!A1:J43` area. Both 832 by 743 PNGs had identical bytes and geometry
+(623.25 by 556.5 points). The control completed in 13.07 seconds and confirmed
+both owned Excel instances closed. This establishes the local correction,
+with other reported regions requiring their own classification and revalidation.
 
 The Enron `005d034f18d6dc340a2c` investigation found five automatic-height rows
 that became one pixel shorter after two Arial-formatted protection cells were
