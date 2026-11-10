@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Expand, Minimize2 } from "lucide-react";
 import SheetConnections from "./SheetConnections";
 
@@ -21,10 +21,11 @@ export default function LinkedScenesPanel({
   footer,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const savedScrollY = useRef(0);
   useEffect(() => {
     if (!expanded) return;
     const overflow = document.body.style.overflow;
-    const scrollY = window.scrollY;
+    const scrollY = savedScrollY.current;
     document.body.style.overflow = "hidden";
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setExpanded(false);
@@ -54,7 +55,10 @@ export default function LinkedScenesPanel({
             }
             title={expanded ? "Restore panel (Esc)" : "Maximize both diagrams"}
             aria-pressed={expanded}
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => {
+              if (!expanded) savedScrollY.current = window.scrollY;
+              setExpanded(!expanded);
+            }}
           >
             {expanded ? <Minimize2 size={16} /> : <Expand size={16} />}
           </button>
