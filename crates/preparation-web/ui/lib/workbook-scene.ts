@@ -175,7 +175,7 @@ export function buildWorkbookScene(
   const width = right - left;
   const largestKnown = Math.max(
     1,
-    ...snapshot.workbooks.map((book) =>
+    ...books.map((book) =>
       Math.max(book.originalBytes ?? 0, book.cleanedBytes ?? 0),
     ),
   );

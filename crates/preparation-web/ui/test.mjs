@@ -244,3 +244,57 @@ test("explicit horizontal framing fills wide and narrow viewports consistently",
     assert.ok(left.visible && right.visible);
   }
 });
+
+test("atlas byte scale uses only displayed workbooks and includes output growth", async () => {
+  const bundled = await build({
+    entryPoints: ["lib/workbook-scene.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { buildWorkbookScene } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].contents).toString("base64")}`
+  );
+  const book = (id, startAt, originalBytes, cleanedBytes) => ({
+    id,
+    name: id,
+    index: startAt,
+    startAt,
+    originalBytes,
+    cleanedBytes,
+    completedAt: startAt + 1,
+    known: true,
+    status: "complete",
+    sheets: [],
+  });
+  const snapshot = {
+    time: 100,
+    knownBooks: 2,
+    workbooks: [
+      book("hidden-large", 0, 1000000, 900000),
+      book("visible-small", 1, 1000, 2000),
+    ],
+  };
+  const options = {
+    view: "recent",
+    sort: "time",
+    recentCount: 1,
+    resultStyle: "split",
+    labelMode: "name",
+  };
+  const scene = buildWorkbookScene(snapshot, options);
+  const expected = buildWorkbookScene(
+    { ...snapshot, knownBooks: 1, workbooks: [snapshot.workbooks[1]] },
+    options,
+  );
+  assert.equal(
+    scene.labels.find((label) => label.id === "atlas-scale-1").text,
+    expected.labels.find((label) => label.id === "atlas-scale-1").text,
+  );
+  const wider = buildWorkbookScene(snapshot, { ...options, recentCount: 2 });
+  assert.notEqual(
+    scene.labels.find((label) => label.id === "atlas-scale-1").text,
+    wider.labels.find((label) => label.id === "atlas-scale-1").text,
+  );
+});
