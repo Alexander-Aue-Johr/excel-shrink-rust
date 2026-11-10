@@ -13,6 +13,38 @@ All processor variants use these same original identities and frozen ranks.
 
 ### Latest output-identity checkpoint on 2026-11-10
 
+The later policy-v15 checkpoint supersedes the running/queued status below.
+All 26 changed Destatis outputs completed their repeat, and Wanderungen's
+separate controlled opening recovery completed with zero differences. The
+Kulturfinanzbericht repeat used 350 selected regions, including one on
+`Tabelle 8.2-1`, with zero differences after the bounded unfilled-column rule.
+The four-output Data.gov repeat remains active at three completed identities.
+The older Data.gov run also remains active and has reached 78 of 94 identities
+with six recorded failures. These counts do not complete the top-49 release
+audit, whose output identities and baseline lineage still need reconciliation.
+
+Five same-content Enron chart controls completed ten conservative chart
+comparisons. Two controls differed by two and seven pixels despite identical
+worksheet, style and chart members. Raw findings remain reportable. Other
+earlier chart findings remain separately classified until their causes are
+established. The missing orphan-module Enron baseline has a concrete native
+repair-required exception receipt.
+
+New external artifacts are imported and independently verified. Inquire now
+has 128 available outputs across the 147 identities. A separate NXPowerLite
+cell-formatting-focused profile has 139 outputs, of which six changed protected
+parts and remain separately labelled. Historical Balanced results retain their
+profile identity. The SSH handover now asks the producing agent to investigate
+the Inquire invocation failures and record the observed causes. These requests
+and imported outputs are preparation, not completed visual validation.
+
+Whole-workbook Verkehrsunfälle validation remains incomplete. A bounded repeat
+was stopped after ten minutes during Rust planning before capture partition
+publication. The archive-only diagnostic reports whole-grid visual bounds on
+101 of 215 sheets and does not include native drawing qualification. The new
+pre-expansion summary and retained drawing-rejection reasons provide the next
+diagnostic boundary. They do not change selection or prove visual equality.
+
 This checkpoint supersedes the intermediate counts and launch blockers below.
 The implicit-font representative fix `6e4847a0` was tested with 298 core tests
 (one ignored) and an independent native Impressum reference. The reference
