@@ -33,7 +33,7 @@ const ORIGINAL_COLOR = "#557a91";
 const ORIGINAL_EDGE = "#89adc1";
 const CLEAN_COLOR = "#7ecab2";
 const GROWTH_COLOR = "#cb9b9d";
-const PERCENT = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
+const PERCENT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 
 function itemData(snapshot: Snapshot, options: DistributionOptions): Datum[] {
   const books = new Map(snapshot.workbooks.map((book) => [book.id, book]));
@@ -179,9 +179,9 @@ function addAxes(
     // The two layers may contain different numbers of known reports. Relative
     // ranks share the horizontal extent without implying matching entity IDs.
     for (const [fraction, label] of [
-      [0, "größte"],
-      [0.5, "mittlere"],
-      [1, "kleinste"],
+      [0, "largest"],
+      [0.5, "median"],
+      [1, "smallest"],
     ] as const) {
       const x = WIDTH * fraction;
       scene.shapes.push(
@@ -210,7 +210,7 @@ function addAxes(
       scene.labels.push({
         id: `axis-rank-${rank}`,
         position: [x, -0.27, CLEAN_Z],
-        text: `${rank.toLocaleString("de-DE")}`,
+        text: `${rank.toLocaleString("en-US")}`,
         size: 10,
         color: "#81969d",
       });
@@ -218,10 +218,10 @@ function addAxes(
   }
   const orderText =
     order === "independent"
-      ? "Größenrang · separat sortiert"
+      ? "Size rank · sorted independently"
       : order === "paired"
-        ? "Original-Rang · gleiche Datei"
-        : "Rang · absteigend sortiert";
+        ? "Original rank · same file"
+        : "Rank · sorted descending";
   scene.labels.push({
     id: "axis-order",
     position: [WIDTH / 2, -0.74, CLEAN_Z],
@@ -237,7 +237,7 @@ function addHits(
   snapshot: Snapshot,
   positions: (datum: Datum, index: number) => Vec3[],
   color: string,
-  layerName?: "Original" | "Bereinigt",
+  layerName?: "Original" | "Optimized",
 ) {
   // The entire mesh is retained; only hover markers are bounded for large corpora.
   const stride = Math.max(1, Math.ceil(data.length / 850));
@@ -258,11 +258,11 @@ function addHits(
                 Math.max(1, datum.originalBytes);
           return [
             ...(datum.workbookName ? [datum.workbookName] : []),
-            `${layerName ? `${layerName} · ` : ""}Rang ${i + 1} von ${data.length.toLocaleString("de-DE")}`,
+            `${layerName ? `${layerName} · ` : ""}Rank ${i + 1} of ${data.length.toLocaleString("en-US")}`,
             `Original: ${fmtBytes(datum.originalBytes)}`,
             datum.cleanedBytes === null
-              ? "Bereinigt: Bericht ausstehend"
-              : `Bereinigt: ${fmtBytes(datum.cleanedBytes)}`,
+              ? "Optimized: report pending"
+              : `Optimized: ${fmtBytes(datum.cleanedBytes)}`,
             ...(savedRatio === null
               ? []
               : [
@@ -272,7 +272,7 @@ function addHits(
                 ]),
             ...(datum.completedAt !== null &&
             snapshot.time - datum.completedAt < 1.8
-              ? ["Ergebnis wird eingeblendet"]
+              ? ["Revealing output"]
               : []),
           ];
         },
@@ -341,19 +341,18 @@ export function buildDistributionScene(
         label: fmtBytes(maximum * fraction),
       })),
       0,
-      "Dateigröße · linear",
+      "File size · linear",
       order,
     );
     if (!data.length) {
       scene.labels.push({
         id: "empty",
         position: [6, 2.35, 0],
-        text: "Warte auf Größeninformationen",
+        text: "Waiting for size measurements",
         size: 12,
         color: "#82999f",
       });
-      scene.footer =
-        "Metadaten ergänzen die Verteilung, sobald sie eintreffen.";
+      scene.footer = "The distribution updates as metadata arrives.";
       return scene;
     }
     const original = filled(ORIGINAL_COLOR, 0.52);
@@ -415,7 +414,7 @@ export function buildDistributionScene(
           [xAt(index, reported.length), cleanHeights.get(datum.id)!, CLEAN_Z],
         ],
         CLEAN_COLOR,
-        "Bereinigt",
+        "Optimized",
       );
     } else {
       // Preserving correspondence intentionally leaves gaps for outstanding
@@ -465,7 +464,7 @@ export function buildDistributionScene(
       );
     }
     if (clean.positions.length) scene.shapes.push(clean, cleanOutline);
-    scene.footer = `${data.length.toLocaleString("de-DE")} ${entityLabel} · ${reported.length.toLocaleString("de-DE")} Ergebnisse · ${order === "independent" ? "beide Ebenen separat sortiert · keine Einzelzuordnung" : "gleiche Datei an gleicher X-Position"}`;
+    scene.footer = `${data.length.toLocaleString("en-US")} ${entityLabel} · ${reported.length.toLocaleString("en-US")} Results · ${order === "independent" ? "layers sorted independently · no individual pairing" : "same file at the same X position"}`;
     return scene;
   }
 
@@ -488,17 +487,16 @@ export function buildDistributionScene(
       label: `${PERCENT.format(value * 100)} %`,
     }),
   );
-  addAxes(scene, reported.length, ticks, baseline, "Eingesparte Dateigröße");
+  addAxes(scene, reported.length, ticks, baseline, "File size reduction");
   if (!reported.length) {
     scene.labels.push({
       id: "empty",
       position: [6, 2.35, 0],
-      text: "Warte auf abgeschlossene Workbooks",
+      text: "Waiting for completed workbooks",
       size: 12,
       color: "#82999f",
     });
-    scene.footer =
-      "Relative Einsparungen erscheinen erst mit einem Abschlussbericht.";
+    scene.footer = "Relative reductions appear after a completion report.";
     return scene;
   }
 
@@ -568,6 +566,6 @@ export function buildDistributionScene(
     ],
     CLEAN_COLOR,
   );
-  scene.footer = `${reported.length.toLocaleString("de-DE")} ${entityLabel} · nach relativer Einsparung sortiert${minimum < 0 ? " · negative Werte = Zuwachs" : ""}`;
+  scene.footer = `${reported.length.toLocaleString("en-US")} ${entityLabel} · sorted by relative reduction${minimum < 0 ? " · negative values = growth" : ""}`;
   return scene;
 }

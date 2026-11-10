@@ -35,8 +35,8 @@ export default function SheetDetails({
   );
   const part = selected ?? sheets[0]?.part;
   const phaseNames = {
-    initial: "Initiale Bereinigung",
-    finalize: "Finalisierung",
+    initial: "Initial cleanup",
+    finalize: "Finalization",
     chunk: "Chunk",
   };
   const selectedTasks = grouped.get(part) ?? [];
@@ -55,8 +55,8 @@ export default function SheetDetails({
             <thead>
               <tr>
                 <th>Sheet</th>
-                <th>XML vorher → nachher</th>
-                <th>Chunks erfasst</th>
+                <th>XML before → after</th>
+                <th>Chunks recorded</th>
               </tr>
             </thead>
             <tbody>
@@ -96,7 +96,7 @@ export default function SheetDetails({
               className="button subtle"
               onClick={() => setLimit(limit + 100)}
             >
-              Weitere Sheets anzeigen
+              Show more sheets
             </button>
           )}
         </div>
@@ -107,7 +107,7 @@ export default function SheetDetails({
                 <th>Phase / Chunk</th>
                 <th>Worker</th>
                 <th>Start</th>
-                <th>Laufzeit</th>
+                <th>Duration</th>
               </tr>
             </thead>
             <tbody>
@@ -127,7 +127,7 @@ export default function SheetDetails({
                   <td>{duration(task.started_ms)}</td>
                   <td>
                     {duration((task.ended_ms ?? now) - task.started_ms)}
-                    {task.ended_ms === null && " · aktiv"}
+                    {task.ended_ms === null && " · active"}
                   </td>
                 </tr>
               ))}
@@ -136,9 +136,9 @@ export default function SheetDetails({
         </div>
       </div>
       <p className="view-note">
-        Phasen zeigen verstrichene Laufzeit. Eine Sheet-Phase kann parallele
-        Chunks enthalten. Die Detailansicht hält bis zu 4096 Phasen und die
-        letzten 256 Einträge des gewählten Sheets vor.
+        Phases show elapsed time and may contain parallel chunks. The live view
+        retains up to 4096 tasks and shows the latest 256 entries for the
+        selected sheet.
       </p>
     </section>
   );

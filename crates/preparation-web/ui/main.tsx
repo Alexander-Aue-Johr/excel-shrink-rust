@@ -24,15 +24,15 @@ const token = document.querySelector<HTMLMetaElement>(
 )!.content;
 const activeStates = new Set(["starting", "running", "stopping"]);
 const names: Record<string, string> = {
-  idle: "Bereit",
-  starting: "Startet",
-  running: "Läuft",
-  stopping: "Wird gestoppt",
-  stopped: "Gestoppt",
-  completed: "Abgeschlossen",
-  failed: "Fehlgeschlagen",
-  prepared: "Erfolgreich",
-  interrupted: "Unterbrochen",
+  idle: "Ready",
+  starting: "Starting",
+  running: "Running",
+  stopping: "Stopping",
+  stopped: "Stopped",
+  completed: "Completed",
+  failed: "Failed",
+  prepared: "Prepared",
+  interrupted: "Interrupted",
 };
 
 async function command(path: string, body: unknown = {}) {
@@ -77,7 +77,7 @@ function Observatory() {
         } = await response.json();
         if (wire.defaults) knownDefaults.current = wire.defaults;
         if (!knownDefaults.current)
-          throw new Error("Konfiguration fehlt in der Statusantwort");
+          throw new Error("Configuration missing from status response");
         const next: Update = {
           ...wire,
           defaults: { ...knownDefaults.current, workers: wire.workers },
@@ -172,7 +172,7 @@ function Observatory() {
   if (!update || !config || !rendering || !workerScene || !distributions)
     return (
       <main>
-        <p>Observatory wird geladen…</p>
+        <p>Loading Observatory…</p>
         {error && <p role="alert">{error}</p>}
       </main>
     );
@@ -236,20 +236,16 @@ function Observatory() {
           <div>
             <div className="eyebrow">
               {detailed
-                ? "SHEETSHRINK / RUST-VERARBEITUNG"
-                : "NATIVE EXCEL-VERARBEITUNG"}
+                ? "SHEETSHRINK / RUST PROCESSING"
+                : "NATIVE EXCEL PROCESSING"}
             </div>
-            <h1>
-              {optimizing
-                ? "Bereinigen. Nachvollziehen."
-                : "Konvertieren. Nachvollziehen."}
-            </h1>
+            <h1>{optimizing ? "Optimize. Explore." : "Convert. Explore."}</h1>
             <p>
               {detailed
-                ? "Workbooks mit SheetShrink bereinigen und die parallele Verarbeitung der Sheets und Chunks nachvollziehen."
+                ? "Optimize workbooks with SheetShrink and explore parallel sheet and chunk processing."
                 : optimizing
-                  ? "Workbooks parallel mit Excel Check Performance optimieren."
-                  : "XLS und XLSX als separate XLSX-Dateien mit Excel speichern."}
+                  ? "Optimize workbooks in parallel with Excel Check Performance."
+                  : "Save XLS and XLSX inputs as separate XLSX copies using Excel."}
             </p>
           </div>
         </section>
@@ -261,9 +257,9 @@ function Observatory() {
           }}
         >
           <label className="wide">
-            Eingabedateien oder Ordner · ein Pfad pro Zeile
+            Input files or folders · one path per line
             <textarea
-              aria-label="Eingabepfade"
+              aria-label="Input paths"
               disabled={active}
               value={config.inputs.join("\n")}
               onChange={(event) =>
@@ -275,9 +271,9 @@ function Observatory() {
             />
           </label>
           <label className="wide">
-            Neues Ausgabeverzeichnis
+            New output directory
             <input
-              aria-label="Ausgabeverzeichnis"
+              aria-label="Output directory"
               disabled={active}
               value={config.output ?? ""}
               onChange={(event) => change("output", event.target.value || null)}
@@ -286,7 +282,7 @@ function Observatory() {
           {optimizing && !detailed && (
             <>
               <label>
-                Quellmanifest · optional
+                Source manifest · optional
                 <input
                   disabled={active}
                   value={config.source_manifest ?? ""}
@@ -296,7 +292,7 @@ function Observatory() {
                 />
               </label>
               <label>
-                Frühere Vorbereitung · optional
+                Previous preparation · optional
                 <input
                   disabled={active}
                   value={config.reuse_from ?? ""}
@@ -308,9 +304,9 @@ function Observatory() {
             </>
           )}
           <label>
-            {detailed ? "Rayon-Threads" : "Parallele Worker"}
+            {detailed ? "Rayon-Threads" : "Parallel workers"}
             <input
-              aria-label="Parallele Worker"
+              aria-label="Parallel workers"
               type="number"
               min="1"
               max="256"
@@ -325,9 +321,9 @@ function Observatory() {
           {detailed && (
             <>
               <label>
-                Gleichzeitig aktive Workbooks
+                Concurrent workbooks
                 <input
-                  aria-label="Aktive Workbooks"
+                  aria-label="Active workbooks"
                   type="number"
                   min="1"
                   disabled={active}
@@ -338,9 +334,9 @@ function Observatory() {
                 />
               </label>
               <label>
-                Maximale Chunkgröße · Bytes
+                Maximum chunk size · bytes
                 <input
-                  aria-label="Chunkgröße"
+                  aria-label="Chunk size"
                   type="number"
                   min="0"
                   disabled={active}
@@ -356,13 +352,13 @@ function Observatory() {
             </>
           )}
           <label>
-            RAM- und Commit-Reserve · MiB
+            RAM and commit reserve · MiB
             <input
-              aria-label="Speicherreserve"
+              aria-label="Memory reserve"
               disabled={active}
               type="number"
               min="512"
-              placeholder="Automatisch"
+              placeholder="Automatic"
               value={config.reserve_mib ?? ""}
               onChange={(event) =>
                 change(
@@ -379,7 +375,7 @@ function Observatory() {
               checked={config.recursive}
               onChange={(event) => change("recursive", event.target.checked)}
             />
-            Unterordner einbeziehen
+            Include subfolders
           </label>
           <div className="form-actions">
             <button
@@ -387,7 +383,7 @@ function Observatory() {
               type="submit"
               disabled={active || busy}
             >
-              Starten
+              Start
             </button>
             <button
               className="button subtle"
@@ -397,7 +393,7 @@ function Observatory() {
                 void act("/api/workers", { workers: config.workers })
               }
             >
-              Worker übernehmen
+              Apply workers
             </button>
             <button
               className="button subtle"
@@ -405,16 +401,15 @@ function Observatory() {
               disabled={!active || busy}
               onClick={() => void act("/api/stop")}
             >
-              Stoppen
+              Stop
             </button>
           </div>
           <p className="wide form-note">
             {detailed
-              ? "Ergebnisse und Stapelbericht"
-              : "Ergebnisse und Quellkopien"}{" "}
-            liegen im Ausgabeverzeichnis. Das Ereignisprotokoll liegt daneben
-            als .events.jsonl. Ein neuer Lauf braucht ein neues
-            Ausgabeverzeichnis.
+              ? "Outputs and batch report"
+              : "Outputs and source copies"}{" "}
+            are saved in the output directory. The event log is saved alongside
+            it as .events.jsonl. Each new run requires a new output directory.
           </p>
         </form>
         {(error || update.error) && (
@@ -426,40 +421,40 @@ function Observatory() {
           <Metric
             label="Workbooks"
             value={`${completed} / ${update.counts.total}`}
-            note={`${update.counts.failed} fehlgeschlagen · ${update.counts.reused} wiederverwendet`}
+            note={`${update.counts.failed} failed · ${update.counts.reused} reused`}
           />
           <Metric
-            label="Durchsatz"
+            label="Throughput"
             value={`${perHour.toFixed(1)} / h`}
-            note={`${(perHour / 60).toFixed(2)} / min · seit Laufbeginn`}
+            note={`${(perHour / 60).toFixed(2)} / min · since run start`}
           />
           <Metric
-            label="Restzeit"
+            label="Time remaining"
             value={remaining ? eta : "0 min"}
-            note={`${remaining} ausstehend · Hochrechnung`}
+            note={`${remaining} pending · estimate`}
           />
           <Metric
             label="Worker"
             value={`${activeWorkers} / ${update.defaults.workers}`}
-            note={`${Math.round(seconds)} s bisher`}
+            note={`${Math.round(seconds)} s elapsed`}
           />
         </section>
         <div className="pipeline-grid">
           <section className="panel pipeline-panel">
             <div className="panel-header">
               <div>
-                <div className="section-index">01 / PROZESS</div>
+                <div className="section-index">01 / PROCESS</div>
                 <h2>
                   {detailed
-                    ? "Parallele Sheets und Chunks"
-                    : "Parallele Workbooks"}
+                    ? "Parallel sheets and chunks"
+                    : "Parallel workbooks"}
                 </h2>
               </div>
             </div>
             <SceneViewport
               scene={workerScene}
               renderer="auto"
-              title="Worker-Zeitleiste"
+              title="Worker timeline"
               className="worker-viewport"
               onSelect={(hit) =>
                 setSelected(
@@ -472,14 +467,14 @@ function Observatory() {
             />
             <p className="view-note">
               {detailed
-                ? "Zeit × Worker × Workbook · Sheets und Chunks · "
-                : "Zeit × Worker · ein Rechteck pro Workbook · "}
-              {update.history_limit} letzte Jobs im Arbeitsspeicher
+                ? "Time × Worker × Workbook · sheets and chunks · "
+                : "Time × Worker · one block per workbook · "}
+              {update.history_limit} recent jobs retained in memory
             </p>
           </section>
           <aside className="panel focus-panel">
             <div className="panel-header">
-              <h3>Im Fokus</h3>
+              <h3>In focus</h3>
             </div>
             {focused ? (
               <div className="focus-book">
@@ -507,7 +502,7 @@ function Observatory() {
               </div>
             ) : (
               <p className="view-note">
-                Mit dem ersten Auftrag erscheinen die Workbook-Details.
+                Workbook details appear when the first job starts.
               </p>
             )}
           </aside>
@@ -517,8 +512,8 @@ function Observatory() {
             <div className="panel-header">
               <h2>Workbook-Atlas</h2>
               <span>
-                Die letzten drei Workbooks · unkomprimierte ZIP-Bytes · Original
-                und Ergebnis
+                Three most recent workbooks · uncompressed ZIP bytes · original
+                and output
               </span>
             </div>
             <SceneViewport
@@ -550,40 +545,40 @@ function Observatory() {
           <section id="distributions">
             <div className="section-heading">
               <div>
-                <div className="section-index">02 / ERGEBNISSE</div>
-                <h2>Vor und nach der Optimierung</h2>
+                <div className="section-index">02 / RESULTS</div>
+                <h2>Before and after optimization</h2>
                 <p>
-                  Workbook-Bytes im ZIP · Worksheet-Größen als unkomprimierte
-                  XML-Bytes · letzte sichtbare Jobs
+                  Workbook ZIP file bytes · uncompressed worksheet XML bytes ·
+                  recent visible jobs
                 </p>
               </div>
             </div>
             <p className="view-note">
-              Gesamtbilanz der neu optimierten Workbooks mit Größenmessungen ·{" "}
+              Overall size of newly optimized workbooks with size measurements ·{" "}
               {fmtBytes(update.counts.before_bytes)} →{" "}
               {fmtBytes(update.counts.after_bytes)}
             </p>
             <div className="distribution-grid">
               <section className="panel distribution-card">
                 <div className="chart-heading">
-                  <h3>Workbook-Größen</h3>
+                  <h3>Workbook sizes</h3>
                 </div>
                 <SceneViewport
                   scene={distributions.books}
                   renderer="auto"
-                  title="Workbook-Größen"
+                  title="Workbook sizes"
                   className="distribution-viewport"
                   compact
                 />
               </section>
               <section className="panel distribution-card">
                 <div className="chart-heading">
-                  <h3>Worksheet-Größen</h3>
+                  <h3>Worksheet sizes</h3>
                 </div>
                 <SceneViewport
                   scene={distributions.sheets}
                   renderer="auto"
-                  title="Worksheet-Größen"
+                  title="Worksheet sizes"
                   className="distribution-viewport"
                   compact
                 />
@@ -593,8 +588,8 @@ function Observatory() {
         )}
         <section className="panel job-results">
           <div className="panel-header">
-            <h2>Aufträge</h2>
-            <span>{jobs.length} sichtbar</span>
+            <h2>Jobs</h2>
+            <span>{jobs.length} visible</span>
           </div>
           <div className="job-table">
             <table>
@@ -603,8 +598,8 @@ function Observatory() {
                   <th>Workbook</th>
                   <th>Worker</th>
                   <th>Status</th>
-                  <th>Dauer</th>
-                  <th>{optimizing ? "Vorher → Nachher" : "XLSX-Ausgabe"}</th>
+                  <th>Duration</th>
+                  <th>{optimizing ? "Before → After" : "XLSX output"}</th>
                 </tr>
               </thead>
               <tbody>

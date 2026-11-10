@@ -45,7 +45,7 @@ const BOOK_GAP = 1.05;
 const UNKNOWN_WIDTH = 1.9;
 const ORIGINAL_OFFSET = -0.82;
 const CLEAN_OFFSET = 0.98;
-const PERCENT = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
+const PERCENT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 
 function chronological(a: WorkbookState, b: WorkbookState): number {
   return a.startAt - b.startAt || a.index - b.index || a.id.localeCompare(b.id);
@@ -103,11 +103,11 @@ function percentage(original: number, cleaned: number): string {
 }
 
 function stateText(book: WorkbookState): string {
-  if (book.status === "complete") return "Bericht eingetroffen";
-  if (book.status === "finalizing") return "Bericht wird erstellt";
+  if (book.status === "complete") return "Report received";
+  if (book.status === "finalizing") return "Generating report";
   if (book.status === "processing")
-    return `Bereinigung · ${Math.round(book.progress * 100)} %`;
-  return "Wartet auf Metadaten";
+    return `Cleanup · ${Math.round(book.progress * 100)} %`;
+  return "Waiting for metadata";
 }
 
 /** Merge the many small column faces into a handful of indexed colour batches. */
@@ -186,7 +186,7 @@ export function buildWorkbookScene(
     span: Math.max(10.8, width + 3.6) * 1.06,
     yaw: 0.13,
     pitch: 0.74,
-    footer: `Eine Reihe · Worksheets nach XML-Index · ${options.view === "recent" ? "letzte gestartete Workbooks am Wiedergabepunkt" : options.sort === "reduction" ? "größte relative Einsparung zuerst; ausstehende Berichte danach" : "Workbooks nach Startzeit"}`,
+    footer: `One row · worksheets by XML index · ${options.view === "recent" ? "most recently started workbooks at the current time" : options.sort === "reduction" ? "largest relative reduction first; pending reports last" : "Workbooks by start time"}`,
   };
 
   // The grid follows the visible interval and stays bounded even for 800 books.
@@ -455,16 +455,13 @@ export function buildWorkbookScene(
               `Workbook original: ${fmtBytes(originalBytes)}`,
               ...(completed
                 ? [
-                    `Workbook bereinigt: ${fmtBytes(cleanedBytes)}`,
-                    `Änderung: ${percentage(originalBytes, cleanedBytes)}`,
+                    `Optimized workbook: ${fmtBytes(cleanedBytes)}`,
+                    `Change: ${percentage(originalBytes, cleanedBytes)}`,
                   ]
-                : ["Ergebnis erst nach vollständigem Workbook-Bericht"]),
-              `${book.sheets.length} Worksheets · gemeinsame lineare Skala`,
+                : ["Output available after the complete workbook report"]),
+              `${book.sheets.length} Worksheets · shared linear scale`,
             ]
-          : [
-              "In der Warteschlange",
-              "Datei- und Worksheet-Größen sind noch unbekannt.",
-            ];
+          : ["Queued", "File and worksheet sizes are not yet available."];
       },
       color: currentColor,
     });
@@ -535,7 +532,7 @@ export function buildWorkbookScene(
         result.labels.push({
           id: `book-clean-${book.id}`,
           position: [x + width / 2, currentH + 0.19, afterZ + BASE_D],
-          text: "BEREINIGT",
+          text: "OPTIMIZED",
           color: currentColor,
           size: 8,
         });
@@ -620,12 +617,12 @@ export function buildWorkbookScene(
             `Original: ${fmtBytes(sheet.originalBytes)}`,
             ...(completed && sheet.cleanedBytes !== null
               ? [
-                  `Bereinigt: ${fmtBytes(sheet.cleanedBytes)} · ${percentage(sheet.originalBytes, sheet.cleanedBytes)}`,
+                  `Optimized: ${fmtBytes(sheet.cleanedBytes)} · ${percentage(sheet.originalBytes, sheet.cleanedBytes)}`,
                 ]
-              : ["Bereinigte Größe: Bericht ausstehend"]),
+              : ["Optimized size: report pending"]),
             sheet.chunkCount > 1
-              ? `${sheet.chunkCount} gleich große Farbsegmente · Chunk-Reihenfolge von unten nach oben`
-              : "Ungeteiltes Worksheet",
+              ? `${sheet.chunkCount} equal color segments · chunks ordered bottom to top`
+              : "Unsplit worksheet",
           ];
         },
         color,
@@ -651,7 +648,7 @@ export function buildWorkbookScene(
       result.labels.push({
         id: `book-sheet-order-${book.id}`,
         position: [x + width / 2, FLOOR_Y + 0.01, beforeZ - 0.22],
-        text: `${sortedSheets.length} Worksheets · ${options.labelMode === "xml" ? `sheet${sortedSheets[0].index}.xml → sheet${sortedSheets[sortedSheets.length - 1].index}.xml` : "nach XML-Index"}`,
+        text: `${sortedSheets.length} Worksheets · ${options.labelMode === "xml" ? `sheet${sortedSheets[0].index}.xml → sheet${sortedSheets[sortedSheets.length - 1].index}.xml` : "by XML index"}`,
         color: "#718a93",
         size: 8,
       });

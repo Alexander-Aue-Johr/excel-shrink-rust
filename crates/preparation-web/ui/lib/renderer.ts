@@ -298,7 +298,7 @@ function makeRawPainter(canvas: HTMLCanvasElement): Painter {
     antialias: true,
     powerPreference: "high-performance",
   });
-  if (!context) throw new Error("WebGL ist nicht verfügbar.");
+  if (!context) throw new Error("WebGL is unavailable.");
   const gl = context;
   const shaders: WebGLShader[] = [];
   let program: WebGLProgram | null = null;
@@ -766,7 +766,7 @@ export async function createPainter(
       host.replaceChildren(c);
       return { painter, reason };
     } catch {
-      reason = "Three.js/WebGL 2 nicht verfügbar";
+      reason = "Three.js/WebGL 2 unavailable";
     }
   }
   if (preference !== "canvas") {
@@ -776,7 +776,7 @@ export async function createPainter(
       host.replaceChildren(c);
       return { painter, reason };
     } catch {
-      reason = (reason ? reason + " · " : "") + "WebGL nicht verfügbar";
+      reason = (reason ? reason + " · " : "") + "WebGL unavailable";
     }
   }
   const c = canvas();

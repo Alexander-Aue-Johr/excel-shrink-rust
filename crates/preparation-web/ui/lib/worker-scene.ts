@@ -81,8 +81,8 @@ export function buildWorkerScene(
     yaw: 0.22,
     pitch: 0.82,
     footer: options.overview
-      ? "Gesamter bisheriger Verlauf"
-      : `${timeLabel(leftTime)}–${timeLabel(rightTime)} · Kamera folgt dem Betrachtungszeitpunkt`,
+      ? "Entire history so far"
+      : `${timeLabel(leftTime)}–${timeLabel(rightTime)} · Camera follows the current time`,
   };
   const batches = new Map<string, Shape>();
   const add = (shape: Shape) => {
@@ -337,12 +337,12 @@ export function buildWorkerScene(
           options.workUnit === "workbook"
             ? job.workbookName
             : `${job.workbookName} · sheet${job.sheet.index}.xml`,
-          `Worker ${job.workerIndex + 1}${job.chunkCount > 1 ? ` · Chunk ${job.chunkIndex + 1} / ${job.chunkCount}` : options.workUnit === "workbook" ? " · vollständiges Workbook" : " · vollständiges Worksheet"}`,
+          `Worker ${job.workerIndex + 1}${job.chunkCount > 1 ? ` · Chunk ${job.chunkIndex + 1} / ${job.chunkCount}` : options.workUnit === "workbook" ? " · entire workbook" : " · entire worksheet"}`,
           `${fmtTime(job.startAt)} → ${fmtTime(job.visibleEnd)} · ${(job.visibleEnd - job.startAt).toFixed(1).replace(".", ",")} s${job.done ? " · abgeschlossen" : " · in Bearbeitung"}`,
-          `${options.workUnit === "workbook" ? "Workbook" : "Worksheet"} vorher: ${fmtBytes(job.sheet.originalBytes)}`,
+          `${options.workUnit === "workbook" ? "Workbook" : "Worksheet"} before: ${fmtBytes(job.sheet.originalBytes)}`,
           ...(job.sheet.cleanedBytes === null
-            ? ["Ergebnisbericht noch ausstehend"]
-            : [`Nachher: ${fmtBytes(job.sheet.cleanedBytes)}`]),
+            ? ["Output report pending"]
+            : [`After: ${fmtBytes(job.sheet.cleanedBytes)}`]),
         ];
       },
     });
@@ -414,7 +414,7 @@ export function buildWorkerScene(
     {
       id: "axis-time",
       position: [axisX + 3.05, 0, axisZ],
-      text: "X · Zeit",
+      text: "X · Time",
       size: 9,
       color: "#8ba0a7",
       anchor: "left",

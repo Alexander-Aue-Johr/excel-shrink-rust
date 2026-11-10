@@ -211,10 +211,10 @@ export const smooth = (x: number) => {
   return t * t * (3 - 2 * t);
 };
 const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"];
-const BYTE_INTEGER_FORMAT = new Intl.NumberFormat("de-DE", {
+const BYTE_INTEGER_FORMAT = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
-const BYTE_DECIMAL_FORMAT = new Intl.NumberFormat("de-DE", {
+const BYTE_DECIMAL_FORMAT = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 export const fmtBytes = (v: number | null | undefined) => {

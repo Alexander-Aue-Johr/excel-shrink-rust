@@ -114,9 +114,7 @@ export default function SceneViewport({
       })
       .catch(() => {
         if (!disposed)
-          setFailure(
-            "Diese Ansicht konnte nicht gestartet werden. Bitte wähle Canvas 2D.",
-          );
+          setFailure("This view could not start. Please select Canvas 2D.");
       });
     function frame(now: number) {
       if (disposed) return;
@@ -385,15 +383,15 @@ export default function SceneViewport({
       {!actual && !failure && (
         <div className="scene-loading">
           <span className="loading-orbit" />
-          Ansicht wird aufgebaut …
+          Preparing view…
         </div>
       )}
       {failure && <div className="scene-loading">{failure}</div>}
       <div className="scene-tools">
         <button
           className="icon-button"
-          title="Ansicht zurücksetzen und Kamera folgen lassen"
-          aria-label={`${title}: Ansicht zurücksetzen`}
+          title="Reset view and follow camera"
+          aria-label={`${title}: Reset view`}
           onClick={() => {
             resetKey.current++;
             dirty.current = true;
@@ -403,16 +401,16 @@ export default function SceneViewport({
         </button>
         <button
           className="icon-button"
-          title="Verkleinern"
-          aria-label={`${title}: Verkleinern`}
+          title="Zoom out"
+          aria-label={`${title}: Zoom out`}
           onClick={() => changeZoom(1 / 1.2)}
         >
           <Minus size={14} />
         </button>
         <button
           className="icon-button"
-          title="Vergrößern"
-          aria-label={`${title}: Vergrößern`}
+          title="Zoom in"
+          aria-label={`${title}: Zoom in`}
           onClick={() => changeZoom(1.2)}
         >
           <Plus size={14} />
@@ -420,8 +418,8 @@ export default function SceneViewport({
         <span className="toolbar-divider" />
         <button
           className="icon-button"
-          title={expanded ? "Vollbild schließen (Esc)" : "Vollbild"}
-          aria-label={`${title}: Vollbild`}
+          title={expanded ? "Exit fullscreen (Esc)" : "Fullscreen"}
+          aria-label={`${title}: Fullscreen`}
           aria-pressed={expanded}
           onClick={() => {
             setExpanded(!expanded);
@@ -435,12 +433,12 @@ export default function SceneViewport({
         <span className="scene-help">
           <Move3D size={12} />
           {compact
-            ? "Ziehen zum Drehen"
-            : "Ziehen: drehen · Shift: verschieben · Rad: zoomen"}
+            ? "Drag to rotate"
+            : "Drag: rotate · Shift: pan · Wheel: zoom"}
         </span>
         <span
           className="renderer-indicator"
-          title={reason ?? "Aktiver Renderer"}
+          title={reason ?? "Active renderer"}
         >
           <i />
           {actual === "three"
