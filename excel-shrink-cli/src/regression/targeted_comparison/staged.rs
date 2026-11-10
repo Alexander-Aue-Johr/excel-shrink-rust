@@ -107,6 +107,12 @@ impl Workflow<'_, '_> {
         self.rebuild_in_place(LaneId::O, LaneId::OR)?;
         self.rebuild_in_place(LaneId::SD, LaneId::SDR)?;
         self.rebuild_in_place(LaneId::CP, LaneId::CPR)?;
+        // Opening/save controls explain drift. Only the compared rebuilt
+        // states define visual coverage, including their native drawing bounds.
+        self.content_bounds = super::content_bounds::ContentBounds::default();
+        for state in self.states.values() {
+            self.content_bounds.include(&state.xml);
+        }
         let inventories = self.chart_inventories()?;
         self.inspect_available_pairs(&inventories)?;
         self.capture_chart_states(inventories)?;

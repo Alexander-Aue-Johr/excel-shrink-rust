@@ -1178,6 +1178,22 @@ mod tests {
 
     /// Inspect retained states without opening Excel or changing corpus results.
     #[test]
+    #[ignore = "Requires LINE_BOUNDS_FIXTURE with the retained Bevoelkerungsbewegung workbook"]
+    fn retained_qualified_line_sheet_bounds_are_finite() -> Result<()> {
+        let path = std::path::PathBuf::from(std::env::var("LINE_BOUNDS_FIXTURE")?);
+        let snapshot = Snapshot::read_with_bounded_drawings(
+            &path, &std::env::temp_dir(), &BTreeSet::from(["2.11".to_owned()]),
+        )?;
+        let sheet = &snapshot.sheets["2.11"];
+        eprintln!("bounds {:?}, blockers {:?}", sheet.visual_bounds, sheet.rebuild_blockers);
+        assert!(sheet.background_tail_sampling);
+        let bounds = sheet.visual_bounds.expect("Missing visual bounds");
+        assert!(bounds.bottom < 100 && bounds.right < 20);
+        Ok(())
+    }
+
+    /// Inspect retained states without opening Excel or changing corpus results.
+    #[test]
     #[ignore = "Requires XML_DIAG_LEFT and XML_DIAG_OUTPUT retained snapshot paths"]
     fn inspect_retained_background_extents() -> Result<()> {
         let snapshot = Snapshot::read(Path::new(&std::env::var("XML_DIAG_LEFT")?))?;
