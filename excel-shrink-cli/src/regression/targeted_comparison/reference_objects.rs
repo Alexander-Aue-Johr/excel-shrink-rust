@@ -14,6 +14,17 @@ struct NativeObject {
     geometry: Geometry,
 }
 
+fn matches_horizontal_line(object: &NativeObject, line: &super::ole_metadata::LineFrame) -> bool {
+    object.kind == "GeometricShape"
+        && object.name == line.name
+        && object.rotation == 0.0
+        && object.geometry.left == line.geometry.left
+        && object.geometry.width == line.geometry.width
+        && object.geometry.height == 0.0
+        && object.geometry.top.is_finite()
+        && object.geometry.top >= 0.0
+}
+
 pub(super) fn verify(
     host: &mut ExcelHost,
     regions: &[Candidate],
@@ -100,10 +111,7 @@ fn validate_with_lines(
             .count();
         let all_lines_match = lines.iter().all(|line| {
             objects.iter().filter(|object| {
-                object.kind == "GeometricShape"
-                    && object.name == line.name
-                    && object.rotation == 0.0
-                    && object.geometry == line.geometry
+                matches_horizontal_line(object, line)
             }).count() == 1
         });
         ensure!(
@@ -114,17 +122,19 @@ fn validate_with_lines(
     for object in &objects {
         if object.kind == "GeometricShape" && object.rotation == 0.0 {
             if let Some(line) = lines.iter().find(|line| {
-                line.name == object.name && line.geometry == object.geometry
+                matches_horizontal_line(object, line)
             }) {
                 // Include half the stroke and two points of rasterization context.
                 let padding = line.stroke_points / 2.0 + 2.0;
+                // Excel may resolve a row anchor at a different height than the
+                // stored transform. Capture both positions, including stroke.
                 let left = (line.geometry.left - padding).max(0.0);
-                let top = (line.geometry.top - padding).max(0.0);
+                let top = (line.geometry.top.min(object.geometry.top) - padding).max(0.0);
                 let envelope = Geometry {
                     left,
                     top,
                     width: line.geometry.left + line.geometry.width + padding - left,
-                    height: line.geometry.top + padding - top,
+                    height: line.geometry.top.max(object.geometry.top) + padding - top,
                 }.validate()?;
                 ensure!(
                     areas.iter().any(|area| contains(*area, envelope)),
@@ -219,6 +229,11 @@ mod tests {
         assert!(validate_with_lines(&inventory, &[line.geometry], std::slice::from_ref(&line)).is_err());
         let mut moved = inventory.clone();
         moved["objects"][0]["geometry"]["top"] = json!(11);
+        validate_with_lines(&moved, &[area], std::slice::from_ref(&line))?;
+        moved["objects"][0]["geometry"]["top"] = json!(99);
+        assert!(validate_with_lines(&moved, &[area], std::slice::from_ref(&line)).is_err());
+        moved["objects"][0]["geometry"]["top"] = json!(11);
+        moved["objects"][0]["geometry"]["width"] = json!(71);
         assert!(validate_with_lines(&moved, &[area], std::slice::from_ref(&line)).is_err());
         let mut rotated = inventory;
         rotated["objects"][0]["rotation"] = json!(45);
