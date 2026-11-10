@@ -19,5 +19,16 @@
     "image_comparisons": 1385
   },
   "native_report_sha256": "5a536acf39baaacbf381282950e5dfd334b9c294d17045795539bb05ce2d6f36",
-  "limits": "Selected targeted coverage. Nine zero-area geometry measurements are retained without claiming a pixel comparison. The first setup attempt stopped before Excel because its group directory was absent. The corrected bounded private-desktop attempt completed."
+  "limits": "Selected targeted coverage. Nine zero-area geometry measurements are retained without claiming a pixel comparison. The first setup attempt stopped before Excel because its group directory was absent. The corrected bounded private-desktop attempt completed.",
+  "ordinary_run_acceptance": {
+    "status": "completed",
+    "completed": 1,
+    "failed": 0,
+    "reused": 0,
+    "different_pairs": 0,
+    "capture_policy": "targeted-content-grid-v16",
+    "empty_geometry_ignored": 9,
+    "portable_report_sha256": "76391570e35f107e699c455e36ef9bb9ba86afcea23a9a5f00549b2771aeb2ed",
+    "run_metadata_sha256": "aa26cc2d24d6c425e86dceee4d5749d50ddd2912080c1dbd84b315b741c190a0"
+  }
 }

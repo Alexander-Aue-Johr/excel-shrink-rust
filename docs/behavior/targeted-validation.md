@@ -438,6 +438,9 @@ Capture selection and transport took 31.451 seconds and comparison took
 work. The first setup attempt stopped before Excel because its group directory
 was absent. The corrected private-desktop repeat completed. The checksum receipt
 is `docs/visual-validation/experiments/independent-reference/lcca-zero-area-geometry-20261110.json`.
+A subsequent one-pair run through the ordinary `deltasieve run` entry point also
+completed with zero failed or reused comparisons and no visual difference. Its
+portable report retains all nine nonvisual geometry observations.
 Indirect formula, conditional-formatting and rebuild discovery is unaffected.
 
 Split only rectangles whose estimated visible image exceeds 30,000 pixels on
