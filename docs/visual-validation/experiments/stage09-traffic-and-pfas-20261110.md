@@ -104,3 +104,31 @@ Pair report SHA-256 values:
 - Inquire `091cab656b5bb08744e212ba008218bf09be7a91f63aed734c6ff343d22412a8`
 - Check Performance `7edbb8425f435055e6a67ca49391cfedab766f4ac73184b5da4bb7624349d0af`
 - XLStylesTool `40526ab3e464f64042736c9e081db71e3f13d29f57d36896397ae984836c3929`
+
+### QT/RR expands a narrow used range to full width
+
+Data.gov pair `4f6a5ec3f215137b2ef2a5c2` (QT/RR dobutamine challenge)
+was still running when inspected. Inquire's v15 plan shows four inputs
+per affected sheet across 11 sheets and 90,112 measured capture regions.
+All 11 input envelopes reach column XFD. Both rebuilt packages declare
+dimensions ending at L on those sheets, with 3,152 to 10,586 rows. Their
+twelfth sheet declares A1. There are no explicit column records in the
+worksheet headers. The rebuilt original leaves the default column width
+implicit. The Inquire candidate sets `defaultColWidth="9.140625"` and
+`customHeight="1"`, with `defaultRowHeight="12.75"` on both sides.
+On the inspected first rows, the original also uses a row style while the
+candidate writes some explicitly styled empty cells. The widths and row
+styles can affect visual output beyond the cells with values.
+
+The reported dimensions therefore cannot justify clipping the comparison
+to column L. A bounded reference check should measure effective column
+widths and probe the inherited row background before designing a narrower
+plan. A running counter recorded 2,238 successful individual captures
+about 12 minutes after pair start. Extrapolation to both sides is provisional
+because regions vary in cost. No equality or full-coverage conclusion
+follows from this snapshot.
+
+Rebuilt archive SHA-256 values:
+
+- Original `b43aee196cd16c562d85a6b88bf0278f31bb0b7e178af88194b0d14e7a28b8e4`
+- Inquire `1607f68b64841e025660c7b95dfd0c99264ff16853c8bd515f789e87a984d25f`
