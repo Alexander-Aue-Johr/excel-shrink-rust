@@ -1,0 +1,149 @@
+{
+  "workbook": "Adage_oilprice_main_results_42eeaec3f7ff.xlsx",
+  "tool": "Inquire",
+  "source_comparison": "bd20f8d501c9bdb6925e6c27",
+  "scope": "Exploratory timing on retained PNGs. The sample can include already compressed evidence.",
+  "sampling": "Sort all retained PNGs by encoded byte length and filename. Select zero-based indices floor((n-1)*q) for q=0.10, 0.25, 0.50, 0.75, 0.90, 0.99.",
+  "method": "Decode each source to RGBA8 once. Encode with image 0.25.10 release library, adaptive filtering, and the stated compression mode. Measure three encodes per image and mode, excluding decode and file writes. Assert exact decoded RGBA equality.",
+  "environment": "Single process on the local Windows validation machine while comparison and report jobs were active.",
+  "samples": [
+    {
+      "source_file": "9f0089e23a13c8c4c5e3f165b964b0e94d3e9e463872c3e1c3d32a18bda2988f.png",
+      "width": 509,
+      "height": 19601,
+      "source_bytes": 776471,
+      "encodings": [
+        {
+          "mode": "Fast",
+          "bytes": 3451656,
+          "median_encode_ms": 22.089
+        },
+        {
+          "mode": "Default",
+          "bytes": 1436957,
+          "median_encode_ms": 157.823
+        },
+        {
+          "mode": "Best",
+          "bytes": 1443029,
+          "median_encode_ms": 292.905
+        }
+      ]
+    },
+    {
+      "source_file": "9860e970028be5681a612665a03d866e6eee61d9adfcf427fdddf7a6c5df2639.png",
+      "width": 952,
+      "height": 14281,
+      "source_bytes": 1371233,
+      "encodings": [
+        {
+          "mode": "Fast",
+          "bytes": 3270110,
+          "median_encode_ms": 24.277
+        },
+        {
+          "mode": "Default",
+          "bytes": 1387913,
+          "median_encode_ms": 229.587
+        },
+        {
+          "mode": "Best",
+          "bytes": 1392911,
+          "median_encode_ms": 719.093
+        }
+      ]
+    },
+    {
+      "source_file": "a489ce62f441a1dec2f788489790452f9e56a7198d25fc29e80ddc2c451fbb7a.png",
+      "width": 573,
+      "height": 19981,
+      "source_bytes": 1481529,
+      "encodings": [
+        {
+          "mode": "Fast",
+          "bytes": 3927457,
+          "median_encode_ms": 23.356
+        },
+        {
+          "mode": "Default",
+          "bytes": 1606351,
+          "median_encode_ms": 172.28
+        },
+        {
+          "mode": "Best",
+          "bytes": 1608252,
+          "median_encode_ms": 310.432
+        }
+      ]
+    },
+    {
+      "source_file": "9aa0be32126a6fcc02c0f9b32428529a57e58f42013bd32a07e8806c837ab0ac.png",
+      "width": 573,
+      "height": 19861,
+      "source_bytes": 1531901,
+      "encodings": [
+        {
+          "mode": "Fast",
+          "bytes": 4249431,
+          "median_encode_ms": 33.032
+        },
+        {
+          "mode": "Default",
+          "bytes": 1656438,
+          "median_encode_ms": 168.76
+        },
+        {
+          "mode": "Best",
+          "bytes": 1652562,
+          "median_encode_ms": 330.649
+        }
+      ]
+    },
+    {
+      "source_file": "273a180631037acf2212b96bd57a22781d2323b2a983274835a2014530595b40.png",
+      "width": 573,
+      "height": 19881,
+      "source_bytes": 1570504,
+      "encodings": [
+        {
+          "mode": "Fast",
+          "bytes": 4311566,
+          "median_encode_ms": 23.612
+        },
+        {
+          "mode": "Default",
+          "bytes": 1705223,
+          "median_encode_ms": 178.329
+        },
+        {
+          "mode": "Best",
+          "bytes": 1713373,
+          "median_encode_ms": 444.755
+        }
+      ]
+    },
+    {
+      "source_file": "d1794aacfd313d35dd80eec06b0de22639620edd4c7547ea1b615519cc8c410c.png",
+      "width": 637,
+      "height": 19981,
+      "source_bytes": 1647742,
+      "encodings": [
+        {
+          "mode": "Fast",
+          "bytes": 4134497,
+          "median_encode_ms": 30.882
+        },
+        {
+          "mode": "Default",
+          "bytes": 1738938,
+          "median_encode_ms": 204.685
+        },
+        {
+          "mode": "Best",
+          "bytes": 1745664,
+          "median_encode_ms": 356.76
+        }
+      ]
+    }
+  ]
+}

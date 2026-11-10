@@ -113,6 +113,23 @@ and 2.97 GB. The complete 3-by-3 publication therefore needs a separate
 image-delivery plan in addition to the existing Atlas-only export. Preserve
 native evidence and disclose any presentation subset or separate asset host.
 
+The fourth local preview merges 27 sources and contains 109 observations.
+The three ordinary corpus views each preserve the frozen nine workbooks.
+It includes the finished Destatis/Inquire and Destatis/XLStylesTool reports
+and terminal observations snapshotted from Destatis/NXPowerLite and
+Data.gov/Inquire. The explicit Tables controls also appear in the preview.
+Static HTTP and browser checks reached a retained Data.gov/Inquire finding
+through its workbook and sheet. The Atlas reports about 3.53 GB of assets.
+Additional Data.gov comparisons remain in progress.
+
+An exploratory PNG measurement tested six retained images from one large
+Data.gov comparison. Across those images, summed median encoding times were
+157 ms for Fast, 1,112 ms for Default and 2,455 ms for Best. All decoded
+outputs matched the source pixels. Every tested encoding exceeded its input
+size. This sample can include previously compressed PNGs and cannot estimate
+the effect of switching the capture retention policy on the entire report.
+See [the measured image sizes and timings](../visual-validation/experiments/report-png-encoding-20261110.json).
+
 Destatis/Inquire completed eight available stage inputs. Two produced rendered
 observations and six failed. Four failures concern unresolved whole-grid
 coverage, and two concern opening-time name conflicts. Inspection of the
