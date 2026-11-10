@@ -236,3 +236,16 @@ The public projection validates copied capture files against the source
 package manifest. This checks each published capture's length and SHA-256
 without an additional source-image hashing pass. An integrity failure
 leaves the public destination marked incomplete.
+
+An encoded-byte pooling measurement over the stage-nine preview04
+manifests found 8,447 image entries totaling 3,202,368,612 bytes. Grouping
+equal SHA-256 values leaves 7,485 images and 2,966,436,953 bytes. This
+snapshot still exceeds the Pages limit after exact pooling.
+
+A separate live sample from both QT/RR Inquire working directories
+contained 16,513 PNG files totaling 3,166,197,656 bytes. Recomputing SHA-256
+over each file yielded 113 distinct images totaling 40,861,949 bytes.
+This is a partial, pre-packaging snapshot of unusually repetitive
+captures. It illustrates why a shared asset store can matter even when
+it cannot put the entire report within the hosting limit. It measures
+storage only and does not authorize capture or observation reuse.
