@@ -185,6 +185,12 @@ impl Snapshot {
 
     /// Record a real phase transition, including XML timestamps for afterglow.
     pub fn step(&mut self, id: LaneId, phase: Phase, status: StepStatus) {
+        let completed = status == StepStatus::Done
+            && self.lane(id).steps.get(&phase) != Some(&StepStatus::Done);
+        if completed {
+            // Verified phase completion also advances work before captures begin.
+            self.capture_progress_sequence += 1;
+        }
         let lane = self.lane(id);
         lane.phase_timings.entry(phase).or_default().transition(status, now());
         lane.steps.insert(phase, status);
@@ -593,6 +599,9 @@ mod tests {
             .update(|state| {
                 state.pair_step(Phase::Discover, StepStatus::Running);
                 state.pair_step(Phase::Discover, StepStatus::Done);
+                assert_eq!(state.capture_progress_sequence, 2);
+                state.pair_step(Phase::Discover, StepStatus::Done);
+                assert_eq!(state.capture_progress_sequence, 2);
                 state.candidates(3);
                 state.lane(LaneId::O).captures_done = 1;
                 state.candidates(5);
