@@ -351,3 +351,31 @@ the bounded, equal SheetShrink reference above.
 
 Inquire failure receipt SHA-256
 `36fe36f0b7a6cf1fdb393ad6e1a142d9a0eb1c8a54d08026fc74f8d8d2de4f67`.
+
+## Enron SheetShrink chart findings in the top-49 selection
+
+The current-output identity audit selects five Enron workbook observations
+with six chart findings. Re-decoding their retained image pairs yielded
+the counts below. All six pairs have equal image dimensions and no
+recorded geometry difference.
+
+| Frozen rank | Sheet | Chart | Changed RGBA pixels |
+|---:|---|---|---:|
+| 7 | Run Query | Diagramm 3 | 19 |
+| 7 | Run Query | Diagramm 4 | 9 |
+| 9 | Hedge Example | Chart 1 | 2 |
+| 12 | Results | Chart 1 | 3 |
+| 17 | Hedge Example | Chart 1 | 26 |
+| 23 | Chart | Chart 1 | 11 |
+
+The chart dependency gate did not certify unchanged dependencies for
+these six findings. Small counts are compatible with prior rendering
+variation controls, but do not establish that cause for any individual
+chart. The raw findings remain visible. Source report SHA-256 values,
+in rank order, are:
+
+- `7e9edd85057da769be7a75df7ab26d480258832fd417988da9a54a51d5d9cc7c`
+- `7f99d99d60b8a5ea6f502ccbcd077716db593a483cedbecddd1c94de48307d8a`
+- `990e281b92163b4579ca33145961f878fe2213484964aee3a0d1a701c7d92a68`
+- `a7f2526fe95c5afc6a22b453a25d083805f6f152bf98f62ef2989b1dd808757f`
+- `9a091bdb450f45fdc33e883630aa47a4f94a3084c809497819a4e7b01ff580a9`
