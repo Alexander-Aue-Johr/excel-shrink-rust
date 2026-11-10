@@ -3,6 +3,7 @@
 use super::{evidence, read_json_file, FORMAT_VERSION};
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::{
     collections::BTreeSet,
     fs,
@@ -51,6 +52,7 @@ pub(crate) fn write_site(report_root: &Path, run: &Value) -> Result<PathBuf> {
         "finished_at": run["finished_at"],
         "summary": run["summary"],
         "selection": run["selection"],
+        "observation_selection": run["observation_selection"],
         "preparation": run["preparation"],
         "replay": run["replay"],
         "merge": run["merge"],
@@ -117,12 +119,69 @@ fn write_pair_page_contents(root: &Path, report_relative: &str, label: &str) -> 
 /// Raw telemetry histories and executable programs are deliberately not exported.
 /// The compact replay channel is verified separately before publication.
 pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<PathBuf> {
+    export_selected_site(source_root, destination, &[])
+}
+
+/// Select observations without changing their source reports or scientific verdicts.
+pub(crate) fn export_selected_site(
+    source_root: &Path,
+    destination: &Path,
+    pair_ids: &[String],
+) -> Result<PathBuf> {
     let source = source_root
         .canonicalize()
         .context("Resolve source report")?;
     let mut run = crate::validation::read_run(&source)?;
     if run["merge"].is_object() {
+        ensure!(pair_ids.is_empty(), "Select pairs before merging reports");
         return super::merge::export_collection(&source, &run, destination);
+    }
+    let original_metadata = fs::read(source.join("run.json"))?;
+    if !pair_ids.is_empty() {
+        ensure!(
+            matches!(
+                run["status"].as_str(),
+                Some("completed" | "completed_with_limitations" | "completed_with_errors" | "failed")
+            ),
+            "Finish the source run before selecting observations"
+        );
+        ensure!(
+            run["observation_selection"].is_null(),
+            "Select from the original run, not a previous selection"
+        );
+        let selected: BTreeSet<_> = pair_ids.iter().map(String::as_str).collect();
+        ensure!(selected.len() == pair_ids.len(), "Duplicate selected pair ID");
+        let pairs = run["pairs"]
+            .as_array()
+            .context("Run report has no pair list")?;
+        let retained: Vec<_> = pairs
+            .iter()
+            .filter(|pair| pair["id"].as_str().is_some_and(|id| selected.contains(id)))
+            .cloned()
+            .collect();
+        let source_pair_count = pairs.len();
+        let failed = retained
+            .iter()
+            .filter(|pair| !matches!(pair["status"].as_str(), Some("completed_with_limitations" | "reused")))
+            .count();
+        ensure!(
+            retained.len() == selected.len(),
+            "Selected pair IDs are missing or ambiguous in the source report"
+        );
+        run["observation_selection"] = json!({
+            "source_run_sha256": format!("{:x}", sha2::Sha256::digest(&original_metadata)),
+            "source_metadata": "selection-source-run.json",
+            "pair_ids": pair_ids,
+            "source_pair_count": source_pair_count,
+            "source_summary": run["summary"],
+            "meaning": "Selected recorded observations. Original run status and timing describe the full source run."
+        });
+        run["summary"] = json!({
+            "total": retained.len(),
+            "processed_pairs": retained.len() - failed,
+            "failed_pairs": failed
+        });
+        run["pairs"] = json!(retained);
     }
     // The exported index is a complete snapshot of the recovered journal. Its
     // validation status is unchanged, including interrupted or failed runs.
@@ -132,6 +191,19 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
     super::atlas::copy_labels(&source, &destination)?;
     let mut identities = BTreeSet::new();
     let mut audit_files = vec![String::from("run.json")];
+    if run["observation_selection"].is_object() {
+        let metadata = if pair_ids.is_empty() {
+            fs::read(evidence::confined_file(&source, "selection-source-run.json")?)?
+        } else {
+            original_metadata
+        };
+        ensure!(
+            run["observation_selection"]["source_run_sha256"] == format!("{:x}", sha2::Sha256::digest(&metadata)),
+            "Selection source metadata checksum changed"
+        );
+        evidence::write_new(&destination.join("selection-source-run.json"), &metadata)?;
+        audit_files.push("selection-source-run.json".to_owned());
+    }
     for row in rows {
         if let Some(relative) = row["identity"].as_str() {
             if identities.insert(relative.to_owned()) {
@@ -158,7 +230,11 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
         evidence::copy_verified_package(package, &target)?;
         audit_files.push(relative.to_owned());
     }
-    let (replay, replay_files) = super::replay::copy_channel(&source, &destination)?;
+    let (replay, replay_files) = if run["observation_selection"].is_object() {
+        (json!({"available": false, "reason": "Source replay covers a wider run than the selected observations."}), Vec::new())
+    } else {
+        super::replay::copy_channel(&source, &destination)?
+    };
     run["replay"] = replay;
     audit_files.extend(replay_files);
     evidence::write_new(

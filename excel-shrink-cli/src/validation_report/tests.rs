@@ -395,3 +395,55 @@ fn image_symlinks_cannot_escape_a_retained_package() -> Result<()> {
     assert!(evidence::confined_file(&root, "linked.png").is_err());
     Ok(())
 }
+#[test]
+fn selected_export_preserves_source_and_reexports_only_selected_packages() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let raw = fixture.directory("selection-raw")?;
+    let root = fixture.directory("selection-run")?;
+    write_report(&raw, &json!({"status":"completed_with_limitations","comparisons":[]}))?;
+    for id in ["one", "two"] {
+        package_comparison(&raw, &root.join(format!("pairs/{id}")))?;
+    }
+    let pairs: Vec<_> = ["one", "two"].into_iter().map(|id| json!({
+        "id":id,"name":format!("{id}.xlsx"),"status":"completed_with_limitations",
+        "report":format!("pairs/{id}/report.json"),"different_regions":0
+    })).collect();
+    let run = json!({"schema":1,"tool":"DeltaSieve","status":"completed","index_complete":true,
+        "summary":{"total":2},"pairs":pairs});
+    let original = serde_json::to_vec(&run)?;
+    fs::write(root.join("run.json"), &original)?;
+    let output = fixture.0.join("selected");
+    export_selected_site(&root, &output, &["two".to_owned()])?;
+    let selected = read_json_file(&output.join("run.json"))?;
+    assert_eq!(selected["pairs"].as_array().unwrap().len(), 1);
+    assert_eq!(selected["pairs"][0]["id"], "two");
+    assert_eq!(selected["summary"]["total"], 1);
+    assert_eq!(selected["observation_selection"]["source_pair_count"], 2);
+    assert_eq!(selected["replay"]["available"], false);
+    assert!(!output.join("pairs/one").exists());
+    assert_eq!(fs::read(root.join("run.json"))?, original);
+    assert_eq!(fs::read(output.join("selection-source-run.json"))?, original);
+    let repeated = fixture.0.join("selected-again");
+    export_site(&output, &repeated)?;
+    assert_eq!(fs::read(repeated.join("selection-source-run.json"))?, original);
+    assert!(!repeated.join("pairs/one").exists());
+    fs::write(output.join("selection-source-run.json"), b"{}")?;
+    assert!(export_site(&output, &fixture.0.join("corrupt-selection")).is_err());
+    Ok(())
+}
+
+#[test]
+fn selected_export_rejects_unknown_and_duplicate_ids_before_creating_output() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let root = fixture.directory("selection-errors")?;
+    fs::write(root.join("run.json"), serde_json::to_vec(&json!({
+        "schema":1,"tool":"DeltaSieve","status":"completed","index_complete":true,
+        "pairs":[{"id":"one","name":"one.xlsx","status":"failed"}]
+    }))?)?;
+    for ids in [vec!["missing".to_owned()], vec!["one".to_owned(), "one".to_owned()]] {
+        let output = fixture.0.join("rejected");
+        assert!(export_selected_site(&root, &output, &ids).is_err());
+        assert!(!output.exists());
+    }
+    Ok(())
+}

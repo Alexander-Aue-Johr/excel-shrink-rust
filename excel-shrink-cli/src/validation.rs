@@ -102,6 +102,9 @@ enum Command {
     Export {
         report: PathBuf,
         output: PathBuf,
+        /// Retain only these recorded pair IDs, preserving the full source metadata.
+        #[arg(long = "pair-id")]
+        pair_ids: Vec<String>,
         /// Presentation-only corpus and variant labels keyed by source run ID.
         #[arg(long)]
         labels: Option<PathBuf>,
@@ -641,9 +644,9 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
             println!("{}", serde_json::to_string_pretty(&preview)?);
             Ok(())
         }
-        Some(Command::Export { report, output, labels }) => {
+        Some(Command::Export { report, output, labels, pair_ids }) => {
             let root = report_root(&report)?;
-            crate::validation_report::export_site(&root, &output)?;
+            crate::validation_report::export_selected_site(&root, &output, &pair_ids)?;
             if let Some(labels) = labels {
                 crate::validation_report::label_atlas(&output, &labels)?;
             }

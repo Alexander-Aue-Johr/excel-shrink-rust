@@ -16,7 +16,7 @@ pub(crate) use inventory::read as read_workbook_inventory;
 pub(crate) use atlas::label_atlas;
 pub(crate) use atlas::live_asset;
 
-pub(crate) use site::{export_site, write_pair_page, write_site};
+pub(crate) use site::{export_selected_site, export_site, write_pair_page, write_site};
 pub(crate) use merge::merge_reports;
 
 use anyhow::{ensure, Context, Result};
