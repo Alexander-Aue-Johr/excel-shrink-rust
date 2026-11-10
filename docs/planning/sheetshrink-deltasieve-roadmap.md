@@ -97,6 +97,22 @@ publication review. The public presentation does not yet include replay.
 Native replay remains in the unchanged evidence archive. Neither this partial
 preview nor the current 3-by-3 stage has been publicly deployed.
 
+The Tables developer control now has an independent static Atlas view using
+four completed native reference receipts. The ordinary import, merge and
+public-Atlas path verifies the receipts and preserves image encoding. Browser
+acceptance shows Original, SheetShrink and XLStylesTool in one pixel-identical
+group and separate Inquire and Check Performance findings in `Tables!A1:I157`.
+The corrected magnifier uses shared image pixels rather than canvas padding.
+An actual browser screenshot is retained for the figure. This posthoc control
+does not enter the frozen cohort counts or support selector recall estimates.
+
+A later size estimate over already completed comparison packages found
+8,439 image entries occupying 3.20 GB, excluding viewer assets and pending
+comparisons. Exact encoded-image pooling would leave 7,480 distinct images
+and 2.97 GB. The complete 3-by-3 publication therefore needs a separate
+image-delivery plan in addition to the existing Atlas-only export. Preserve
+native evidence and disclose any presentation subset or separate asset host.
+
 Destatis/Inquire completed eight available stage inputs. Two produced rendered
 observations and six failed. Four failures concern unresolved whole-grid
 coverage, and two concern opening-time name conflicts. Inspection of the
