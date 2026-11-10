@@ -121,5 +121,10 @@ closed horizontal-line family.
 Layout selection now combines contiguous changed inherited row formats before
 creating candidate objects. A focused test checks gaps and exact padded grid
 coverage across the 128-row boundary against separate row requests. This is an
-intermediate representation optimization. Its effect on this retained workbook
-and the remaining drawing fallback still require an independent repeat.
+intermediate representation optimization. A fresh bounded repeat reduced the
+requested candidate count from 5,192,711 to 603,267. All 208 per-sheet content
+envelopes were identical in the two diagnostic receipts. The second attempt
+collected the summary in 204.01 seconds and then closed its owned processes.
+Those separate diagnostic durations are not a matched whole-run speedup. Neither
+attempt completed rasterization. The remaining drawing fallback and the final
+pixel verdict remain open.
