@@ -56,7 +56,7 @@ export interface Configuration {
   parallel_range_chunk_size?: number | null;
 }
 
-interface NativeEvent {
+export interface NativeEvent {
   event_type: string;
   elapsed_millis: number;
   elapsed_micros?: number;
@@ -158,7 +158,11 @@ export function applyUpdate(previous: Job[], update: Update): Job[] {
   return retained;
 }
 
-export function applyTasks(previous: WorkTask[], update: Update): WorkTask[] {
+export function applyTasks(
+  previous: WorkTask[],
+  update: Update,
+  limit = 4096,
+): WorkTask[] {
   if (update.reset) return update.tasks ?? [];
   const tasks = new Map(previous.map((task) => [task.id, { ...task }]));
   for (const { event } of update.events) {
@@ -193,7 +197,7 @@ export function applyTasks(previous: WorkTask[], update: Update): WorkTask[] {
     }
   }
   const retained = [...tasks.values()];
-  while (retained.length > 4096) {
+  while (retained.length > limit) {
     const position = retained.findIndex((task) => task.ended_ms !== null);
     if (position < 0) break;
     retained.splice(position, 1);
@@ -236,7 +240,8 @@ export function scenes(
           originalBytes: sheet.uncompressed_bytes,
           cleanedBytes: after.get(sheet.part)?.uncompressed_bytes ?? null,
           chunkCount: chunks.get(`${job.id}:${sheet.part}`) ?? 1,
-          hue: workbookHue,
+          hue:
+            (workbookHue + Number(xmlIndex ?? sheetIndex + 1) * 137.508) % 360,
           done: job.status === "prepared",
         };
       },

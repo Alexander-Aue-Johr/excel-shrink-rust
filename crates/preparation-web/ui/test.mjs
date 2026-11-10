@@ -38,7 +38,129 @@ const base = {
   history_limit: 256,
 };
 
-test("worksheet and chunk bars share their workbook colour and identify their phase", async () => {
+test("replay seeking uses recorded events without future metadata or reports", async () => {
+  const bundle = await build({
+    entryPoints: ["lib/replay.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { replayAt } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
+  );
+  const event = (time, type, payload = {}) => ({
+    elapsed_millis: time,
+    event_type: type,
+    workbook_id: "workbook-0",
+    worker_index: 0,
+    payload,
+  });
+  const original = packageSize(30, 1000),
+    output = packageSize(10, 100);
+  const events = [
+    event(10, "job.started", { name: "test.xlsx" }),
+    event(20, "workbook.metadata", { package: original }),
+    event(100, "work.started", {
+      task_id: 1,
+      sheet: "xl/worksheets/sheet1.xml",
+      phase: "chunk",
+      chunk_count: 2,
+    }),
+    event(900, "work.finished", { task_id: 1 }),
+    event(1500, "job.completed", {
+      archive_sizes: {
+        before_optimization: original,
+        after_optimization: output,
+      },
+    }),
+  ];
+  const early = replayAt(base, events, 500);
+  assert.equal(early.jobs[0].after, null);
+  assert.equal(early.tasks[0].ended_ms, null);
+  assert.equal(early.update.counts.prepared, 0);
+  const complete = replayAt(base, events, 2000);
+  assert.equal(complete.jobs[0].after.file_bytes, 10);
+  assert.equal(complete.update.counts.prepared, 1);
+  assert.equal(replayAt(base, events, 0).jobs.length, 0);
+  assert.equal(events.length, 5);
+  const manyTasks = Array.from({ length: 4200 }, (_, index) => [
+    event(100, "work.started", {
+      task_id: index,
+      sheet: "xl/worksheets/sheet1.xml",
+      phase: "chunk",
+    }),
+    event(200, "work.finished", { task_id: index }),
+  ]).flat();
+  assert.equal(replayAt(base, manyTasks, 1000).tasks.length, 4200);
+});
+
+test("vector export preserves worksheet anchors and escapes source labels", async () => {
+  const bundle = await build({
+    stdin: {
+      contents:
+        'export {sceneSvg} from "./lib/export-scene"; export {defaultView} from "./lib/camera";',
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { sceneSvg, defaultView } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
+  );
+  const scene = {
+    target: [0, 0, 0],
+    span: 10,
+    shapes: [
+      {
+        kind: "lines",
+        positions: [0, 0, 0, 1, 0, 0],
+        color: "#123456",
+        dashed: true,
+      },
+    ],
+    labels: [{ id: "name", position: [0, 0, 0], text: '<&"test>' }],
+    hits: [
+      {
+        id: "task",
+        sheetId: "workbook-1:sheet1",
+        position: [0, 0, 0],
+        title: "sheet",
+        lines: [],
+      },
+    ],
+  };
+  const svg = sceneSvg(scene, defaultView(scene, 400, 200));
+  assert.ok(svg.includes("&lt;&amp;&quot;test&gt;"));
+  assert.ok(svg.includes('stroke-dasharray="5 4"'));
+  assert.ok(svg.includes("workbook-1:sheet1"));
+  assert.ok(svg.includes('id="worksheet-anchors"'));
+});
+
+test("worksheet identity has the same hue across chunks and filtered atlas pages", () => {
+  const job = {
+    id: "workbook-9",
+    name: "identity.xlsx",
+    worker: 0,
+    started_ms: 0,
+    ended_ms: 1000,
+    status: "prepared",
+    before: packageSize(30, 1000),
+    after: packageSize(10, 100),
+    source_bytes: 30,
+    error: null,
+  };
+  const whole = scenes(base, [{ ...job, id: "workbook-1" }, job]);
+  const page = scenes(base, [job]);
+  assert.equal(
+    whole.snapshot.workbooks[1].sheets[0].hue,
+    page.snapshot.workbooks[0].sheets[0].hue,
+  );
+});
+
+test("worksheet colours distinguish sheets and identify their phase", async () => {
   const bundled = await build({
     entryPoints: ["lib/worker-scene.ts"],
     bundle: true,
@@ -109,7 +231,7 @@ test("worksheet and chunk bars share their workbook colour and identify their ph
     windowSeconds: 4,
     overview: false,
   });
-  assert.equal(scene.hits[0].color, scene.hits[1].color);
+  assert.notEqual(scene.hits[0].color, scene.hits[1].color);
   assert.notEqual(scene.hits[0].color, scene.hits[2].color);
   const labels = scene.labels.filter((label) =>
     label.id.startsWith("job-label"),

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Expand, RotateCcw, Minus, Plus, Move3D } from "lucide-react";
+import { Expand, RotateCcw, Minus, Plus, Move3D, Download } from "lucide-react";
+import { downloadSvg, sceneSvg } from "../lib/export-scene";
 import type { HitTarget, SceneSpec } from "@/lib/scene";
 import type { RendererKind, RendererPreference } from "@/lib/model";
 import {
@@ -20,6 +21,8 @@ interface Props {
   compact?: boolean;
   maxZoom?: number;
   onSelect?: (hit: HitTarget) => void;
+  onHover?: (hit: HitTarget | null) => void;
+  focusSheetId?: string | null;
   onRenderer?: (kind: RendererKind) => void;
 }
 export default function SceneViewport({
@@ -30,6 +33,8 @@ export default function SceneViewport({
   compact = false,
   maxZoom = 4.5,
   onSelect,
+  onHover,
+  focusSheetId,
   onRenderer,
 }: Props) {
   const wrapper = useRef<HTMLDivElement>(null),
@@ -67,6 +72,9 @@ export default function SceneViewport({
     pointer: number;
   } | null>(null);
   latest.current = scene;
+  const interaction = useRef({ onHover, focusSheetId });
+  interaction.current = { onHover, focusSheetId };
+  const hovered = useRef<string | null>(null);
   onRendererRef.current = onRenderer;
 
   useEffect(() => {
@@ -170,6 +178,29 @@ export default function SceneViewport({
       dirty.current = false;
       const m = cameraMatrix(cv);
       matrix.current = m;
+      const element = wrapper.current as HTMLDivElement & {
+        exportScene?: () => string;
+      };
+      element.exportScene = () => sceneSvg(latest.current, view.current);
+      if (interaction.current.focusSheetId) {
+        const points = spec.hits
+          .filter((hit) => hit.sheetId === interaction.current.focusSheetId)
+          .map((hit) => ({
+            ...project(hit.position, m, rect.width, rect.height),
+            color: hit.color,
+          }))
+          .filter((point) => point.visible)
+          .map((point) => ({
+            x: point.x + rect.left,
+            y: point.y + rect.top,
+            color: point.color,
+          }));
+        window.dispatchEvent(
+          new CustomEvent("sheetshrink-projection", {
+            detail: { source: title, points },
+          }),
+        );
+      }
       painter.draw(
         m,
         rect.width,
@@ -338,6 +369,7 @@ export default function SceneViewport({
       ref={wrapper}
       className={`scene-viewport ${compact ? "compact" : ""} ${expanded ? "expanded" : ""} ${actual === "canvas" ? "canvas-fallback" : ""} ${className}`}
       data-renderer={actual ?? "loading"}
+      data-scene={title}
       aria-label={title}
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={(e) => {
@@ -378,7 +410,14 @@ export default function SceneViewport({
             }
             dirty.current = true;
           }
-        } else setTooltip(locate(e.clientX, e.clientY));
+        } else {
+          const result = locate(e.clientX, e.clientY);
+          setTooltip(result);
+          if (hovered.current !== (result?.hit.id ?? null)) {
+            hovered.current = result?.hit.id ?? null;
+            interaction.current.onHover?.(result?.hit ?? null);
+          }
+        }
       }}
       onPointerUp={(e) => {
         const d = drag.current;
@@ -395,7 +434,11 @@ export default function SceneViewport({
         drag.current = null;
       }}
       onPointerLeave={() => {
-        if (!drag.current) setTooltip(null);
+        if (!drag.current) {
+          setTooltip(null);
+          hovered.current = null;
+          interaction.current.onHover?.(null);
+        }
       }}
     >
       {actual === "canvas" && (
@@ -413,6 +456,38 @@ export default function SceneViewport({
       )}
       {failure && <div className="scene-loading">{failure}</div>}
       <div className="scene-tools">
+        <button
+          className="icon-button"
+          title="Export this view as editable SVG"
+          aria-label={`${title}: Export SVG`}
+          onClick={() =>
+            downloadSvg(
+              `${title.replaceAll(" ", "-")}.svg`,
+              sceneSvg(latest.current, view.current),
+            )
+          }
+        >
+          <Download size={14} />
+        </button>
+        <button
+          className="icon-button"
+          title="Publication camera"
+          aria-label={`${title}: Publication view`}
+          onClick={() => {
+            view.current = defaultView(
+              latest.current,
+              view.current.width,
+              view.current.height,
+            );
+            view.current.yaw = title === "Workbook-Atlas" ? 0.09 : 0.18;
+            view.current.pitch = title === "Workbook-Atlas" ? 0.55 : 0.7;
+            view.current.zoom = 0.94;
+            interacted.current = false;
+            dirty.current = true;
+          }}
+        >
+          P
+        </button>
         <button
           className="icon-button"
           title="Reset view and follow camera"

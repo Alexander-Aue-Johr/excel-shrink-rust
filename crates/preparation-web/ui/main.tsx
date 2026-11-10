@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import SceneViewport from "./components/SceneViewport";
 import SheetDetails from "./components/SheetDetails";
+import SheetConnections from "./components/SheetConnections";
+import { presentScene, type Theme } from "./lib/presentation";
+import { replayAt } from "./lib/replay";
+import { downloadSvg, figureSvg } from "./lib/export-scene";
+import type { HitTarget } from "./lib/scene";
 import { buildWorkbookScene } from "./lib/workbook-scene";
 import { buildWorkerScene } from "./lib/worker-scene";
 import { buildDistributionScene } from "./lib/chart-scene";
@@ -15,6 +20,7 @@ import {
   type Job,
   type Update,
   type WorkTask,
+  type NativeEvent,
 } from "./live";
 import "./app/globals.css";
 import "./styles.css";
@@ -22,7 +28,9 @@ import "./styles.css";
 const token = document.querySelector<HTMLMetaElement>(
   'meta[name="observatory-token"]',
 )!.content;
+
 const activeStates = new Set(["starting", "running", "stopping"]);
+
 const names: Record<string, string> = {
   idle: "Ready",
   starting: "Starting",
@@ -49,17 +57,65 @@ async function command(path: string, body: unknown = {}) {
 }
 
 function Observatory() {
-  const [update, setUpdate] = useState<Update | null>(null);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [tasks, setTasks] = useState<WorkTask[]>([]);
+  const [liveUpdate, setUpdate] = useState<Update | null>(null);
+  const [liveJobs, setJobs] = useState<Job[]>([]);
+  const [liveTasks, setTasks] = useState<WorkTask[]>([]);
+  const [theme, setTheme] = useState<Theme>("dark");
+  const [paperMode, setPaperMode] = useState(false);
+  const [hoverSheet, setHoverSheet] = useState<string | null>(null);
+  const [pinnedSheet, setPinnedSheet] = useState<string | null>(null);
+  const [recording, setRecording] = useState<{
+    source: Update;
+    events: NativeEvent[];
+  } | null>(null);
+  const [replayTime, setReplayTime] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(0.2);
+  const replay = useMemo(
+    () =>
+      recording && replayTime !== null
+        ? replayAt(recording.source, recording.events, replayTime)
+        : null,
+    [recording, replayTime],
+  );
+  const update = replay?.update ?? liveUpdate;
+  const jobs = replay?.jobs ?? liveJobs;
+  const tasks = replay?.tasks ?? liveTasks;
+  const focusSheet = hoverSheet ?? pinnedSheet;
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  useEffect(() => {
+    setRecording(null);
+    setReplayTime(null);
+    setPlaying(false);
+  }, [liveUpdate?.run_id]);
+
+  useEffect(() => {
+    if (!playing || !recording) return;
+    let previous = performance.now();
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const step = (now - previous) * playbackRate;
+      previous = now;
+      setReplayTime((time) => {
+        const next = Math.min(recording.source.elapsed_ms, (time ?? 0) + step);
+        if (next >= recording.source.elapsed_ms) setPlaying(false);
+        return next;
+      });
+    }, 66);
+    return () => window.clearInterval(timer);
+  }, [playing, recording, playbackRate]);
   const [config, setConfig] = useState<Configuration | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [stepHeight, setStepHeight] = useState(0.14);
-  const [atlasView, setAtlasView] = useState<"three" | "seven" | "all">(
-    "three",
-  );
+  const [atlasView, setAtlasView] = useState<
+    "three" | "seven" | "all" | "largest"
+  >("three");
   const [atlasPageSize, setAtlasPageSize] = useState(7);
   const [atlasPage, setAtlasPage] = useState(0);
   const [atlasHistory, setAtlasHistory] = useState<{
@@ -72,6 +128,7 @@ function Observatory() {
   const cursor = useRef({ run: "", after: 0, status: "" });
   const initialized = useRef(false);
   const knownDefaults = useRef<Configuration | null>(null);
+
   useEffect(() => {
     let stopped = false;
     let timeout = 0;
@@ -163,6 +220,7 @@ function Observatory() {
     () => (update ? scenes(update, jobs, tasks) : null),
     [update, jobs, tasks],
   );
+
   const workerScene = useMemo(
     () =>
       rendering
@@ -172,16 +230,23 @@ function Observatory() {
             jobStyle: "blocks",
             windowSeconds:
               update?.operation === "sheet-shrink"
-                ? Math.max(0.05, Math.min(70, update.elapsed_ms / 1000))
+                ? Math.max(
+                    0.05,
+                    paperMode || replayTime !== null
+                      ? update.elapsed_ms / 1000
+                      : Math.min(70, update.elapsed_ms / 1000),
+                  )
                 : 120,
             overview: false,
             selectedWorkbookId: selected,
+            selectedSheetId: focusSheet,
             workUnit:
               update?.operation === "sheet-shrink" ? "worksheet" : "workbook",
           })
         : null,
-    [rendering, selected, stepHeight],
+    [rendering, selected, stepHeight, focusSheet, paperMode, replayTime],
   );
+
   const distributions = useMemo(
     () =>
       rendering
@@ -206,7 +271,7 @@ function Observatory() {
     () =>
       rendering
         ? buildWorkbookScene(
-            atlasView === "all"
+            atlasView === "all" && replayTime === null && !focusSheet
               ? atlasSnapshot(
                   scenes(
                     update!,
@@ -220,14 +285,33 @@ function Observatory() {
             {
               resultStyle: "split",
               labelMode: "name",
-              view: atlasView === "all" ? "all" : "recent",
-              sort: atlasView === "all" ? "size" : "time",
+              view:
+                !focusSheet && (atlasView === "all" || atlasView === "largest")
+                  ? "all"
+                  : "recent",
+              sort:
+                atlasView === "all" || atlasView === "largest"
+                  ? "size"
+                  : "time",
+              limit: atlasView === "largest" ? 3 : undefined,
               recentCount: atlasView === "seven" ? 7 : 3,
               selectedWorkbookId: selected,
+              selectedSheetId: focusSheet,
+              focusWorkbookId: rendering.snapshot.sheets.find(
+                (sheet) => sheet.id === focusSheet,
+              )?.workbookId,
             },
           )
         : null,
-    [rendering, selected, jobs, atlasView, atlasHistory],
+    [
+      rendering,
+      selected,
+      jobs,
+      atlasView,
+      atlasHistory,
+      focusSheet,
+      replayTime,
+    ],
   );
 
   if (!update || !config || !rendering || !workerScene || !distributions)
@@ -237,6 +321,7 @@ function Observatory() {
         {error && <p role="alert">{error}</p>}
       </main>
     );
+
   const detailed = update.operation === "sheet-shrink";
   const optimizing = update.operation !== "xlsx-convert";
   const title = detailed
@@ -264,6 +349,7 @@ function Observatory() {
     value: Configuration[K],
   ) =>
     setConfig((current) => (current ? { ...current, [key]: value } : current));
+
   async function act(path: string, body?: unknown) {
     setBusy(true);
     setError("");
@@ -276,8 +362,72 @@ function Observatory() {
     }
   }
 
+  async function startReplay() {
+    if (!liveUpdate) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (!recording) {
+        const events: NativeEvent[] = [];
+        let after = 0;
+        for (;;) {
+          const response = await fetch(
+            `/api/replay?run=${encodeURIComponent(liveUpdate.run_id)}&after=${after}`,
+          );
+          const page = await response.json();
+          if (!response.ok)
+            throw new Error(page.error ?? "Replay log unavailable");
+          if (page.run_id !== liveUpdate.run_id)
+            throw new Error("Replay run identity changed");
+          events.push(...page.events);
+          if (page.complete) break;
+          if (page.next <= after)
+            throw new Error("Replay cursor did not advance");
+          after = page.next;
+        }
+        if (cursor.current.run !== liveUpdate.run_id)
+          throw new Error("Replay run changed while loading its history");
+        setRecording({ source: liveUpdate, events });
+      }
+      setReplayTime(0);
+      setPlaying(true);
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function selectSheet(hit: HitTarget) {
+    setSelected(hit.workbookId ?? null);
+    setPinnedSheet((current) =>
+      current === hit.sheetId ? null : (hit.sheetId ?? null),
+    );
+  }
+
+  function exportFigure() {
+    const viewports = document.querySelectorAll<
+      HTMLDivElement & { exportScene?: () => string }
+    >(".linked-scenes .scene-viewport");
+    const views = [...viewports].map((node) => node.exportScene?.());
+    if (views.length !== 2 || views.some((view) => !view)) {
+      setError("Both scenes must be visible before exporting");
+      return;
+    }
+    const inputParts = config!.inputs[0]?.split(/[\\/]/).filter(Boolean) ?? [];
+    const cohort =
+      inputParts.at(-1) === "originals" ? inputParts.at(-2) : inputParts.at(-1);
+    const subtitle = `${cohort ?? "Recorded run"} | ${update!.counts.prepared} / ${update!.counts.total} completed | ${config!.workers} workers | ${seconds.toFixed(2)} s recorded | Default`;
+    const svg = figureSvg(
+      views as string[],
+      subtitle,
+      theme === "light",
+      focusSheet,
+    );
+    downloadSvg("sheetshrink-recorded-figure.svg", svg);
+  }
   return (
-    <div className="observatory">
+    <div className={`observatory ${paperMode ? "paper-mode" : ""}`}>
       <header className="topbar">
         <a className="brand" href="#overview">
           <span className="brand-mark">
@@ -293,10 +443,111 @@ function Observatory() {
         </a>
         <span className="status-pill is-live">
           <i />
-          {names[update.status]}
+          {replayTime === null
+            ? names[update.status]
+            : `Replay · ${playbackRate}×`}
         </span>
       </header>
       <main>
+        <div className="presentation-controls">
+          <button
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          >
+            {theme === "light" ? "Dark theme" : "Light theme"}
+          </button>
+          <button
+            aria-pressed={paperMode}
+            onClick={() => setPaperMode(!paperMode)}
+          >
+            Figure view
+          </button>
+          {detailed && (
+            <button onClick={exportFigure}>Export figure SVG</button>
+          )}
+          <button
+            disabled={active || busy || !liveUpdate?.counts.total}
+            onClick={() => void startReplay()}
+          >
+            Replay recorded run
+          </button>
+          {replayTime !== null && (
+            <>
+              <button onClick={() => setPlaying(!playing)}>
+                {playing ? "Pause replay" : "Play replay"}
+              </button>
+              <select
+                aria-label="Playback speed"
+                value={playbackRate}
+                onChange={(event) =>
+                  setPlaybackRate(Number(event.target.value))
+                }
+              >
+                {[0.05, 0.1, 0.2, 0.5, 1, 2].map((rate) => (
+                  <option key={rate} value={rate}>
+                    {rate}×
+                  </option>
+                ))}
+              </select>
+              <input
+                aria-label="Replay position"
+                type="range"
+                min="0"
+                max={recording?.source.elapsed_ms ?? 1}
+                value={replayTime}
+                onChange={(event) => {
+                  setPlaying(false);
+                  setReplayTime(Number(event.target.value));
+                }}
+              />
+              <span>
+                Recorded {(replayTime / 1000).toFixed(2)} /{" "}
+                {((recording?.source.elapsed_ms ?? 0) / 1000).toFixed(2)} s
+              </span>
+              <button
+                onClick={() => {
+                  setReplayTime(null);
+                  setPlaying(false);
+                }}
+              >
+                Return to live
+              </button>
+            </>
+          )}
+          {focusSheet && (
+            <button
+              onClick={() => {
+                setPinnedSheet(null);
+                setHoverSheet(null);
+                setSelected(null);
+              }}
+            >
+              Clear worksheet focus
+            </button>
+          )}
+          {detailed && (
+            <select
+              aria-label="Link worksheet"
+              value={pinnedSheet ?? ""}
+              onChange={(event) => {
+                setPinnedSheet(event.target.value || null);
+                setSelected(
+                  rendering.snapshot.sheets.find(
+                    (sheet) => sheet.id === event.target.value,
+                  )?.workbookId ?? null,
+                );
+                if (event.target.value) setAtlasView("three");
+              }}
+            >
+              <option value="">Link a worksheet across views</option>
+              {rendering.snapshot.sheets.map((sheet) => (
+                <option key={sheet.id} value={sheet.id}>
+                  {sheet.workbookId} · {sheet.indexLabel ?? `S${sheet.index}`} ·{" "}
+                  {sheet.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         <section className="page-heading" id="overview">
           <div>
             <div className="eyebrow">
@@ -431,7 +682,7 @@ function Observatory() {
               aria-label="Memory reserve"
               disabled={active}
               type="number"
-              min="512"
+              min="1"
               placeholder="Automatic"
               value={config.reserve_mib ?? ""}
               onChange={(event) =>
@@ -505,7 +756,11 @@ function Observatory() {
           <article className="metric">
             <div className="metric-label">Run time</div>
             <div className="metric-note">
-              {update.status === "completed" ? "Total duration" : "Elapsed"}
+              {replayTime !== null
+                ? "Recorded position"
+                : update.status === "completed"
+                  ? "Total duration"
+                  : "Elapsed"}
             </div>
             <div className="metric-value">{seconds.toFixed(2)} s</div>
             {active && (
@@ -521,149 +776,149 @@ function Observatory() {
             note="Active / configured"
           />
         </section>
-        <div className="pipeline-grid">
-          <section className="panel pipeline-panel">
-            <div className="panel-header">
-              <div>
-                <div className="section-index">01 / PROCESS</div>
-                <h2>
-                  {detailed
-                    ? "Parallel sheets and chunks"
-                    : "Parallel workbooks"}
-                </h2>
-              </div>
-              {detailed && (
-                <label className="step-height-control">
-                  Step height
-                  <input
-                    aria-label="Workbook step height"
-                    type="range"
-                    min="0"
-                    max="0.3"
-                    step="0.001"
-                    value={stepHeight}
-                    onChange={(event) =>
-                      setStepHeight(Number(event.target.value))
-                    }
-                  />
-                  <output>{stepHeight.toFixed(3)}</output>
-                </label>
-              )}
-            </div>
-            <SceneViewport
-              scene={workerScene}
-              renderer="auto"
-              title="Worker timeline"
-              className="worker-viewport"
-              onSelect={(hit) =>
-                setSelected(
-                  detailed
-                    ? (tasks.find((task) => `task-${task.id}` === hit.id)
-                        ?.workbook_id ?? null)
-                    : hit.id,
-                )
-              }
-            />
-            <p className="view-note">
-              {detailed
-                ? "Time × Worker × Workbook · sheets and chunks · "
-                : "Time × Worker · one block per workbook · "}
-              {update.history_limit} recent jobs retained in memory
-            </p>
-          </section>
-        </div>
-        {detailed && atlas && (
-          <section className="panel atlas-panel">
-            <div className="panel-header">
-              <h2>Workbook-Atlas</h2>
-              <span>
-                Uncompressed ZIP bytes · original and output
-                {atlasView === "all" && " · largest original workbooks first"}
-              </span>
-            </div>
-            <div className="atlas-controls">
-              <button
-                aria-pressed={atlasView === "three"}
-                onClick={() => setAtlasView("three")}
-              >
-                Latest 3
-              </button>
-              <button
-                aria-pressed={atlasView === "seven"}
-                onClick={() => setAtlasView("seven")}
-              >
-                Latest 7
-              </button>
-              <button
-                aria-pressed={atlasView === "all"}
-                onClick={() => setAtlasView("all")}
-              >
-                All by size
-              </button>
-              {atlasView === "all" && (
-                <>
-                  <label>
-                    Workbooks per page{" "}
+        <div className="linked-scenes">
+          <SheetConnections sheetId={focusSheet} />
+          <div className="pipeline-grid">
+            <section className="panel pipeline-panel">
+              <div className="panel-header">
+                <div>
+                  <div className="section-index">01 / PROCESS</div>
+                  <h2>
+                    {detailed
+                      ? "Parallel sheets and chunks"
+                      : "Parallel workbooks"}
+                  </h2>
+                </div>
+                {detailed && (
+                  <label className="step-height-control">
+                    Step height
                     <input
-                      aria-label="Workbooks per page"
+                      aria-label="Workbook step height"
                       type="range"
-                      min="1"
-                      max="24"
-                      step="1"
-                      value={atlasPageSize}
-                      onChange={(event) => {
-                        setAtlasPageSize(Number(event.target.value));
-                        setAtlasPage(0);
-                      }}
+                      min="0"
+                      max="0.3"
+                      step="0.001"
+                      value={stepHeight}
+                      onChange={(event) =>
+                        setStepHeight(Number(event.target.value))
+                      }
                     />
-                    <output>{atlasPageSize}</output>
+                    <output>{stepHeight.toFixed(3)}</output>
                   </label>
-                  <button
-                    disabled={atlasPage === 0}
-                    onClick={() => setAtlasPage((page) => page - 1)}
-                  >
-                    Previous page
-                  </button>
-                  <span>
-                    Page {(atlasHistory?.page ?? atlasPage) + 1} /{" "}
-                    {Math.max(
-                      1,
-                      Math.ceil((atlasHistory?.total ?? 0) / atlasPageSize),
-                    )}{" "}
-                    · {atlasHistory?.total ?? 0} workbooks
-                  </span>
-                  <button
-                    disabled={
-                      !atlasHistory ||
-                      (atlasPage + 1) * atlasPageSize >= atlasHistory.total
-                    }
-                    onClick={() => setAtlasPage((page) => page + 1)}
-                  >
-                    Next page
-                  </button>
-                </>
+                )}
+              </div>
+              <SceneViewport
+                scene={presentScene(workerScene, theme)}
+                renderer="auto"
+                title="Worker timeline"
+                className="worker-viewport"
+                focusSheetId={focusSheet}
+                onHover={(hit) => setHoverSheet(hit?.sheetId ?? null)}
+                onSelect={selectSheet}
+              />
+              <p className="view-note">
+                {detailed
+                  ? "Time × Worker × Workbook · sheets and chunks · "
+                  : "Time × Worker · one block per workbook · "}
+                {replay
+                  ? `${jobs.length} workbooks · ${tasks.length} recorded work items`
+                  : `${update.history_limit} recent jobs retained in memory`}
+              </p>
+            </section>
+          </div>
+          {detailed && atlas && (
+            <section className="panel atlas-panel">
+              <div className="panel-header">
+                <h2>Workbook-Atlas</h2>
+                <span>
+                  Uncompressed ZIP bytes · original and output
+                  {atlasView === "all" && " · largest original workbooks first"}
+                </span>
+              </div>
+              <div className="atlas-controls">
+                <button
+                  aria-pressed={atlasView === "largest"}
+                  onClick={() => setAtlasView("largest")}
+                >
+                  Largest 3
+                </button>
+                <button
+                  aria-pressed={atlasView === "three"}
+                  onClick={() => setAtlasView("three")}
+                >
+                  Latest 3
+                </button>
+                <button
+                  aria-pressed={atlasView === "seven"}
+                  onClick={() => setAtlasView("seven")}
+                >
+                  Latest 7
+                </button>
+                <button
+                  aria-pressed={atlasView === "all"}
+                  onClick={() => setAtlasView("all")}
+                >
+                  All by size
+                </button>
+                {atlasView === "all" && (
+                  <>
+                    <label>
+                      Workbooks per page{" "}
+                      <input
+                        aria-label="Workbooks per page"
+                        type="range"
+                        min="1"
+                        max="24"
+                        step="1"
+                        value={atlasPageSize}
+                        onChange={(event) => {
+                          setAtlasPageSize(Number(event.target.value));
+                          setAtlasPage(0);
+                        }}
+                      />
+                      <output>{atlasPageSize}</output>
+                    </label>
+                    <button
+                      disabled={atlasPage === 0}
+                      onClick={() => setAtlasPage((page) => page - 1)}
+                    >
+                      Previous page
+                    </button>
+                    <span>
+                      Page {(atlasHistory?.page ?? atlasPage) + 1} /{" "}
+                      {Math.max(
+                        1,
+                        Math.ceil((atlasHistory?.total ?? 0) / atlasPageSize),
+                      )}{" "}
+                      · {atlasHistory?.total ?? 0} workbooks
+                    </span>
+                    <button
+                      disabled={
+                        !atlasHistory ||
+                        (atlasPage + 1) * atlasPageSize >= atlasHistory.total
+                      }
+                      onClick={() => setAtlasPage((page) => page + 1)}
+                    >
+                      Next page
+                    </button>
+                  </>
+                )}
+              </div>
+              {atlasView === "all" && atlasError && (
+                <p role="alert">{atlasError}</p>
               )}
-            </div>
-            {atlasView === "all" && atlasError && (
-              <p role="alert">{atlasError}</p>
-            )}
-            <SceneViewport
-              scene={atlas}
-              renderer="auto"
-              title="Workbook-Atlas"
-              className="atlas-viewport"
-              onSelect={(hit) =>
-                setSelected(
-                  jobs.find(
-                    (job) =>
-                      hit.id === `book:${job.id}` ||
-                      hit.id.startsWith(`sheet:${job.id}:`),
-                  )?.id ?? null,
-                )
-              }
-            />
-          </section>
-        )}
+              <SceneViewport
+                scene={presentScene(atlas, theme)}
+                renderer="auto"
+                title="Workbook-Atlas"
+                className="atlas-viewport"
+                focusSheetId={focusSheet}
+                onHover={(hit) => setHoverSheet(hit?.sheetId ?? null)}
+                onSelect={selectSheet}
+              />
+            </section>
+          )}
+        </div>
         {detailed && focused && (
           <SheetDetails
             key={focused.id}
@@ -785,7 +1040,6 @@ function Observatory() {
     </div>
   );
 }
-
 function Metric({
   label,
   value,

@@ -24,6 +24,8 @@ export interface SceneLabel {
 }
 export interface HitTarget {
   id: string;
+  workbookId?: string;
+  sheetId?: string;
   position: Vec3;
   radius?: number;
   title: string;
@@ -214,7 +216,7 @@ export const smooth = (x: number) => {
   const t = Math.max(0, Math.min(1, x));
   return t * t * (3 - 2 * t);
 };
-const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"];
+const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB"];
 const BYTE_INTEGER_FORMAT = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });

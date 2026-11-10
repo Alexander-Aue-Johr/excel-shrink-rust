@@ -1,5 +1,35 @@
 # Recorded execution history
 
+## SheetShrink Observatory
+
+The native Observatory records workbook, worksheet and chunk events beside the
+output directory in `<output>.events.jsonl`. After a run stops, **Replay recorded
+run** reads that log in cursor-based pages. Playback supports pause, restart,
+seeking and speeds from 0.05× to 2×. It reconstructs state from events observed
+by the selected time, including metadata and completion reports. Playback does
+not invoke cleanup or write workbook outputs. The displayed clock remains the
+recorded elapsed time.
+
+Replay currently belongs to the current native server's run. Browser reloads
+retain access while that server remains open. Reopening an older log in a new
+server is not yet supported. A missing or malformed log produces an error.
+The browser loads the full event history for replay, so its memory use grows
+with the recording. Ordinary live polling retains its bounded history.
+
+Each worksheet has a stable color across the worker timeline and Workbook Atlas.
+Hovering links its work items to the atlas. Clicking or using **Link worksheet**
+pins that selection. The atlas brings the focused workbook into view. Colors
+distinguish worksheets within a workbook and can repeat across a large corpus.
+Identity and links use worksheet IDs, independently of color.
+
+**Figure view** hides configuration and secondary charts. Light/dark themes and
+the **Publication view** camera support screenshots. **Export figure SVG** exports
+both scenes, their current cameras and any focused worksheet links as editable
+vector geometry. Atlas heights use uncompressed ZIP-entry bytes. Runtime and
+workbook totals describe the actual recorded run. Slower playback never changes
+those measurements. A scheduling figure alone does not establish speedup or
+visual equivalence of the cleaned workbooks.
+
 ## Implemented run-progress channel
 
 New standalone DeltaSieve runs create `replay/manifest.json`. The orchestration

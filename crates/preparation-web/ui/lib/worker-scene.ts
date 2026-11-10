@@ -26,6 +26,7 @@ export interface WorkerSceneOptions {
   windowSeconds: number;
   overview: boolean;
   selectedWorkbookId?: string | null;
+  selectedSheetId?: string | null;
 }
 
 /** The time axis is continuous; only the view and its chronological Y origin move. */
@@ -240,9 +241,10 @@ export function buildWorkerScene(
     const y = (job.workbookIndex - baselineIndex) * step + 0.045;
     const z = job.workerIndex * lanePitch;
     const colour = sheetColor(job.sheet.hue);
-    const dimmed =
-      !!options.selectedWorkbookId &&
-      options.selectedWorkbookId !== job.workbookId;
+    const dimmed = options.selectedSheetId
+      ? options.selectedSheetId !== job.sheetId
+      : !!options.selectedWorkbookId &&
+        options.selectedWorkbookId !== job.workbookId;
     const opacity = dimmed ? 0.15 : job.done ? 0.88 : 0.98;
     const tornLeft =
       job.chunkCount > 1 && job.chunkIndex > 0 && job.startAt >= leftTime;
@@ -340,6 +342,8 @@ export function buildWorkerScene(
     }
     scene.hits.push({
       id: job.id,
+      workbookId: job.workbookId,
+      sheetId: job.sheetId,
       position: [(x0 + x1) / 2, y + 0.03, z + laneWidth / 2],
       radius: Math.max(0.36, Math.min(1.3, width / 2)),
       title: job.sheet.name,

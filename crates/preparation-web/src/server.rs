@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Seek, SeekFrom},
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -344,6 +344,7 @@ fn serve_inner(
                 )
                 .route("/api/state", get(state))
                 .route("/api/atlas", get(atlas))
+                .route("/api/replay", get(replay))
                 .route("/api/start", post(start))
                 .route("/api/stop", post(stop))
                 .route("/api/workers", post(workers))
@@ -415,6 +416,58 @@ struct AtlasQuery {
     #[serde(default)]
     page: usize,
     page_size: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct ReplayQuery {
+    run: String,
+    #[serde(default)]
+    after: u64,
+}
+
+/// Read bounded pages from the durable log after writers have finished.
+/// Byte offsets avoid rescanning preceding events and bind to the current run.
+async fn replay(State(app): State<App>, Query(query): Query<ReplayQuery>) -> Response {
+    let defaults = {
+        let run = app.run.lock().unwrap();
+        if query.run != run.id || run.active() {
+            return rejected("Replay requires the current completed or stopped run");
+        }
+        run.defaults.clone()
+    };
+    let result = tokio::task::spawn_blocking(move || replay_page(defaults, query)).await;
+    match result {
+        Ok(Ok(page)) => Json(page).into_response(),
+        Ok(Err(error)) => rejected(error),
+        Err(error) => rejected(error),
+    }
+}
+
+/// Resume at a byte cursor returned by the preceding page, without rescanning it.
+fn replay_page(defaults: Defaults, query: ReplayQuery) -> Result<Value> {
+    let output = defaults.output.context("No recorded output directory")?;
+    let mut name = output.into_os_string();
+    name.push(".events.jsonl");
+    let file = std::fs::File::open(PathBuf::from(name))?;
+    let length = file.metadata()?.len();
+    ensure!(
+        query.after <= length,
+        "Replay cursor is beyond the event log"
+    );
+    let mut reader = BufReader::new(file);
+    reader.seek(SeekFrom::Start(query.after))?;
+    let mut events = Vec::new();
+    let mut line = String::new();
+    for _ in 0..1000 {
+        line.clear();
+        if reader.read_line(&mut line)? == 0 {
+            break;
+        }
+        let event: Event = serde_json::from_str(&line).context("Invalid recorded event")?;
+        events.push(event);
+    }
+    let next = reader.stream_position()?;
+    Ok(json!({"run_id": query.run, "events": events, "next": next, "complete": next == length}))
 }
 
 // Read the durable history on demand. Ordinary status polling keeps its bounded
@@ -817,6 +870,71 @@ mod tests {
             worker_index: Some(0),
             payload: json!({"name": id}),
         }
+    }
+
+    #[test]
+    fn replay_pages_preserve_all_events_and_reject_invalid_cursors() {
+        use std::io::Write;
+        let directory = std::env::temp_dir().join(format!("replay-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let path = directory.join("result.events.jsonl");
+        let mut log = std::fs::File::create(&path).unwrap();
+        for index in 0..1007 {
+            writeln!(
+                log,
+                "{}",
+                serde_json::to_string(&event(index, "work.started", "sheet-α")).unwrap()
+            )
+            .unwrap();
+        }
+        drop(log);
+        let app = app();
+        let mut defaults = app.run.lock().unwrap().defaults.clone();
+        defaults.output = Some(directory.join("result"));
+        let query = |after| ReplayQuery {
+            run: "test".into(),
+            after,
+        };
+        let first = replay_page(defaults.clone(), query(0)).unwrap();
+        assert_eq!(first["events"].as_array().unwrap().len(), 1000);
+        assert_eq!(first["complete"], false);
+        let second = replay_page(defaults.clone(), query(first["next"].as_u64().unwrap())).unwrap();
+        assert_eq!(second["events"].as_array().unwrap().len(), 7);
+        assert_eq!(second["events"][0]["sequence"], 1000);
+        assert_eq!(second["complete"], true);
+        let end = second["next"].as_u64().unwrap();
+        assert!(replay_page(defaults.clone(), query(end + 1)).is_err());
+        assert!(replay_page(defaults.clone(), query(1)).is_err());
+        assert!(replay_page(defaults.clone(), query(end)).unwrap()["events"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        std::fs::write(&path, "{incomplete event").unwrap();
+        assert!(replay_page(defaults, query(0)).is_err());
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn replay_rejects_active_runs_and_stale_run_ids() {
+        let app = app();
+        let id = {
+            let mut run = app.run.lock().unwrap();
+            run.status = "running";
+            run.id.clone()
+        };
+        let response = replay(State(app.clone()), Query(ReplayQuery { run: id, after: 0 })).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        app.run.lock().unwrap().status = "completed";
+        let response = replay(
+            State(app),
+            Query(ReplayQuery {
+                run: "stale".into(),
+                after: 0,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]

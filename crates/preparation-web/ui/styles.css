@@ -2,6 +2,121 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+:root[data-theme="light"] {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --panel-soft: #eef2f7;
+  --border: #d7e0e9;
+  --text: #172b42;
+  --muted: #53677b;
+  --faint: #708397;
+  --mint: #267f74;
+  --blue: #397cb1;
+  color-scheme: light;
+}
+[data-theme="light"] .topbar,
+[data-theme="light"] .scene-viewport {
+  background: #ffffff;
+}
+[data-theme="light"] select,
+[data-theme="light"] .scene-tools,
+[data-theme="light"] .scene-tooltip {
+  background: #f0f4f8;
+  color: #172b42;
+  border-color: #c8d5e0;
+}
+[data-theme="light"] .world-label {
+  text-shadow: none;
+}
+[data-theme="light"] .status-pill {
+  background: #e5f3ed;
+  color: #256557;
+}
+[data-theme="light"] .metric {
+  background: #ffffff;
+}
+[data-theme="light"] .metric-label,
+[data-theme="light"] .metric-note {
+  color: #53677b;
+}
+.presentation-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 20px;
+  position: relative;
+  z-index: 3;
+}
+.presentation-controls button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 8px 12px;
+}
+.presentation-controls button[aria-pressed="true"] {
+  border-color: var(--mint);
+  color: var(--mint);
+}
+.presentation-controls input[type="range"] {
+  width: 200px;
+}
+.linked-scenes {
+  position: relative;
+}
+.sheet-connections {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0.78;
+}
+.paper-mode main {
+  max-width: 1800px;
+}
+.paper-mode .preparation-form,
+.paper-mode .page-heading,
+.paper-mode .focus-book,
+.paper-mode .sheet-details,
+.paper-mode .job-results,
+.paper-mode .results-section {
+  display: none;
+}
+.paper-mode .worker-viewport {
+  height: 350px;
+}
+.paper-mode .atlas-viewport {
+  height: 260px;
+}
+.paper-mode .panel-header {
+  padding: 14px 20px;
+}
+.paper-mode .atlas-controls {
+  padding: 8px 20px;
+}
+.paper-mode .view-note {
+  padding: 8px 20px;
+}
+.paper-mode .scene-bottom {
+  display: none;
+}
+.paper-mode .atlas-panel {
+  margin-top: 16px;
+}
+.paper-mode .linked-scenes ~ * {
+  display: none;
+}
+.paper-mode .metric {
+  min-height: 96px;
+  padding: 12px 20px;
+}
+.paper-mode .metrics {
+  margin-bottom: 14px;
+}
+
 .atlas-controls {
   display: flex;
   flex-wrap: wrap;

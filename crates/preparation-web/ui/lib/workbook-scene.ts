@@ -23,12 +23,15 @@ export interface AtlasSelectionOptions {
   view: AtlasView;
   sort: AtlasSort;
   recentCount?: number;
+  focusWorkbookId?: string | null;
 }
 
 export interface WorkbookSceneOptions extends AtlasSelectionOptions {
+  limit?: number;
   resultStyle: ResultStyle;
   labelMode: LabelMode;
   selectedWorkbookId?: string | null;
+  selectedSheetId?: string | null;
 }
 
 const FRAME = "#71939a";
@@ -75,7 +78,12 @@ export function getAtlasBooks(
     const count = Number.isFinite(options.recentCount)
       ? Math.max(1, Math.floor(options.recentCount!))
       : 3;
-    return started.length ? started.slice(-count) : books.slice(0, 1);
+    const recent = started.length ? started.slice(-count) : books.slice(0, 1);
+    const focused = books.find((book) => book.id === options.focusWorkbookId);
+    if (focused && !recent.includes(focused)) {
+      return [...recent.slice(1), focused].sort(chronological);
+    }
+    return recent;
   }
   if (options.sort === "reduction") {
     books.sort((a, b) => {
@@ -151,14 +159,19 @@ export function buildWorkbookScene(
   options: WorkbookSceneOptions,
 ): SceneSpec {
   const split = options.resultStyle === "split";
-  const books = getAtlasBooks(snapshot, options);
+  const books = getAtlasBooks(snapshot, options).slice(
+    0,
+    options.limit ?? Infinity,
+  );
   const visible = new Set(books.map((book) => book.id));
   // Recent view travels along the same absolute X row used by the time overview.
   // Hidden/future workbooks contribute only their already-public placeholder width.
-  const ordered = getAtlasBooks(snapshot, {
-    view: "all",
-    sort: options.view === "recent" ? "time" : options.sort,
-  });
+  const ordered = options.selectedSheetId
+    ? books
+    : getAtlasBooks(snapshot, {
+        view: "all",
+        sort: options.view === "recent" ? "time" : options.sort,
+      });
   let nextX = 0;
   const layout = ordered
     .map((book) => {
@@ -190,7 +203,8 @@ export function buildWorkbookScene(
       split ? 0.9 : 1.25,
       BASE_D / 2 + (split ? 0.12 : 0),
     ],
-    span: Math.max(10.8, width + 3.6) * 1.06,
+    span: 10.8,
+    horizontalSpan: Math.max(10.8, width + 3.6) * 1.06,
     yaw: 0.13,
     pitch: 0.74,
     footer: `One row · worksheets by XML index · ${options.view === "recent" ? "most recently started workbooks at the current time" : options.sort === "reduction" ? "largest relative reduction first; pending reports last" : "Workbooks by start time"}`,
@@ -260,6 +274,8 @@ export function buildWorkbookScene(
     opacity: number,
     outline = false,
   ) {
+    if (options.selectedSheetId && options.selectedSheetId !== sheet.id)
+      opacity *= 0.18;
     const segments = Math.max(1, sheet.chunkCount);
     if (outline) {
       shapes.push(
@@ -444,6 +460,7 @@ export function buildWorkbookScene(
     });
     result.hits.push({
       id: `book:${book.id}`,
+      workbookId: book.id,
       position: [x + width / 2, FLOOR_Y + currentH + 0.08, afterZ + BASE_D / 2],
       radius: 32,
       title: book.name,
@@ -598,6 +615,8 @@ export function buildWorkbookScene(
         options.labelMode === "xml" ? `sheet${sheet.index}.xml` : sheet.name;
       result.hits.push({
         id: `sheet:${sheet.id}`,
+        workbookId: book.id,
+        sheetId: sheet.id,
         position: [
           sx + square / 2,
           FLOOR_Y + ch + 0.03,
