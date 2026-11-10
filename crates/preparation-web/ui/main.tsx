@@ -143,13 +143,13 @@ function Observatory() {
               entity: "workbooks",
               metric: "size",
               labelMode: "name",
-              order: "paired",
+              order: "independent",
             }),
             sheets: buildDistributionScene(rendering.snapshot, {
               entity: "worksheets",
               metric: "size",
               labelMode: "xml",
-              order: "paired",
+              order: "independent",
             }),
           }
         : null,
@@ -461,7 +461,9 @@ function Observatory() {
                     max="0.3"
                     step="0.001"
                     value={stepHeight}
-                    onChange={(event) => setStepHeight(Number(event.target.value))}
+                    onChange={(event) =>
+                      setStepHeight(Number(event.target.value))
+                    }
                   />
                   <output>{stepHeight.toFixed(3)}</output>
                 </label>
@@ -577,7 +579,14 @@ function Observatory() {
             <div className="distribution-grid">
               <section className="panel distribution-card">
                 <div className="chart-heading">
+                  <p className="section-index">
+                    PER WORKBOOK · SORTED INDEPENDENTLY
+                  </p>
                   <h3>Workbook sizes</h3>
+                  <p>
+                    Each layer ranks workbooks by its own size. Matching X
+                    positions can represent different workbooks.
+                  </p>
                 </div>
                 <SceneViewport
                   scene={distributions.books}
@@ -589,7 +598,14 @@ function Observatory() {
               </section>
               <section className="panel distribution-card">
                 <div className="chart-heading">
+                  <p className="section-index">
+                    PER WORKSHEET · SORTED INDEPENDENTLY
+                  </p>
                   <h3>Worksheet sizes</h3>
+                  <p>
+                    Each layer ranks individual worksheets by its own size.
+                    Matching X positions can represent different worksheets.
+                  </p>
                 </div>
                 <SceneViewport
                   scene={distributions.sheets}
