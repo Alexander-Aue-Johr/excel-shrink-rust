@@ -54,3 +54,27 @@ stripe remains unverified.
 Capture selection and transport took 1,668,137 ms. Image comparison took
 7,305 ms. These phase durations describe the retained run, whose producer
 used capture policy v15.
+
+## Stage-nine timing snapshot
+
+A snapshot of 68 completed external-tool pair reports across the three
+corpora on 2026-11-10 includes only reports with the
+`capture_selection_and_transport` timing. It excludes SheetShrink, failed
+and pending pairs, and reports without that timing. Totals sum pair
+durations and can overlap in wall-clock time.
+
+| Candidate producer | Timed pairs | Selection and transport (s) | Image comparison (s) |
+|---|---:|---:|---:|
+| Check Performance | 22 | 740.0 | 24.1 |
+| Inquire | 14 | 5,322.9 | 446.7 |
+| NXPowerLite | 12 | 878.7 | 21.0 |
+| XLStylesTool | 20 | 14.7 | 1.8 |
+
+The longest measured selection and transport phases were 27.8 min for PFAS,
+21.6 min for Hospital Data, and 17.1 min for Enron pair
+`a90ce85ed998ecc4a267c5e0`, all with Inquire candidates. They each produced
+at least 2,975 worksheet images per side. Hospital Data also spent 4.3 min
+in image comparison. These observations identify an upper tail to account
+for before expanding the cohort. They do not isolate selection from
+rendering and transport, measure the candidate-producing tools themselves,
+or compare matched populations across tools.
