@@ -11,6 +11,47 @@ revision replaces the previous top-100 evaluation scope. Existing observations
 outside the top 49 remain retained history and do not enlarge subsequent runs.
 All processor variants use these same original identities and frozen ranks.
 
+### Latest output-identity checkpoint on 2026-11-10
+
+This checkpoint supersedes the intermediate counts and launch blockers below.
+The implicit-font representative fix `6e4847a0` was tested with 298 core tests
+(one ignored) and an independent native Impressum reference. The reference
+images were pixel-identical. All 147 frozen originals were cleaned again.
+Uncompressed package members changed for 26 Destatis, four Data.gov and one
+Enron output. The other 116 outputs have explicit member-byte equivalence
+proofs. Revalidation is required for those 31 changed outputs.
+
+At the latest identity-compatibility checkpoint, completed native records were
+available for 30 Destatis, 25 Data.gov and 48 Enron identities. These are
+intermediate observation counts, not final cohort results. One Destatis, four
+Data.gov and five Enron workbooks retain findings. Baseline normalization
+provenance, report identities and policy compatibility remain release checks.
+The 26-file Destatis and four-file Data.gov revalidations are active. The changed
+Enron output completed without a finding. Wanderungen's controlled opening
+recovery is queued after the Destatis batch reaches its terminal boundary.
+The earlier launch-permission blocker is resolved.
+
+Kulturfinanzbericht's full repeat confirms pixel equality on Impressum after the
+font fix. Its remaining 125 findings are on Tabelle 8.2-1 in far-tail columns.
+An offline image diagnostic found identical common rectangles. Their translated
+origins and nonwhite repeated extensions still require classification; the raw
+findings remain intact. A low pixel count or a repeated-looking background alone
+does not suppress a finding.
+
+The validator skips legacy coordinate projection when the paired execution has
+no pre-rebuild original image state (`eb0203bf`). Every projected legacy
+comparison requires that absent state. XML attribution and rebuilt comparisons
+remain independent. The focused test and 165 targeted tests passed (21 ignored).
+A whole-run speedup has not been measured.
+
+The current UI source is `75e85035`. A seven-region native control confirmed
+capture navigation into Sheet Atlas and retained 14 image receipts. Selected
+spatial views stay pinned when following is disabled. Two genuine UI/report
+screenshots, their provenance and cautious captions are now in the DeltaSieve
+manuscript (`e48b1f7` in the paper repository). The manuscript compiled, and both
+figure pages were visually inspected. The chart illustration retains its
+20-pixel observation without asserting an unverified rendering cause.
+
 ### Completed work and verified changes
 
 - Full SheetShrink preparation completed for 1,182 Destatis workbooks, 30,301
