@@ -420,3 +420,19 @@ all 453 original-side and 454 candidate-side PNGs already written by
 The workbooks retain distinct identities and incomplete observations.
 This sample supports storage deduplication for verified matching bytes.
 It supplies no basis for skipping the remaining native captures.
+
+A full member and worksheet audit of the first QT/RR rebuilt pair
+found no added or removed ZIP members. The styles and shared strings
+are byte-identical. Changes outside the worksheets are confined to
+document properties and the workbook's AlternateContent and
+revisionPtr elements. Within the worksheets, only sheetFormatPr
+(12 sheets) and sheetData (11 sheets) differ. Each affected sheet
+adds three empty styled cells. No cell payload changed. The only
+changed row attributes are s and customFormat on the eleven first
+rows. Explicit columns, merges, conditional-format elements and
+drawing references are unchanged.
+
+This narrows the work needed for a defensible plan. It must still
+qualify the effective default widths and heights and preserve the
+native inherited border extent. The existing three native samples
+only establish equal geometry at their measured coordinates.
