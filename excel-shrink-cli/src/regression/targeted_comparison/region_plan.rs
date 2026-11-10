@@ -9,6 +9,21 @@ use std::{
     path::Path,
 };
 
+pub(super) fn publish_inputs(
+    directory: &Path,
+    sheets: &[super::content_bounds::SelectionInput<'_>],
+) -> Result<()> {
+    let bytes = serde_json::to_vec_pretty(&json!({
+        "version": 1,
+        "stage": "before_grid_expansion",
+        "sheets": sheets,
+    }))?;
+    crate::regression::artifact_cache::atomic_write(
+        &directory.join("capture-selection-inputs.json"),
+        &bytes,
+    )
+}
+
 pub(super) fn publish(directory: &Path, regions: &BTreeSet<Candidate>, stage: &str) -> Result<()> {
     let pending = crate::regression::artifact_cache::unique_path(directory, "region-plan")?;
     let result = (|| -> Result<()> {

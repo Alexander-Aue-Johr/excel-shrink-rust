@@ -127,6 +127,14 @@ pub(super) struct Coverage {
     cf_blank_tail_excluded: bool,
 }
 
+/// Inputs to grid expansion, available even when expansion has not finished.
+#[derive(Debug, Serialize)]
+pub(super) struct SelectionInput<'a> {
+    sheet: &'a str,
+    requested_candidates: usize,
+    content_envelope_with_one_cell_margin: Option<Rectangle>,
+}
+
 #[derive(Default)]
 pub(super) struct ContentBounds {
     bounds: BTreeMap<String, Rectangle>,
@@ -135,6 +143,28 @@ pub(super) struct ContentBounds {
 }
 
 impl ContentBounds {
+    pub fn selection_inputs<'a>(
+        &self,
+        requested: &'a BTreeSet<Candidate>,
+    ) -> Vec<SelectionInput<'a>> {
+        let mut counts = BTreeMap::new();
+        for candidate in requested {
+            *counts.entry(candidate.sheet.as_str()).or_insert(0) += 1;
+        }
+        counts
+            .into_iter()
+            .map(|(sheet, requested_candidates)| SelectionInput {
+                sheet,
+                requested_candidates,
+                content_envelope_with_one_cell_margin: self
+                    .bounds
+                    .get(sheet)
+                    .copied()
+                    .map(Rectangle::capture_bounds),
+            })
+            .collect()
+    }
+
     /// Expose the unpadded visible-content envelope to layout candidate selection.
     pub fn envelope(&self, sheet: &str) -> Option<Rectangle> {
         self.bounds.get(sheet).copied()
@@ -265,6 +295,37 @@ mod tests {
             bounds: BTreeMap::from([("Data".into(), Rectangle::parse(address)?)]),
             ..Default::default()
         })
+    }
+
+    #[test]
+    fn selection_inputs_describe_full_grid_without_expanding_it() -> Result<()> {
+        let content = bounds("A1:XFD1048576")?;
+        let requested = BTreeSet::from([
+            Candidate {
+                sheet: "Data".into(),
+                cell: "A1:XFD1048576".into(),
+            },
+            Candidate {
+                sheet: "Data".into(),
+                cell: "B2".into(),
+            },
+            Candidate {
+                sheet: "Empty".into(),
+                cell: "A1".into(),
+            },
+        ]);
+        let summary = content.selection_inputs(&requested);
+        assert_eq!(summary.len(), 2);
+        assert_eq!(summary[0].sheet, "Data");
+        assert_eq!(summary[0].requested_candidates, 2);
+        assert_eq!(
+            summary[0].content_envelope_with_one_cell_margin,
+            Some(Rectangle::parse("A1:XFD1048576")?)
+        );
+        assert_eq!(summary[1].requested_candidates, 1);
+        assert!(summary[1].content_envelope_with_one_cell_margin.is_none());
+        assert_eq!(requested.len(), 3);
+        Ok(())
     }
 
     #[test]

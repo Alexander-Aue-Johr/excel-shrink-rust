@@ -718,6 +718,19 @@ Completed corpus comparisons remove temporary upload-pool links after both repor
 
 ### Embedded authentication dialogs
 
+Before grid expansion, `capture-selection-inputs.json` records each requested
+sheet's candidate count and effective content envelope, including native drawing
+qualification already applied to that state. The atomic diagnostic contains one
+entry per requested sheet, rather than one entry per tile. Its
+`before_grid_expansion` stage describes inputs only. It supplies no final capture
+count or visual verdict and is separate from the executable capture-region
+index. Failure to write this optional diagnostic is logged and does not change
+selection or comparison behavior.
+Drawing metadata rejected before native line qualification is also retained in
+`native_drawing_bounds` with stage `xml_line_qualification`, the state hash and
+the parser's reason. Such an entry records a conservative rejection and contains
+no native object observation.
+
 The targeted launcher observes the atomic `capture-regions.jsonl` index before
 geometry partitioning. A literal `A1:XFD1048576` region produces an explicit
 `unbounded_capture_plan` failure with unverified coverage. Owned processes are

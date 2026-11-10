@@ -280,8 +280,16 @@ impl Workflow<'_, '_> {
             .filter(|sheet| sheet.drawing_fallback_required)
         {
             // Unsupported OLE, effects and mixed drawings retain their existing fallback.
-            let Ok(lines) = super::ole_metadata::line_frames(path, &sheet.sheet) else {
-                continue;
+            let lines = match super::ole_metadata::line_frames(path, &sheet.sheet) {
+                Ok(lines) => lines,
+                Err(error) => {
+                    self.comparison.report.native_drawing_bounds.push(serde_json::json!({
+                        "lane": id.key(), "sheet": sheet.sheet, "workbook_sha256": digest,
+                        "stage": "xml_line_qualification", "qualified": false,
+                        "reason": format!("{error:#}"),
+                    }));
+                    continue;
+                }
             };
             if lines.is_empty() {
                 continue;
@@ -808,6 +816,10 @@ impl Workflow<'_, '_> {
 
     /// Preserve selected coverage, measure its visible partition, and record non-rendering leaves.
     fn prepare_capture_partition(&mut self) -> Result<()> {
+        let inputs = self.content_bounds.selection_inputs(&self.requested_candidates);
+        if let Err(error) = super::region_plan::publish_inputs(&self.comparison.args.output, &inputs) {
+            tracing::warn!(%error, "Cannot publish optional capture selection inputs");
+        }
         let (selected, coverage) = self.content_bounds.select(&self.requested_candidates)?;
         let parents = capture_layout::coalesce(&selected)?;
         if let Err(error) = super::region_plan::publish(&self.comparison.args.output, &parents, "before_geometry_partition") {
