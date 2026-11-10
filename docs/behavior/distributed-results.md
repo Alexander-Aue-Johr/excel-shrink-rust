@@ -198,3 +198,8 @@ both native image extents. Canvas padding remains visible as missing image area
 and does not create a highlighted pixel or choose the magnifier location.
 Recorded geometry, presence and rendering verdicts remain unchanged. Grouping
 of identical captures still requires identical full displayed pixel arrays.
+
+Within a comparison package, byte-identical equal PNGs reuse the result of the
+first compression attempt. This includes the original encoding when the attempt
+did not reduce the file size. Captures required for differing or unverified
+observations retain their original encoding.

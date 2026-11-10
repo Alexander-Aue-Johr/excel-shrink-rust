@@ -30,7 +30,7 @@ pub(super) struct ImageStore {
     source: PathBuf,
     destination: PathBuf,
     images: BTreeMap<String, FileIdentity>,
-    compressed: BTreeMap<String, String>,
+    equal_png_results: BTreeMap<String, String>,
 }
 
 /// An image shared with a differing or unverified finding keeps its original encoding.
@@ -84,7 +84,7 @@ impl ImageStore {
             source,
             destination,
             images: BTreeMap::new(),
-            compressed: BTreeMap::new(),
+            equal_png_results: BTreeMap::new(),
         })
     }
 
@@ -182,7 +182,7 @@ impl ImageStore {
         if compress && extension == "png" {
             let original = fs::read(source)?;
             let original_identity = bytes_identity(&original);
-            if let Some(relative) = self.compressed.get(&original_identity.sha256) {
+            if let Some(relative) = self.equal_png_results.get(&original_identity.sha256) {
                 return Ok(relative.clone());
             }
             let pixels = image::load_from_memory(&original)?.into_rgba8();
@@ -198,21 +198,24 @@ impl ImageStore {
                 pixels.height(),
                 image::ExtendedColorType::Rgba8,
             )?;
-            if encoded.len() < original.len() {
+            let (retained_bytes, identity) = if encoded.len() < original.len() {
                 ensure!(
                     image::load_from_memory(&encoded)?.into_rgba8() == pixels,
                     "Lossless PNG recompression changed capture pixels"
                 );
                 let identity = bytes_identity(&encoded);
-                let relative = format!("evidence/{}.png", identity.sha256);
-                if !self.images.contains_key(&relative) {
-                    write_new(&self.destination.join(&relative), &encoded)?;
-                    self.images.insert(relative.clone(), identity);
-                }
-                self.compressed
-                    .insert(original_identity.sha256, relative.clone());
-                return Ok(relative);
+                (encoded, identity)
+            } else {
+                (original, original_identity.clone())
+            };
+            let relative = format!("evidence/{}.png", identity.sha256);
+            if !self.images.contains_key(&relative) {
+                write_new(&self.destination.join(&relative), &retained_bytes)?;
+                self.images.insert(relative.clone(), identity);
             }
+            self.equal_png_results
+                .insert(original_identity.sha256, relative.clone());
+            return Ok(relative);
         }
         let identity = file_identity(source)?;
         let relative = format!("evidence/{}.{}", identity.sha256, extension);
@@ -622,6 +625,14 @@ mod compression_tests {
         assert!(encoded.len() < original.len());
         assert_eq!(image::load_from_memory(&encoded)?.into_rgba8(), pixels);
         assert_eq!(fs::read(&path)?, original);
+        let already_encoded = source.join("already-compressed.png");
+        fs::write(&already_encoded, &encoded)?;
+        let retained = store.retain_image(&already_encoded, true)?;
+        assert_eq!(fs::read(store.destination.join(&retained))?, encoded);
+        assert_eq!(
+            store.equal_png_results.get(&bytes_identity(&encoded).sha256),
+            Some(&retained)
+        );
         let mut protected = ImageStore::create(&source, &root.join("protected"))?;
         let retained = protected.retain_image(&path, false)?;
         assert_eq!(fs::read(protected.destination.join(retained))?, original);
