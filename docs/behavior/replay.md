@@ -32,6 +32,10 @@ workbook totals describe the actual recorded run. Slower playback never changes
 those measurements. A scheduling figure alone does not establish speedup or
 visual equivalence of the cleaned workbooks.
 
+Timeline and atlas share one panel, with atlas selection and pagination beneath
+both charts. The panel's maximize control expands both diagrams and their
+connections together. Escape or the restore control returns to the normal view.
+
 ## Implemented run-progress channel
 
 New standalone DeltaSieve runs create `replay/manifest.json`. The orchestration

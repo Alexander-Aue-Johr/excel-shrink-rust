@@ -20,6 +20,7 @@ interface Props {
   className?: string;
   compact?: boolean;
   maxZoom?: number;
+  allowFullscreen?: boolean;
   onSelect?: (hit: HitTarget) => void;
   onHover?: (hit: HitTarget | null) => void;
   focusSheetId?: string | null;
@@ -33,6 +34,7 @@ export default function SceneViewport({
   className = "",
   compact = false,
   maxZoom = 4.5,
+  allowFullscreen = true,
   onSelect,
   onHover,
   focusSheetId,
@@ -551,19 +553,23 @@ export default function SceneViewport({
         >
           <Plus size={14} />
         </button>
-        <span className="toolbar-divider" />
-        <button
-          className="icon-button"
-          title={expanded ? "Exit fullscreen (Esc)" : "Fullscreen"}
-          aria-label={`${title}: Fullscreen`}
-          aria-pressed={expanded}
-          onClick={() => {
-            setExpanded(!expanded);
-            dirty.current = true;
-          }}
-        >
-          <Expand size={14} />
-        </button>
+        {allowFullscreen && (
+          <>
+            <span className="toolbar-divider" />
+            <button
+              className="icon-button"
+              title={expanded ? "Exit fullscreen (Esc)" : "Fullscreen"}
+              aria-label={`${title}: Fullscreen`}
+              aria-pressed={expanded}
+              onClick={() => {
+                setExpanded(!expanded);
+                dirty.current = true;
+              }}
+            >
+              <Expand size={14} />
+            </button>
+          </>
+        )}
       </div>
       <div className="scene-bottom">
         <span className="scene-help">

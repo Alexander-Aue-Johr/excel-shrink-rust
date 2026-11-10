@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import SceneViewport from "./components/SceneViewport";
 import SheetDetails from "./components/SheetDetails";
-import SheetConnections from "./components/SheetConnections";
+import LinkedScenesPanel from "./components/LinkedScenesPanel";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { presentScene, type Theme } from "./lib/presentation";
 import { replayAt } from "./lib/replay";
 import { downloadSvg, figureSvg } from "./lib/export-scene";
@@ -803,47 +804,145 @@ function Observatory() {
             note="Active / configured"
           />
         </section>
-        <div className="linked-scenes">
-          <SheetConnections sheetId={focusSheet} />
-          <div className="pipeline-grid">
-            <section className="panel pipeline-panel">
-              <div className="panel-header">
-                <div>
-                  <div className="section-index">01 / PROCESS</div>
-                  <h2>
-                    {detailed
-                      ? "Parallel sheets and chunks"
-                      : "Parallel workbooks"}
-                  </h2>
-                </div>
-                {detailed && (
-                  <label className="step-height-control">
-                    Step height
-                    <input
-                      aria-label="Workbook step height"
-                      type="range"
-                      min="0"
-                      max="0.3"
-                      step="0.001"
-                      value={stepHeight}
-                      onChange={(event) =>
-                        setStepHeight(Number(event.target.value))
-                      }
-                    />
-                    <output>{stepHeight.toFixed(3)}</output>
-                  </label>
-                )}
-              </div>
+        <LinkedScenesPanel
+          title={
+            detailed
+              ? "Parallel sheets and chunks · Workbook Atlas"
+              : "Parallel workbooks"
+          }
+          sheetId={focusSheet}
+          controls={
+            detailed ? (
+              <label className="step-height-control">
+                Step height
+                <input
+                  aria-label="Workbook step height"
+                  type="range"
+                  min="0"
+                  max="0.3"
+                  step="0.001"
+                  value={stepHeight}
+                  onChange={(event) =>
+                    setStepHeight(Number(event.target.value))
+                  }
+                />
+                <output>{stepHeight.toFixed(3)}</output>
+              </label>
+            ) : undefined
+          }
+          worker={
+            <SceneViewport
+              scene={presentScene(workerScene, theme)}
+              renderer="auto"
+              allowFullscreen={false}
+              title="Worker timeline"
+              className="worker-viewport"
+              focusSheetId={focusSheet}
+              focusSheetVariant={focusVariant}
+              onHover={setHoverSheet}
+              onSelect={selectSheet}
+            />
+          }
+          atlas={
+            detailed && atlas ? (
               <SceneViewport
-                scene={presentScene(workerScene, theme)}
+                scene={presentScene(atlas, theme)}
                 renderer="auto"
-                title="Worker timeline"
-                className="worker-viewport"
+                allowFullscreen={false}
+                title="Workbook-Atlas"
+                className="atlas-viewport"
                 focusSheetId={focusSheet}
                 focusSheetVariant={focusVariant}
                 onHover={setHoverSheet}
                 onSelect={selectSheet}
               />
+            ) : undefined
+          }
+          footer={
+            <>
+              {detailed && atlas && (
+                <>
+                  <div className="atlas-controls">
+                    <button
+                      aria-pressed={atlasView === "largest"}
+                      onClick={() => setAtlasView("largest")}
+                    >
+                      Largest 3
+                    </button>
+                    <button
+                      aria-pressed={atlasView === "three"}
+                      onClick={() => setAtlasView("three")}
+                    >
+                      Latest 3
+                    </button>
+                    <button
+                      aria-pressed={atlasView === "seven"}
+                      onClick={() => setAtlasView("seven")}
+                    >
+                      Latest 7
+                    </button>
+                    <button
+                      aria-pressed={atlasView === "all"}
+                      onClick={() => setAtlasView("all")}
+                    >
+                      All by size
+                    </button>
+                    {atlasView === "all" && (
+                      <>
+                        <label>
+                          Workbooks per page{" "}
+                          <input
+                            aria-label="Workbooks per page"
+                            type="range"
+                            min="1"
+                            max="24"
+                            step="1"
+                            value={atlasPageSize}
+                            onChange={(event) => {
+                              setAtlasPageSize(Number(event.target.value));
+                              setAtlasPage(0);
+                            }}
+                          />
+                          <output>{atlasPageSize}</output>
+                        </label>
+                        <button
+                          className="atlas-page-button"
+                          aria-label="Previous page"
+                          title="Previous page"
+                          disabled={displayedAtlasPage === 0}
+                          onClick={() => setAtlasPage(displayedAtlasPage - 1)}
+                        >
+                          <ChevronLeft size={17} aria-hidden="true" />
+                        </button>
+                        <span>
+                          Page {displayedAtlasPage + 1} /{" "}
+                          {Math.max(
+                            1,
+                            Math.ceil((pageInfo?.total ?? 0) / atlasPageSize),
+                          )}{" "}
+                          · {pageInfo?.total ?? 0} workbooks
+                        </span>
+                        <button
+                          className="atlas-page-button"
+                          aria-label="Next page"
+                          title="Next page"
+                          disabled={
+                            !pageInfo ||
+                            (displayedAtlasPage + 1) * atlasPageSize >=
+                              pageInfo.total
+                          }
+                          onClick={() => setAtlasPage(displayedAtlasPage + 1)}
+                        >
+                          <ChevronRight size={17} aria-hidden="true" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {atlasView === "all" && atlasError && (
+                    <p role="alert">{atlasError}</p>
+                  )}
+                </>
+              )}
               <p className="view-note">
                 {detailed
                   ? "Time × Worker × Workbook · sheets and chunks · "
@@ -852,103 +951,14 @@ function Observatory() {
                   ? `${jobs.length} workbooks · ${tasks.length} recorded work items`
                   : `${update.history_limit} recent jobs retained in memory`}
               </p>
-            </section>
-          </div>
-          {detailed && atlas && (
-            <section className="panel atlas-panel">
-              <div className="panel-header">
-                <h2>Workbook-Atlas</h2>
-                <span>
-                  Uncompressed ZIP bytes · original and output
-                  {atlasView === "all" && " · largest original workbooks first"}
-                </span>
-              </div>
-              <div className="atlas-controls">
-                <button
-                  aria-pressed={atlasView === "largest"}
-                  onClick={() => setAtlasView("largest")}
-                >
-                  Largest 3
-                </button>
-                <button
-                  aria-pressed={atlasView === "three"}
-                  onClick={() => setAtlasView("three")}
-                >
-                  Latest 3
-                </button>
-                <button
-                  aria-pressed={atlasView === "seven"}
-                  onClick={() => setAtlasView("seven")}
-                >
-                  Latest 7
-                </button>
-                <button
-                  aria-pressed={atlasView === "all"}
-                  onClick={() => setAtlasView("all")}
-                >
-                  All by size
-                </button>
-                {atlasView === "all" && (
-                  <>
-                    <label>
-                      Workbooks per page{" "}
-                      <input
-                        aria-label="Workbooks per page"
-                        type="range"
-                        min="1"
-                        max="24"
-                        step="1"
-                        value={atlasPageSize}
-                        onChange={(event) => {
-                          setAtlasPageSize(Number(event.target.value));
-                          setAtlasPage(0);
-                        }}
-                      />
-                      <output>{atlasPageSize}</output>
-                    </label>
-                    <button
-                      disabled={displayedAtlasPage === 0}
-                      onClick={() => setAtlasPage(displayedAtlasPage - 1)}
-                    >
-                      Previous page
-                    </button>
-                    <span>
-                      Page {displayedAtlasPage + 1} /{" "}
-                      {Math.max(
-                        1,
-                        Math.ceil((pageInfo?.total ?? 0) / atlasPageSize),
-                      )}{" "}
-                      · {pageInfo?.total ?? 0} workbooks
-                    </span>
-                    <button
-                      disabled={
-                        !pageInfo ||
-                        (displayedAtlasPage + 1) * atlasPageSize >=
-                          pageInfo.total
-                      }
-                      onClick={() => setAtlasPage(displayedAtlasPage + 1)}
-                    >
-                      Next page
-                    </button>
-                  </>
-                )}
-              </div>
-              {atlasView === "all" && atlasError && (
-                <p role="alert">{atlasError}</p>
+              {detailed && (
+                <p className="atlas-units">
+                  Atlas · uncompressed ZIP bytes · original and output
+                </p>
               )}
-              <SceneViewport
-                scene={presentScene(atlas, theme)}
-                renderer="auto"
-                title="Workbook-Atlas"
-                className="atlas-viewport"
-                focusSheetId={focusSheet}
-                focusSheetVariant={focusVariant}
-                onHover={setHoverSheet}
-                onSelect={selectSheet}
-              />
-            </section>
-          )}
-        </div>
+            </>
+          }
+        />
         {detailed && focused && (
           <SheetDetails
             key={focused.id}
