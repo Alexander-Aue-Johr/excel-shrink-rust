@@ -237,11 +237,23 @@ impl<'a> VisualBounds<'a> {
         if !supported {
             return false;
         }
+        self.columns.finalize();
+        // Width-only boundaries cannot change a solid full-width background.
+        // Keep row transitions and every explicit cell below, including overrides.
+        let right = if self
+            .columns
+            .uniform_background_fill()
+            .is_some_and(|fill| solid_fills.contains(&fill))
+        {
+            finite.right.saturating_add(1).min(16_384)
+        } else {
+            finite.right.max(self.band_right)
+        };
         self.include_rectangle(
             1,
             1,
             finite.bottom.max(self.band_bottom),
-            finite.right.max(self.band_right),
+            right,
         );
         if let Some(bounds) = self.explicit_cells {
             self.include_rectangle(bounds.top, bounds.left, bounds.bottom, bounds.right);
@@ -292,6 +304,117 @@ impl<'a> VisualBounds<'a> {
 mod tests {
     use super::*;
     use crate::regression::xml_views::Reader;
+
+    #[test]
+    fn uniform_background_ignores_distant_width_boundaries_but_keeps_overrides() -> Result<()> {
+        let fill = Xf {
+            fill_id: Some(2),
+            has_visible_fill: true,
+            apply_fill: true,
+            ..Default::default()
+        };
+        let styles = [
+            Xf::default(),
+            fill.clone(),
+            fill,
+            Xf {
+                has_visible_border: true,
+                ..Default::default()
+            },
+        ];
+        for (extra, allowed, expected, right) in [
+            ("", true, true, 11),
+            (r#"<c r="AZ30" s="3"/>"#, true, true, 52),
+            ("", false, false, 0),
+            (r#"<row r="30" s="99" customFormat="1"/>"#, true, false, 0),
+        ] {
+            let xml = format!(
+                r#"<col min="1" max="256" width="9" style="1"/><col min="257" max="16384" width="15" style="2"/><c r="J20"/>{extra}"#
+            );
+            let mut bounds = VisualBounds::new(&styles);
+            let mut reader = Reader::<32>::new(xml.as_bytes())?;
+            while let Some(tag) = reader.next()? {
+                bounds.observe(tag)?;
+            }
+            assert_eq!(
+                bounds.finish_background_bands(
+                    &BTreeSet::from([2]),
+                    Rectangle::parse("A1:J20")?,
+                    allowed,
+                ),
+                expected
+            );
+            if expected {
+                assert_eq!(bounds.bounds.unwrap().right, right);
+                assert!(bounds.bounds.unwrap().bottom >= 20);
+            }
+        }
+        Ok(())
+    }
+
+    /// anbau-gartenbaugewaechse-2030224169005.xlsx, including sheet 1901.01.
+    /// Repeated width records outside A1:J166 inflated the live plan to 16,101
+    /// regions. Rebuilt XML partners must retain all cells but bound the background.
+    #[test]
+    #[ignore = "requires ANBAU_BACKGROUND_FIXTURE with retained rebuilt XLSX partners"]
+    fn retained_anbau_uniform_background_bounds_capture_selection() -> Result<()> {
+        use super::super::{
+            capture_layout, content_bounds::ContentBounds, layout_candidates,
+            xml_changes::{cell_candidates, Snapshot},
+        };
+        let root = std::path::PathBuf::from(std::env::var("ANBAU_BACKGROUND_FIXTURE")?);
+        let left = Snapshot::read(&root.join("OR-rebuilt.xlsx"))?;
+        let right = Snapshot::read(&root.join("SDR-rebuilt.xlsx"))?;
+        assert!(left.sheets["1901.01"].visual_bounds.unwrap().right < 20);
+        let mut bounds = ContentBounds::default();
+        bounds.include(&left);
+        bounds.include(&right);
+        let mut candidates = cell_candidates(&left.content_changes(&right)?.0);
+        layout_candidates::select(&left, &right, &bounds, &mut candidates)?;
+        let (selected, _) = bounds.select(&candidates)?;
+        let coalesced = capture_layout::coalesce(&selected)?;
+        assert_eq!(coalesced.len(), 164);
+        Ok(())
+    }
+
+    #[test]
+    fn distant_column_fill_transition_and_border_remain_relevant() -> Result<()> {
+        let styles = [
+            Xf::default(),
+            Xf {
+                fill_id: Some(2),
+                has_visible_fill: true,
+                apply_fill: true,
+                ..Default::default()
+            },
+            Xf {
+                has_visible_border: true,
+                ..Default::default()
+            },
+        ];
+        for (tail_style, sampled) in [(0, true), (2, false), (99, false)] {
+            let xml = format!(
+                r#"<col min="1" max="256" style="1"/><col min="257" max="16384" style="{tail_style}"/>"#
+            );
+            let mut bounds = VisualBounds::new(&styles);
+            let mut reader = Reader::<32>::new(xml.as_bytes())?;
+            while let Some(tag) = reader.next()? {
+                bounds.observe(tag)?;
+            }
+            assert_eq!(
+                bounds.finish_background_bands(
+                    &BTreeSet::from([2]),
+                    Rectangle::parse("A1:J20")?,
+                    true,
+                ),
+                sampled
+            );
+            if sampled {
+                assert!(bounds.bounds.unwrap().right >= 257);
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn background_bands_keep_finite_edges_overrides_and_unknown_style_fallback() -> Result<()> {
