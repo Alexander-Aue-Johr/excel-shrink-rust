@@ -88,6 +88,24 @@ publication also requires an asset-hosting decision before it can be linked
 from the manuscript. This scheduling checkpoint leaves the 3-by-3 delivery
 and later stages open.
 
+### QT/RR scheduling checkpoint on 2026-11-11 at 00:47 CET
+
+The two independent Inquire jobs each have a measured plan of 90,112
+regions. The first had written 15,926 images in 4,037 seconds since pair
+start. The second had written 2,012 in 851 seconds, including opening
+and planning. Their uncompressed working directories held 3.04 and
+0.40 GB of encoded PNGs. Extrapolating the sampled encoded bytes per
+image to 180,224 images per pair gives 34.35 and 35.68 GB before
+retained-package deduplication. This is a provisional disk planning
+estimate. It excludes XML audits, transient exports and changes in
+image size across later sheets.
+
+Do not schedule the larger cohort while the two captures and the
+stage-nine export compete for disk and time. Keep both frozen slots
+and distinguish their explicit reference controls from the unfinished
+ordinary outcomes. The second pair has insufficient steady-state
+timing to commit to completion before the manuscript review guard.
+
 ### Static-report checkpoint on 2026-11-10 evening
 
 The third combined preview contains 76 observations from 19 source reports.
