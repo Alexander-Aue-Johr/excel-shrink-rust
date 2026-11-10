@@ -119,6 +119,17 @@ class GraphRecoveryTests(unittest.TestCase):
                     recovery.main()
                 self.assertEqual(run.call_count, 1)
 
+    def test_response_read_retries_a_transient_file_lock(self):
+        path = mock.Mock()
+        path.exists.return_value = True
+        path.read_text.side_effect = [PermissionError("scanner lock"), '{"success": true}']
+        process = mock.Mock()
+        process.poll.return_value = None
+        with mock.patch.object(recovery, "check_resources"), mock.patch.object(recovery.time, "sleep"):
+            result = recovery.wait_for(path, process, Path("."), 5, 8)
+        self.assertTrue(result["success"])
+        self.assertEqual(path.read_text.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -41,7 +41,14 @@ def sha256(data):
 def write_json(path, value):
     temporary = path.with_suffix(".pending")
     temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    for attempt in range(50):
+        try:
+            temporary.replace(path)
+            return
+        except PermissionError:
+            if attempt == 49:
+                raise
+            time.sleep(0.1)
 
 
 def is_graph(data):
@@ -308,14 +315,20 @@ def check_resources(root, reserve_gib):
 
 def wait_for(path, process, root, timeout, reserve_gib):
     deadline = time.monotonic() + timeout
-    while not path.exists():
+    while True:
         check_resources(root, reserve_gib)
+        if path.exists():
+            try:
+                return json.loads(path.read_text())
+            except PermissionError:
+                # A scanner can briefly hold the atomically published response.
+                # Keep the same deadline and memory guard while waiting for it.
+                pass
         if process.poll() is not None:
             raise WorkerFailed(f"Graph worker exited with {process.returncode}")
         if time.monotonic() >= deadline:
             raise WorkerFailed(f"Graph recovery exceeded {timeout} seconds")
         time.sleep(0.2)
-    return json.loads(path.read_text())
 
 
 def stop_worker(process, session):
