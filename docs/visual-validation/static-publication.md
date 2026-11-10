@@ -93,6 +93,8 @@ The live Sheet Atlas reads bounded image receipts from the active comparison.
 Worker signal timelines put capture glyphs on the heartbeat line. Capture glyphs
 take visual precedence over nearby heartbeat pulses, while recorded heartbeat
 events remain intact. Clicking a glyph opens that receipt in the live Atlas.
+The selected spatial view stays pinned when later receipts evict older sheets
+from the bounded history. Enabling follow mode resumes the live sheet updates.
 The live view reuses the Atlas spatial renderer, shows available native states,
 and labels them as received captures without claiming a comparison verdict.
 Recent inspection retains at most 128 receipts per native state. Completed static

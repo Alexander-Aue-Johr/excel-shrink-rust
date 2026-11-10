@@ -92,11 +92,14 @@ async function refresh() {
       $('workbook').textContent = snapshot.workbook;
       const sheets = [...new Set(receipts.map(item => item.sheet))];
       const nextKey = JSON.stringify(sheets);
-      if (nextKey !== sheetKey) {
+      // A selected capture keeps its spatial view when the bounded live history
+      // advances to other sheets. Following explicitly resumes those updates.
+      const pinned = selected && !$('follow').checked;
+      if (nextKey !== sheetKey && !pinned) {
         sheetKey = nextKey;
         displayedContext = null;
         book = { id: run, name: snapshot.workbook, observations: [],
-          sheets: sheets.map(name => ({ id: name, name })) };
+          sheets: sheets.map((name, order) => ({ id: name, name, order, state: 'Live captures' })) };
         gallery.setBooks([book], new Set());
         $('sheets').replaceChildren(...sheets.map(name => {
           const option = document.createElement('option'); option.value = name; option.textContent = name; return option;
