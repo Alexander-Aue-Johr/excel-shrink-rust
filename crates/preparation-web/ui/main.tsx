@@ -56,6 +56,7 @@ function Observatory() {
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [stepHeight, setStepHeight] = useState(0.14);
   const cursor = useRef({ run: "", after: 0, status: "" });
   const initialized = useRef(false);
   const knownDefaults = useRef<Configuration | null>(null);
@@ -119,7 +120,7 @@ function Observatory() {
     () =>
       rendering
         ? buildWorkerScene(rendering.snapshot, rendering.run, {
-            stepHeight: update?.operation === "sheet-shrink" ? 0.14 : 0,
+            stepHeight: update?.operation === "sheet-shrink" ? stepHeight : 0,
             labelMode: "name",
             jobStyle: "blocks",
             windowSeconds:
@@ -132,7 +133,7 @@ function Observatory() {
               update?.operation === "sheet-shrink" ? "worksheet" : "workbook",
           })
         : null,
-    [rendering, selected],
+    [rendering, selected, stepHeight],
   );
   const distributions = useMemo(
     () =>
@@ -450,6 +451,21 @@ function Observatory() {
                     : "Parallel workbooks"}
                 </h2>
               </div>
+              {detailed && (
+                <label className="step-height-control">
+                  Step height
+                  <input
+                    aria-label="Workbook step height"
+                    type="range"
+                    min="0"
+                    max="0.3"
+                    step="0.001"
+                    value={stepHeight}
+                    onChange={(event) => setStepHeight(Number(event.target.value))}
+                  />
+                  <output>{stepHeight.toFixed(3)}</output>
+                </label>
+              )}
             </div>
             <SceneViewport
               scene={workerScene}
