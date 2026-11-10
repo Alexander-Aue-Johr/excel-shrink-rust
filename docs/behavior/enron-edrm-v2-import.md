@@ -112,3 +112,68 @@ and rebuild policy remain the existing versioned validation contract.
 The previous small Enron corpus was intentionally stopped by the user. Keep its
 prepared files and raw results as historical evidence. It is not the complete
 v2 extraction and is not automatically resumed while this replacement is prepared.
+
+## Microsoft Graph postprocessing
+
+Some extracted candidates are Microsoft Graph OLE objects with CLSID
+`00020803-0000-0000-C000-000000000046`. Excel rejects these as chart gallery files.
+`tools/recover_graph_workbooks.py` identifies this class from the OLE root entry
+and runs a separate, resumable data-recovery stage using desktop PowerPoint.
+The original candidate inventory and occurrence ledger remain the inputs to
+this stage. Its outputs have their own `microsoft-graph-derived-data` inventory.
+
+Run download, recursive extraction and Graph recovery through the same wrapper
+using the preserved extraction modules from the handover artifact:
+
+```powershell
+python tools/recover_graph_workbooks.py `
+  --pipeline <handover>/scripts/pipeline `
+  --source-url https://archive.org/details/edrm.enron.email.data.set.v2.xml `
+  --seven-zip <path-to-7z.exe> `
+  --extraction-workspace <new-or-resumable-extraction-workspace> `
+  --output <separate-graph-output>
+```
+
+For an existing extraction workspace, omit `--pipeline`, `--source-url` and
+`--seven-zip`. For an imported candidate ZIP, use `--candidates <candidates.zip>`
+instead of `--extraction-workspace`. Both routes use the same recovery worker.
+The frozen handover scripts do not need to be modified. The ordinary web-profile
+download entry remains disabled as described above. This wrapper is the explicit
+download/extraction/postprocessing entry point.
+
+The worker generates a blank PowerPoint carrier and embeds exactly one original
+Graph payload. Its original presentation is unnecessary. A warm PowerPoint
+process converts successive objects. A compiled C# UI Automation monitor handles
+only the English chart-conversion question in that process. The worker extracts
+the single generated XLSX, validates its ZIP CRC and workbook part, and records
+the source hash, output hash, Office version, recipe hashes and duration.
+
+These XLSX files contain the recovered chart data. The modern chart resides in
+the temporary PowerPoint carrier. The recovery does not establish visual
+equivalence, retain an original workbook layout, or automatically add these
+derived files to a previously frozen workbook evaluation cohort.
+
+Windows desktop PowerPoint, Python, olefile, pywin32 and psutil are required.
+Use an otherwise unused interactive PowerPoint session. Opening PowerPoint for
+other work during recovery would break this isolation. The worker activates its
+carrier window and sends window-scoped double-click messages. Macros are disabled
+for its COM application. Other security or repair prompts remain unanswered.
+RAM and system commit reserves default to 8 GiB each, with an 8 GiB output-drive
+reserve. A deadline stops an unresponsive worker using its recorded PID and
+creation time. It refuses to attach to a pre-existing PowerPoint process.
+
+Verified successful outputs are reused after a restart. Failed receipts require
+`--retry-failed` for another attempt, with the previous receipt retained. Put
+`stop.request` in the output directory to stop the controller. Remove it before
+resuming. `--limit` bounds new attempts for a pilot. `status.json` reports the
+controller state and `derived-workbooks.json` inventories the recovered data.
+
+On 2026-11-10, five different real Graph objects converted in one warm PowerPoint
+16.0 process. A repeat reused all five verified outputs without starting
+PowerPoint. The first object was independently traced to slide 29 of its parent
+presentation, “Evolution of the generation mix”. Its recovered worksheet contains
+Hidraulica 0.40, Nuclear 0.19 and Térmica 0.41, matching the earlier manual
+PowerPoint conversion. A larger pilot recovered 14 distinct objects. An initial
+UI Automation race raised `ElementNotAvailableException` when a dialog closed
+during enumeration. The monitor now re-enumerates after that specific exception.
+These bounded tests do not reproduce the multi-day source download/extraction.
