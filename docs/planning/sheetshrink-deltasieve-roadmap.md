@@ -22,6 +22,35 @@ processor reports, stable links into Sheet Atlas and detail views, and explicit
 rendering-variation, unexplained-difference and failed/unavailable categories.
 Existing merge support alone does not prove this cross-tool presentation works.
 
+The static website is a required deliverable independent of the title figure.
+Prepare a self-contained GitHub Pages publication directory for each completed
+stage, including locally supplied viewer assets, compressed report data, retained
+images, functioning cross-tool navigation and explicit coverage limits. Verify
+it over static HTTP without a running validation API. Keep a stable relative
+directory for the selected publication stage. Prepare a manuscript link adjacent
+to the opening figure so reviewers can open the interactive report represented
+by the screenshot. Check publication metadata and package size before calling
+the directory ready for public hosting. Public deployment and a working final
+URL remain separate acceptance checks.
+
+The user-specified submission deadline is 2026-11-12 at 02:00 Europe/Berlin
+(2026-11-12 at 01:00 UTC). The default order is the first 3-by-3 report, progressive
+expansion toward 7-by-7 and its figure/site, then the agreed DeltaSieve evaluation.
+Evaluation and final manuscript review are required for submission. At every
+completed stage, use measured elapsed times, remaining work and unresolved slow
+cases to decide whether the next stage fits. Do not extrapolate from file count
+alone or silently discard failed/slow inputs. If the next expansion risks the
+deadline, freeze the latest completed 3-, 4-, 5- or 6-by-6 stage and move evaluation
+ahead of further expansion. Keep 7-by-7 as a subsequent objective.
+
+As an initial scheduling guard, reserve ten hours before the deadline for the
+evaluation, manuscript checks, PDF verification and submission buffer. Reassess
+this reserve against the actual evaluation workload. Start that work no later
+than 2026-11-11 at 16:00 Europe/Berlin, even if 7-by-7 remains unfinished. An
+earlier stage-boundary forecast may bring it forward. This is a working planning
+decision, not a claim that the evaluation has already been completed or will
+necessarily take ten hours.
+
 The requested first-page illustration combines the real merged workbook-tile
 overview with a legible zoom of a measured cross-tool example. Use an example
 where the evidence actually supports the caption. A SheetShrink-only preservation
