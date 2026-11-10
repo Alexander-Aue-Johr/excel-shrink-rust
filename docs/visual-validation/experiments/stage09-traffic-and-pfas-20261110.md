@@ -409,3 +409,14 @@ not provide an eligible comparison baseline under this opening policy.
 
 - Reconverted pair receipt `96b88e38951c92062858e6380e46f3a3284f561cc71208bba936dcb1bfdaf93c`
 - Reconverted input-only control receipt `220509880d601f9353a72ee02f53029fca95ece10ec7102251efa704e6d82dee`
+
+The independent QT/RR 2015b Inquire attempt produced the same
+90,112-rectangle plan as the first QT/RR workbook. Both recorded plan
+indexes have SHA-256
+`b517482415fd8e730fa7ef137c46ba6c3653ea7a1aca15f3a4f019b50d898e08`.
+The pre-grid inputs match byte-for-byte as well. In a live snapshot,
+all 453 original-side and 454 candidate-side PNGs already written by
+2015b matched the SHA-256 of their namesakes in the earlier run.
+The workbooks retain distinct identities and incomplete observations.
+This sample supports storage deduplication for verified matching bytes.
+It supplies no basis for skipping the remaining native captures.
