@@ -80,7 +80,7 @@ is unresolved.
    output identities. Volatile formulas or small pixel counts alone do not
    authorize suppression.
 3. Then validate the external NXPowerLite and XLStyles outputs announced by
-   LAPTOP-H86KBIH3 in the private SSH handover. Its index lists 600 combinations,
+   the external preparation host in the private SSH handover. Its index lists 600 combinations,
    564 available outputs and 36 missing outputs. All 600 declared input hashes
    match the frozen top-100 selections. Transfer and independently verify output
    hashes before comparison. Investigate unnecessary captures and full-grid
