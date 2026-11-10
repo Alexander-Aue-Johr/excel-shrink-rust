@@ -706,6 +706,7 @@ async fn report_asset(
             Some("js") => "text/javascript; charset=utf-8",
             Some("css") => "text/css; charset=utf-8",
             Some("json") => "application/json",
+            Some("gz") => "application/gzip",
             Some("png") => "image/png",
             Some("jpg" | "jpeg") => "image/jpeg",
             Some("log" | "txt") => "text/plain; charset=utf-8",
@@ -731,6 +732,47 @@ async fn report_asset(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn report_assets_serve_compressed_atlas_data_without_exposing_workbooks() -> Result<()> {
+        use std::io::Write;
+        let root = std::env::temp_dir().join(format!("atlas-http-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("atlas-data"))?;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(br#"{"schema":1,"books":[]}"#)?;
+        let encoded = encoder.finish()?;
+        fs::write(root.join("atlas-data/catalog.json.gz"), &encoded)?;
+        fs::write(root.join("original.xlsx"), b"private workbook")?;
+        let room = Arc::new(Room {
+            application: Application::DeltaSieve,
+            port: 1234,
+            token: "test".into(),
+            config: Mutex::new(RunConfig::default()),
+            progress: Arc::new(Mutex::new(LiveProgress::default())),
+            active: AtomicBool::new(false),
+            report: Mutex::new(None),
+            reports: Mutex::new(BTreeMap::from([("test".into(), root.clone())])),
+            picker: Mutex::new(()),
+            study: Mutex::new(None),
+            study_defaults: crate::validation_study::Configuration::default(),
+            preparation_job: Mutex::new(None),
+            corpus_job: Mutex::new(None),
+        });
+        let response = report_asset(
+            State(room.clone()),
+            RoutePath(("test".into(), "atlas-data/catalog.json.gz".into())),
+        ).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/gzip");
+        let body = axum::body::to_bytes(response.into_body(), 1024).await?;
+        assert_eq!(body.as_ref(), encoded.as_slice());
+        let response = report_asset(
+            State(room), RoutePath(("test".into(), "original.xlsx".into())),
+        ).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[tokio::test]
     async fn workbook_pages_filter_the_index_while_status_polling_stays_bounded() {
