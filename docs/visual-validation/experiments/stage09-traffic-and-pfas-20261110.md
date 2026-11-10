@@ -292,3 +292,22 @@ of the rest of the blank body or justify pruning the current plan.
 
 Native receipt SHA-256
 `f9a66dd439bedc52db9526d11b28233ad78a717b0b2be3b6b322c2a0f7531180`.
+
+## Data.gov NXPowerLite observations under policy v15
+
+PFAS completed 18 worksheet regions per side with no recorded visual
+differences in those regions. QT/RR pair `4f6a5ec3f215137b2ef2a5c2`
+completed with zero worksheet and chart captures. Neither result supplies
+coverage of the separate Inquire findings at those workbooks.
+
+LCCA pair `b7bddcbbcfce1e56d956df71` reported nine geometry differences.
+In every case both widths were zero, both images absent, and heights
+2000.25 and 1827 points. The five retained worksheet pairs and 27 chart
+pairs had no recorded differences. These nine entries are nonvisual
+geometry observations under the interpretation verified in v16, while
+the original v15 verdicts remain intact. A native v16 run for this
+NXPowerLite candidate has not been measured.
+
+- PFAS report `f2860a56d712b5199ef75aa5d83d00bcd8208876b6978274d55c5b9246b8f98c`
+- QT/RR report `e8dc4d011e283534e3fe1d78aa1e398e5d3fa0eb1a1cffc49c052fbf492a8b0c`
+- LCCA report `9fba7cceb7c6e78521db3293657a4b77e30038a6476df02ad0b1de8ad250a1b6`
