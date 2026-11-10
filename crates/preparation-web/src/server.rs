@@ -16,7 +16,8 @@ use excel_automation::{context::RunContext, conversion, pool::performance};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, HashSet, VecDeque},
+    io::{BufRead, BufReader},
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -339,6 +340,7 @@ fn serve_inner(
                     }),
                 )
                 .route("/api/state", get(state))
+                .route("/api/atlas", get(atlas))
                 .route("/api/start", post(start))
                 .route("/api/stop", post(stop))
                 .route("/api/workers", post(workers))
@@ -402,6 +404,112 @@ async fn index(State(app): State<App>) -> Response {
 struct Cursor {
     run: Option<String>,
     after: Option<u64>,
+}
+
+#[derive(Default, Deserialize)]
+struct AtlasQuery {
+    run: String,
+    #[serde(default)]
+    page: usize,
+    page_size: Option<usize>,
+}
+
+// Read the durable history on demand. Ordinary status polling keeps its bounded
+// history, and only the requested atlas page enters the browser.
+fn atlas_page(defaults: Defaults, query: AtlasQuery) -> Result<Value> {
+    let page_size = query.page_size.unwrap_or(7).clamp(1, 24);
+    let Some(output) = defaults.output.as_ref() else {
+        return Ok(json!({"run_id": query.run, "total": 0, "page": 0, "jobs": []}));
+    };
+    let mut log_name = output.as_os_str().to_os_string();
+    log_name.push(".events.jsonl");
+    let log_path = PathBuf::from(log_name);
+    if !log_path.exists() {
+        return Ok(json!({"run_id": query.run, "total": 0, "page": 0, "jobs": []}));
+    }
+    let mut sizes = HashMap::new();
+    for line in BufReader::new(std::fs::File::open(&log_path)?).split(b'\n') {
+        let line = line?;
+        // A writer may currently be appending its final line.
+        let event = match serde_json::from_slice::<Event>(&line) {
+            Ok(event) => event,
+            Err(error) if error.is_eof() => continue,
+            Err(error) => return Err(error).context("Read atlas event history"),
+        };
+        let Some(id) = event.workbook_id else {
+            continue;
+        };
+        match event.event_type.as_str() {
+            "job.started" => {
+                sizes.entry(id).or_insert(0);
+            }
+            "workbook.metadata" => {
+                sizes.insert(
+                    id,
+                    event.payload["package"]["uncompressed_payload_bytes"]
+                        .as_u64()
+                        .unwrap_or(0),
+                );
+            }
+            "job.completed" => {
+                if let Some(bytes) = event.payload["archive_sizes"]["before_optimization"]
+                    ["uncompressed_payload_bytes"]
+                    .as_u64()
+                {
+                    sizes.insert(id, bytes);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut ranked: Vec<_> = sizes.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let total = ranked.len();
+    let page = query.page.min(total.saturating_sub(1) / page_size);
+    let ids: HashSet<_> = ranked
+        .iter()
+        .skip(page * page_size)
+        .take(page_size)
+        .map(|(id, _)| id.clone())
+        .collect();
+    let mut history = RunState::new(defaults);
+    for line in BufReader::new(std::fs::File::open(&log_path)?).split(b'\n') {
+        let line = line?;
+        let event = match serde_json::from_slice::<Event>(&line) {
+            Ok(event) => event,
+            Err(error) if error.is_eof() => continue,
+            Err(error) => return Err(error).context("Read atlas event history"),
+        };
+        if event
+            .workbook_id
+            .as_ref()
+            .is_some_and(|id| ids.contains(id))
+            && matches!(
+                event.event_type.as_str(),
+                "job.started" | "workbook.metadata" | "job.completed" | "job.failed"
+            )
+        {
+            history.accept(&event);
+        }
+    }
+    let mut jobs: Vec<_> = history.jobs.into_iter().collect();
+    jobs.sort_by_key(|job| ranked.iter().position(|(id, _)| id == &job.id));
+    Ok(json!({"run_id": query.run, "total": total, "page": page, "jobs": jobs}))
+}
+
+async fn atlas(State(app): State<App>, Query(query): Query<AtlasQuery>) -> Response {
+    let defaults = {
+        let run = app.run.lock().unwrap();
+        if query.run != run.id {
+            return rejected("The run has changed. Refresh the atlas");
+        }
+        run.defaults.clone()
+    };
+    match tokio::task::spawn_blocking(move || atlas_page(defaults, query)).await {
+        Ok(Ok(page)) => ([(header::CACHE_CONTROL, "no-store")], Json(page)).into_response(),
+        Ok(Err(error)) => rejected(error),
+        Err(error) => rejected(error),
+    }
 }
 
 async fn state(State(app): State<App>, Query(cursor): Query<Cursor>) -> Response {
@@ -706,6 +814,53 @@ mod tests {
             worker_index: Some(0),
             payload: json!({"name": id}),
         }
+    }
+
+    #[test]
+    fn atlas_pages_include_jobs_evicted_from_live_history() {
+        use std::io::Write;
+        let directory = std::env::temp_dir().join(format!("atlas-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let output = directory.join("result");
+        let mut log = std::fs::File::create(directory.join("result.events.jsonl")).unwrap();
+        for index in 0..300 {
+            let id = format!("book-{index:03}");
+            let start = event(index * 2, "job.started", &id);
+            writeln!(log, "{}", serde_json::to_string(&start).unwrap()).unwrap();
+            let mut metadata = event(index * 2 + 1, "workbook.metadata", &id);
+            metadata.payload = json!({"package": {"file_bytes": 1000, "compressed_payload_bytes": 900, "uncompressed_payload_bytes": 300 - index, "worksheets": []}});
+            writeln!(log, "{}", serde_json::to_string(&metadata).unwrap()).unwrap();
+        }
+        drop(log);
+        let app = app();
+        let mut defaults = app.run.lock().unwrap().defaults.clone();
+        defaults.output = Some(output);
+        let page = atlas_page(
+            defaults.clone(),
+            AtlasQuery {
+                run: "test".into(),
+                page: 0,
+                page_size: Some(7),
+            },
+        )
+        .unwrap();
+        assert_eq!(page["total"], 300);
+        assert_eq!(page["jobs"].as_array().unwrap().len(), 7);
+        assert_eq!(page["jobs"][0]["id"], "book-000");
+        let last = atlas_page(
+            defaults,
+            AtlasQuery {
+                run: "test".into(),
+                page: usize::MAX,
+                page_size: Some(7),
+            },
+        )
+        .unwrap();
+        assert_eq!(last["page"], 42);
+        assert_eq!(last["jobs"].as_array().unwrap().len(), 6);
+        assert_eq!(last["jobs"][5]["id"], "book-299");
+        std::fs::remove_file(directory.join("result.events.jsonl")).unwrap();
+        std::fs::remove_dir(directory).unwrap();
     }
 
     #[test]

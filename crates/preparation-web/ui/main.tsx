@@ -57,6 +57,18 @@ function Observatory() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [stepHeight, setStepHeight] = useState(0.14);
+  const [atlasView, setAtlasView] = useState<"three" | "seven" | "all">(
+    "three",
+  );
+  const [atlasPageSize, setAtlasPageSize] = useState(7);
+  const [atlasPage, setAtlasPage] = useState(0);
+  const [atlasHistory, setAtlasHistory] = useState<{
+    run_id: string;
+    total: number;
+    page: number;
+    jobs: Job[];
+  } | null>(null);
+  const [atlasError, setAtlasError] = useState("");
   const cursor = useRef({ run: "", after: 0, status: "" });
   const initialized = useRef(false);
   const knownDefaults = useRef<Configuration | null>(null);
@@ -112,6 +124,41 @@ function Observatory() {
     };
   }, []);
 
+  useEffect(() => {
+    setAtlasPage(0);
+    setAtlasHistory(null);
+  }, [update?.run_id]);
+
+  useEffect(() => {
+    if (atlasView !== "all" || !update) return;
+    const controller = new AbortController();
+    let timer = 0;
+    async function load() {
+      try {
+        const response = await fetch(
+          `/api/atlas?run=${encodeURIComponent(update!.run_id)}&page=${atlasPage}&page_size=${atlasPageSize}`,
+          { signal: controller.signal },
+        );
+        const page = await response.json();
+        if (!response.ok)
+          throw new Error(page.error ?? `Atlas HTTP ${response.status}`);
+        if (!controller.signal.aborted) {
+          setAtlasHistory(page);
+          setAtlasError("");
+        }
+      } catch (failure) {
+        if (!controller.signal.aborted) setAtlasError(String(failure));
+      }
+      if (!controller.signal.aborted && activeStates.has(update!.status))
+        timer = window.setTimeout(load, 5000);
+    }
+    void load();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [atlasView, atlasPage, atlasPageSize, update?.run_id, update?.status]);
+
   const rendering = useMemo(
     () => (update ? scenes(update, jobs, tasks) : null),
     [update, jobs, tasks],
@@ -158,16 +205,29 @@ function Observatory() {
   const atlas = useMemo(
     () =>
       rendering
-        ? buildWorkbookScene(atlasSnapshot(rendering.snapshot, jobs), {
-            resultStyle: "split",
-            labelMode: "name",
-            view: "recent",
-            sort: "time",
-            recentCount: 3,
-            selectedWorkbookId: selected,
-          })
+        ? buildWorkbookScene(
+            atlasView === "all"
+              ? atlasSnapshot(
+                  scenes(
+                    update!,
+                    atlasHistory?.run_id === update!.run_id
+                      ? atlasHistory.jobs
+                      : [],
+                  ).snapshot,
+                  atlasHistory?.jobs ?? [],
+                )
+              : atlasSnapshot(rendering.snapshot, jobs),
+            {
+              resultStyle: "split",
+              labelMode: "name",
+              view: atlasView === "all" ? "all" : "recent",
+              sort: atlasView === "all" ? "size" : "time",
+              recentCount: atlasView === "seven" ? 7 : 3,
+              selectedWorkbookId: selected,
+            },
+          )
         : null,
-    [rendering, selected, jobs],
+    [rendering, selected, jobs, atlasView, atlasHistory],
   );
 
   if (!update || !config || !rendering || !workerScene || !distributions)
@@ -530,10 +590,76 @@ function Observatory() {
             <div className="panel-header">
               <h2>Workbook-Atlas</h2>
               <span>
-                Three most recent workbooks · uncompressed ZIP bytes · original
-                and output
+                Uncompressed ZIP bytes · original and output
+                {atlasView === "all" && " · largest original workbooks first"}
               </span>
             </div>
+            <div className="atlas-controls">
+              <button
+                aria-pressed={atlasView === "three"}
+                onClick={() => setAtlasView("three")}
+              >
+                Latest 3
+              </button>
+              <button
+                aria-pressed={atlasView === "seven"}
+                onClick={() => setAtlasView("seven")}
+              >
+                Latest 7
+              </button>
+              <button
+                aria-pressed={atlasView === "all"}
+                onClick={() => setAtlasView("all")}
+              >
+                All by size
+              </button>
+              {atlasView === "all" && (
+                <>
+                  <label>
+                    Workbooks per page{" "}
+                    <input
+                      aria-label="Workbooks per page"
+                      type="range"
+                      min="1"
+                      max="24"
+                      step="1"
+                      value={atlasPageSize}
+                      onChange={(event) => {
+                        setAtlasPageSize(Number(event.target.value));
+                        setAtlasPage(0);
+                      }}
+                    />
+                    <output>{atlasPageSize}</output>
+                  </label>
+                  <button
+                    disabled={atlasPage === 0}
+                    onClick={() => setAtlasPage((page) => page - 1)}
+                  >
+                    Previous page
+                  </button>
+                  <span>
+                    Page {(atlasHistory?.page ?? atlasPage) + 1} /{" "}
+                    {Math.max(
+                      1,
+                      Math.ceil((atlasHistory?.total ?? 0) / atlasPageSize),
+                    )}{" "}
+                    · {atlasHistory?.total ?? 0} workbooks
+                  </span>
+                  <button
+                    disabled={
+                      !atlasHistory ||
+                      (atlasPage + 1) * atlasPageSize >= atlasHistory.total
+                    }
+                    onClick={() => setAtlasPage((page) => page + 1)}
+                  >
+                    Next page
+                  </button>
+                </>
+              )}
+            </div>
+            {atlasView === "all" && atlasError && (
+              <p role="alert">{atlasError}</p>
+            )}
             <SceneViewport
               scene={atlas}
               renderer="auto"

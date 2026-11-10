@@ -1,3 +1,21 @@
+.atlas-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+}
+
+.atlas-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.atlas-controls button[aria-pressed="true"] {
+  border-color: var(--mint);
+}
+
 .step-height-control {
   display: flex;
   align-items: center;

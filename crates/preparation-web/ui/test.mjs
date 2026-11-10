@@ -181,3 +181,39 @@ test("SheetShrink projects real chunk workers, submillisecond times and consiste
   assert.equal(atlasSnapshot(snapshot, jobs).workbooks[0].originalBytes, 2000);
   assert.equal(snapshot.workbooks[0].originalBytes, 20);
 });
+
+test("atlas supports seven recent workbooks and descending size order", async () => {
+  const bundled = await build({
+    entryPoints: ["lib/workbook-scene.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { getAtlasBooks } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].contents).toString("base64")}`
+  );
+  const snapshot = {
+    time: 100,
+    workbooks: Array.from({ length: 10 }, (_, index) => ({
+      id: String(index),
+      index,
+      startAt: index,
+      originalBytes: 10 - index,
+    })),
+  };
+  assert.deepEqual(
+    getAtlasBooks(snapshot, {
+      view: "recent",
+      sort: "time",
+      recentCount: 7,
+    }).map((book) => book.id),
+    ["3", "4", "5", "6", "7", "8", "9"],
+  );
+  assert.deepEqual(
+    getAtlasBooks(snapshot, { view: "all", sort: "size" }).map(
+      (book) => book.id,
+    ),
+    ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+  );
+});

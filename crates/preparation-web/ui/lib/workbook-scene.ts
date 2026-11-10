@@ -18,7 +18,7 @@ import {
 } from "./scene";
 
 export type AtlasView = "recent" | "all";
-export type AtlasSort = "time" | "reduction";
+export type AtlasSort = "time" | "reduction" | "size";
 export interface AtlasSelectionOptions {
   view: AtlasView;
   sort: AtlasSort;
@@ -85,6 +85,13 @@ export function getAtlasBooks(
         return left === right ? chronological(a, b) : left === null ? 1 : -1;
       return right - left || chronological(a, b);
     });
+  }
+  if (options.sort === "size") {
+    books.sort(
+      (a, b) =>
+        (b.originalBytes ?? 0) - (a.originalBytes ?? 0) ||
+        a.id.localeCompare(b.id),
+    );
   }
   return books;
 }
