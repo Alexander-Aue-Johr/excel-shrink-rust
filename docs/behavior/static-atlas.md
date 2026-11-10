@@ -26,6 +26,10 @@ Add presentation labels to a normal run configuration.
 These fields accompany the existing configuration. Each processor and version
 still has an independent run, input identity, environment and comparison policy.
 Selecting variants changes the displayed findings without rerunning comparisons.
+The workbook overview uses square layouts for 9, 16, 25, 36 and 49 workbooks,
+with three through seven columns. The count determines the layout, independently
+of whether an observation contains differences. All workbook and sheet slots
+remain present.
 Original open/save/rebuild control comparisons stay in the detailed report.
 Atlas processor markings use Original-versus-candidate comparisons (`O`/`OR`
 against `SD`/`SDR`). They do not attribute an Original control's drift to a cleaner.

@@ -7,7 +7,7 @@ const CARD_HEIGHT = .7;
 const GAP = .12;
 
 export function bookLayout(books) {
-  const columns = Math.max(1, Math.min(3, Math.ceil(Math.sqrt(books.length))));
+  const columns = Math.max(1, Math.min(7, Math.ceil(Math.sqrt(books.length))));
   const layouts = books.map(book => {
     const sheetColumns = Math.max(1, Math.ceil(Math.sqrt(book.sheets.length * 1.5)));
     const rows = Math.max(1, Math.ceil(book.sheets.length / sheetColumns));

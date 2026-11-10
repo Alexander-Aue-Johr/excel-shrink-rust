@@ -43,6 +43,20 @@ test('static report paths cannot escape the exported directory', () => {
   assert.throws(() => assetUrl('../outside.json.gz'), /escapes/);
 });
 
+test('report stages use square workbook grids from three through seven columns', () => {
+  for (const side of [3, 4, 5, 6, 7]) {
+    const books = Array.from({ length: side * side }, (_, id) => ({
+      id,
+      sheets: [{ name: 'Sheet1' }],
+    }));
+    const { layouts } = bookLayout(books);
+    assert.equal(layouts.length, side * side);
+    assert.equal(new Set(layouts.map(item => item.x)).size, side);
+    assert.equal(new Set(layouts.map(item => item.y)).size, side);
+    assert.equal(new Set(layouts.map(item => `${item.x},${item.y}`)).size, side * side);
+  }
+});
+
 test('worksheet names cannot resolve inherited JavaScript object properties', () => {
   assert.equal(sheetSummary({ sheets: {} }, 'constructor'), undefined);
   const sheets = JSON.parse('{"__proto__":{"differences":2}}');
