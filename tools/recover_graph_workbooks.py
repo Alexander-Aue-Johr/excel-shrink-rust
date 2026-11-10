@@ -223,13 +223,21 @@ def worker(root):
                                 if "carrier.pptx" in win32gui.GetWindowText(handle)]
                 if len(main_windows) != 1:
                     raise RuntimeError("Cannot identify the carrier window")
-                win32gui.SetForegroundWindow(main_windows[0])
                 for pane in window.Panes:
                     if pane.ViewType == 1:
                         pane.Activate()
                 point = (int(window.PointsToScreenPixelsX(shape.Left + shape.Width / 2)),
                          int(window.PointsToScreenPixelsY(shape.Top + shape.Height / 2)))
-                handle = win32gui.WindowFromPoint(point)
+                handle = main_windows[0]
+                # Resolve the slide's child window inside our own hierarchy.
+                # Global WindowFromPoint would hit another app covering it.
+                while True:
+                    child = win32gui.ChildWindowFromPointEx(
+                        handle, win32gui.ScreenToClient(handle, point),
+                        win32con.CWP_SKIPINVISIBLE | win32con.CWP_SKIPDISABLED)
+                    if not child or child == handle:
+                        break
+                    handle = child
                 if win32process.GetWindowThreadProcessId(handle)[1] != pid:
                     raise RuntimeError("Graph window is obscured; no input sent")
                 x, y = win32gui.ScreenToClient(handle, point)
@@ -434,10 +442,11 @@ def run_locked(args, root):
                     if receipt.get("success"):
                         if sha256((directory / "data.xlsx").read_bytes()) != receipt["xlsx_sha256"]:
                             raise ValueError(f"Recovered XLSX checksum changed: {identity}")
-                    elif not args.retry_failed:
-                        continue
-                    else:
+                    elif args.retry_failed or any(
+                            text in receipt.get("error", "") for text in args.retry_error_containing):
                         receipt = None
+                    else:
+                        continue
                     if receipt is not None:
                         continue
                 if args.limit and count >= args.limit:
@@ -530,6 +539,8 @@ def main():
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--reserve-gib", type=float, default=8)
     parser.add_argument("--retry-failed", action="store_true")
+    parser.add_argument("--retry-error-containing", action="append", default=[],
+                        help="Retry only failed receipts containing this text; repeatable")
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker:

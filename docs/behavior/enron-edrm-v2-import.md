@@ -156,15 +156,17 @@ derived files to a previously frozen workbook evaluation cohort.
 Windows desktop PowerPoint, Python, olefile, pywin32 and psutil are required.
 Use an otherwise unused interactive PowerPoint session. Opening PowerPoint for
 other work during recovery would break this isolation. The worker activates its
-carrier window and sends window-scoped double-click messages. Macros are disabled
+carrier window and sends window-scoped double-click messages through its own
+child-window hierarchy, without requesting a Windows foreground switch. Macros are disabled
 for its COM application. Other security or repair prompts remain unanswered.
 RAM and system commit reserves default to 8 GiB each, with an 8 GiB output-drive
 reserve. A deadline stops an unresponsive worker using its recorded PID and
 creation time. It refuses to attach to a pre-existing PowerPoint process.
 
 Verified successful outputs are reused after a restart. Failed receipts require
-`--retry-failed` for another attempt, with the previous receipt retained. Put
-`stop.request` in the output directory to stop the controller. Remove it before
+`--retry-failed` for another attempt, with the previous receipt retained.
+`--retry-error-containing <text>` restricts retries to matching operational errors.
+Put `stop.request` in the output directory to stop the controller. Remove it before
 resuming. `--limit` bounds new attempts for a pilot. `status.json` reports the
 controller state and `derived-workbooks.json` inventories the recovered data and
 failed objects. An unbounded run restarts its owned worker after a durable
