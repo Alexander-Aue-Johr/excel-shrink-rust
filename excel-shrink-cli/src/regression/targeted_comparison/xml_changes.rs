@@ -444,12 +444,21 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     let mut sheet_views_supported = true;
     streaming_xml::scan_with_offsets(archive.by_name(part)?, |event| {
         if let Event::Tag(tag) = &event {
+            let filter_bounds = if standard_namespace {
+                bounded_empty_auto_filter(*tag)?
+            } else {
+                None
+            };
+            if let Some(area) = filter_bounds {
+                visual.include_rectangle(area.top, area.left, area.bottom, area.right);
+            }
             if let Some(reason) = super::execution_plan::worksheet_blocker(*tag) {
                 // Known drawing anchors already contribute to bottom/right. Their
                 // presence does not give a uniform background a finite sheet edge.
                 if reason != "worksheet formula"
                     && !(tag.name == b"drawing" && drawings_bounded)
                     && !(tag.name == b"conditionalFormatting" && tag.depth == 1)
+                    && filter_bounds.is_none()
                 {
                     uniform_background_supported = false;
                 }
@@ -719,6 +728,33 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
         model.right = model.right.max(bounds.right);
     }
     Ok(model)
+}
+
+/// A filter without criteria adds buttons within its explicit rectangle.
+/// Filter children, extensions and unfamiliar attributes keep the existing fallback.
+fn bounded_empty_auto_filter(
+    tag: crate::regression::xml_views::Tag<'_>,
+) -> Result<Option<super::content_bounds::Rectangle>> {
+    if tag.name != b"autoFilter" || tag.depth != 1 || tag.kind != Kind::Empty {
+        return Ok(None);
+    }
+    for attribute in Attributes::new(tag.attrs) {
+        let (name, _) = attribute?;
+        if !matches!(name, b"ref" | b"xr:uid") {
+            return Ok(None);
+        }
+    }
+    let Some(reference) = tag.attr(b"ref")? else {
+        return Ok(None);
+    };
+    let Some(area) = std::str::from_utf8(reference)
+        .ok()
+        .and_then(|address| super::content_bounds::Rectangle::parse(address).ok())
+    else {
+        return Ok(None);
+    };
+    Ok((area.top > 0 && area.left > 0 && area.bottom <= 1_048_576 && area.right <= 16_384)
+        .then_some(area))
 }
 
 /// Audit CF eligibility through the production namespace scanner without indexing worksheet cells.
@@ -1028,6 +1064,21 @@ mod tests {
                 r#"<sheetViews><sheetView workbookViewId="0"/></sheetViews>"#,
                 "",
                 true,
+            ),
+            (
+                r#"<sheetViews><sheetView workbookViewId="0"/></sheetViews>"#,
+                r#"<autoFilter ref="A3:O19" xr:uid="{test}"/>"#,
+                true,
+            ),
+            (
+                r#"<sheetViews><sheetView workbookViewId="0"/></sheetViews>"#,
+                r#"<autoFilter ref="A3:O19"><filterColumn colId="1"><filters><filter val="x"/></filters></filterColumn></autoFilter>"#,
+                false,
+            ),
+            (
+                r#"<sheetViews><sheetView workbookViewId="0"/></sheetViews>"#,
+                r#"<autoFilter ref="A3:O19" unknown="1"/>"#,
+                false,
             ),
             (
                 r#"<sheetViews><sheetView showGridLines="0" workbookViewId="0"/><sheetView showGridLines="1" workbookViewId="1"/></sheetViews>"#,
