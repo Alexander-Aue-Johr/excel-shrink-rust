@@ -24,10 +24,9 @@ pub struct MemoryReserve {
 }
 
 impl MemoryReserve {
-    /// Preserve the existing 512 MiB floor, including for older zero-valued controls.
+    /// Honor an explicit positive reserve. Legacy zero-valued controls retain 512 MiB.
     pub fn from_mib(mib: u64) -> Result<Self> {
-        let bytes = mib
-            .max(512)
+        let bytes = (if mib == 0 { 512 } else { mib })
             .checked_mul(MIB)
             .context("Memory reserve overflow")?;
         Ok(Self { bytes })
@@ -126,5 +125,14 @@ mod tests {
         );
         assert_eq!(MemoryReserve::from_mib(0).unwrap().bytes, 512 * MIB);
         assert!(MemoryReserve::from_mib(u64::MAX).is_err());
+    }
+
+    #[test]
+    fn explicit_small_reserves_check_both_physical_and_commit_headroom() {
+        let reserve = MemoryReserve::from_mib(265).unwrap();
+        assert_eq!(reserve.bytes, 265 * MIB);
+        assert!(reserve.ensure_available(memory(265, 265, 8192)).is_ok());
+        assert!(reserve.ensure_available(memory(264, 1024, 8192)).is_err());
+        assert!(reserve.ensure_available(memory(1024, 264, 8192)).is_err());
     }
 }
