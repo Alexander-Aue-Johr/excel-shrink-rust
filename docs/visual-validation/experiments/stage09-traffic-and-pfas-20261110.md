@@ -261,3 +261,17 @@ observation has 26 worksheet regions and no readme capture. The XML
 preservation is directly observed. A matched SheetShrink readme capture
 is still needed before using this as a measured four-tool illustration.
 XLStylesTool also has no matching native capture.
+
+Two bounded native reference runs completed the missing fixed-factor
+captures. SheetShrink took 57.28 seconds and XLStylesTool 68.06 seconds.
+Their original and candidate images all have dimensions 1368 by 466 and
+decoded RGBA SHA-256
+`b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b`,
+matching the original images from the three earlier runs. For this
+post-hoc reference area, SheetShrink and XLStylesTool preserve the
+heading band. Check Performance, Inquire and NXPowerLite shorten it.
+The reference confirms this area only. Both existing comparison hosts
+were still active after the bounded tests.
+
+- SheetShrink reference receipt `523d824c815d14bdfab931e894e68e9a591485d7c915756d42ea1ae8f06dd43a`
+- XLStylesTool reference receipt `24a0ea322bdd228773b73ae5e4c69f5e6945ad0c99060167adf1e2115f10cb89`
