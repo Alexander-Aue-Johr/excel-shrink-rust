@@ -248,7 +248,8 @@ def worker(root):
                         if presentation.Slides(1).Shapes(1).HasChart:
                             break
                     except pywintypes.com_error as error:
-                        if error.hresult not in (-2147418111, -2147417846):
+                        replacing_shape = error.excepinfo and error.excepinfo[-1] == -2147188720
+                        if error.hresult not in (-2147418111, -2147417846) and not replacing_shape:
                             raise
                     pythoncom.PumpWaitingMessages()
                     time.sleep(0.1)
