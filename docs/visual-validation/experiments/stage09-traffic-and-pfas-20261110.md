@@ -202,3 +202,28 @@ Pair report SHA-256 values:
 - NXPowerLite `8b438a95ed2c84da3cc0ff563eaa1bd8f54ba3e6b277b3ee23b970ab4ebb6585`
 - Check Performance `5896dbfd84a90fc91c531fc3b7f0721b4069fd12d89812c12c614aae5da0bc96`
 - XLStylesTool `fd0a1de5e483933c5018341192e30136d4d52cbb57d3bc4e2674e8bbc5c1d916`
+
+## Adage alternative nesting matched capture rectangles
+
+For Data.gov pair `0d60ed9664980e4e59d37cd9`, the retained Inquire and
+Check Performance captures share two exact worksheet/range keys. The
+independently decoded original RGBA images were identical for each key.
+The candidate image sizes differ, so the following measurements count
+changed RGBA pixels in the top-left common image rectangle only. Both
+reports have equal capture/content origins under their recorded policy.
+
+| Range | Inquire changed common pixels | Check Performance changed common pixels |
+|---|---:|---:|
+| readme!A1:M20 | 76,444 | 83,105 |
+| definitions!A1:G137 | 0 | 205,139 |
+
+For definitions, the Inquire report records a blank-margin exclusion.
+The other three observations record capture-extent exclusions and still
+have changed common pixels. NXPowerLite retained 26 paired images with
+zero reported differences, none at those exact range keys. XLStylesTool
+selected no regions. These two matched rectangles can illustrate the
+Inquire and Check Performance results together. A five-tool inset would
+require new, matched reference captures for the remaining variants.
+
+- Inquire report SHA-256 `435f1e66389fc978fc6c2a5f6af217c1d399e6f50125ada8fc4d8ae022a956eb`
+- Check Performance report SHA-256 `a783acd72f0a82371fa260caf69ade8bdca30fb03cb5198b13f527ccd101b406`
