@@ -12,7 +12,7 @@ One changed pixel is sufficient to offer an explanation. The explanation is a
 possible dependency path and does not establish the cause of every changed pixel.
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v12`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v15`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -1512,3 +1512,28 @@ capture selection/transport took 119.009 seconds, compared with 624.755 seconds
 in the retained v14 observation. These are separate development runs with
 different producer versions and concurrent load, not a matched performance
 experiment. Historical v14 findings and their original images remain retained.
+
+
+## Native chart repeat controls
+
+A same-content control must force real chart exports. The current generic
+Observatory configuration does not expose the conservative chart mode, so the
+qualified controls use `targeted-compare --chart-capture-mode conservative`.
+A ZIP comment change bypasses byte-identity elision while SHA-256 checks verify
+that every uncompressed package member is identical. No SheetShrink operation
+is applied between these control inputs. Every control retains its images,
+measured geometry, rebuilt packages and report, with a per-case deadline and
+owned-process cleanup.
+
+Five selected Enron chart cases completed this control on 2026-11-10. The ten
+chart comparisons included two differing observations. Input
+106bb183b73704d6e7324eb6c879ad6e8536e52b1f5643f8c725e2ca7a74cb7e.xlsx,
+Run Query, Diagramm 4, differed in two pixels (maximum channel delta 35).
+Input 806f1a068f4e9ca4802d2833cfd5c511765ef5759efd25cb8b85df446e32e06c.xlsx,
+Results, Chart 1, differed in seven pixels (maximum delta 36). Geometry was
+equal. All rebuilt worksheet, style and chart parts were byte-identical;
+remaining package differences concerned workbook metadata, core properties
+and, in the first case, calcChain. The other three controls had equal chart
+images. These observations establish native path variability without the
+cleaner for these controls. They do not classify every prior small discrepancy
+or authorize a pixel tolerance. Original transformation findings remain visible.
