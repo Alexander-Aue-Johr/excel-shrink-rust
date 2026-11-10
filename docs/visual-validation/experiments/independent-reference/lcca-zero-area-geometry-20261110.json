@@ -1,0 +1,23 @@
+{
+  "workbook": "Decentralized Life Cycle Cost Assessment_SF Reuse_69c5be921a2c.xlsx",
+  "worksheet": "LCCA",
+  "original_sha256": "69c5be921a2c987bd0dd54bd8356edb9b466bca563c19d0c7f36fc59ae29c7c5",
+  "candidate_sha256": "d664d81a784f887e4d25d5916006563e8716275598c85634f37d14924caafafa",
+  "producer_commit": "2af3abf5",
+  "producer_sha256": "8e0a84b028e374696233acd90aa07eabb05fb8a31334c7f2eec0351dbfe0df07",
+  "inputs_unchanged": true,
+  "status": "completed_with_limitations",
+  "policy": "targeted-content-grid-v16",
+  "candidate_count": 29,
+  "worksheet_observations": 29,
+  "chart_observations": 27,
+  "nonvisual_geometry_observations": 9,
+  "worksheet_differences": 0,
+  "chart_differences": 0,
+  "timings_ms": {
+    "capture_selection_and_transport": 31451,
+    "image_comparisons": 1385
+  },
+  "native_report_sha256": "5a536acf39baaacbf381282950e5dfd334b9c294d17045795539bb05ce2d6f36",
+  "limits": "Selected targeted coverage. Nine zero-area geometry measurements are retained without claiming a pixel comparison. The first setup attempt stopped before Excel because its group directory was absent. The corrected bounded private-desktop attempt completed."
+}

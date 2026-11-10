@@ -430,8 +430,14 @@ worksheet `LCCA`, retained nine width-zero tail regions beginning at row 513.
 Their measured heights changed from 2000.25 to 1827 points. Both sides had no
 image. The focused evidence regression covers this geometry, zero-height and
 mixed-axis zero areas, a visible partner, and an invalid missing image. The
-retained version-15 observations remain historical evidence. A new native repeat
-is required before claiming the workbook has completed under version 16.
+retained version-15 observations remain historical evidence. A bounded version-16 native repeat completed 29 worksheet observations and
+27 chart observations, with zero reported visual differences. Nine observations
+retain `empty_geometry_ignored=true`. Both input hashes remained unchanged.
+Capture selection and transport took 31.451 seconds and comparison took
+1.385 seconds. The whole attempt took about 216 seconds including setup and XML
+work. The first setup attempt stopped before Excel because its group directory
+was absent. The corrected private-desktop repeat completed. The checksum receipt
+is `docs/visual-validation/experiments/independent-reference/lcca-zero-area-geometry-20261110.json`.
 Indirect formula, conditional-formatting and rebuild discovery is unaffected.
 
 Split only rectangles whose estimated visible image exceeds 30,000 pixels on
