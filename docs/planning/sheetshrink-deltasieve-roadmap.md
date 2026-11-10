@@ -66,6 +66,28 @@ reference, and totals from different captured areas are not directly comparable.
 SheetShrink's cleanup savings and preservation outcomes remain its own tool
 evaluation. Shared benchmark evidence may be cited with these distinct questions.
 
+### Submission checkpoint on 2026-11-11 at 00:00 CET
+
+Prepare the evaluation and manuscript review in parallel with the remainder
+of stage nine. Keep the currently running Inquire and NXPowerLite groups
+active and preserve their outcomes. Defer dispatch of the 16-workbook stage
+until the timing can be reassessed against the 16:00 manuscript guard.
+
+At this checkpoint, the first QT/RR Inquire pair had recorded 4,530 successful
+individual captures in 1,206 seconds. Its plan contains 90,112 regions, with
+one capture requested per side. If the remaining regions sustain the same
+average rate and require both images, the estimate for that pair alone is
+about 13 more hours. The estimate excludes the rest of the queue and report
+packaging, and variable image costs or skipped captures can change it.
+The newly active NXPowerLite group has yet to complete its first pair.
+
+Use the verified partial stage-nine Atlas as the current working snapshot.
+Keep pending and failed comparisons visible in the denominator. The full
+reference projection of this snapshot is 3.40 GB, so the interactive
+publication also requires an asset-hosting decision before it can be linked
+from the manuscript. This scheduling checkpoint leaves the 3-by-3 delivery
+and later stages open.
+
 ### Static-report checkpoint on 2026-11-10 evening
 
 The third combined preview contains 76 observations from 19 source reports.
