@@ -604,7 +604,17 @@ impl Run {
                 self.publish_pair_view(id, &pair.name, bundle.different_regions, record)?;
             }
             if raw.exists() {
-                fs::remove_dir_all(&raw)?;
+                if outcome.is_err() {
+                    // An interrupted comparison may already have expensive,
+                    // verified captures that its final report cannot reference.
+                    let retained = logs.join("working-evidence");
+                    fs::rename(&raw, &retained)
+                        .context("Retain interrupted capture evidence with its failure logs")?;
+                    record["failure_evidence"] =
+                        json!(format!("logs/validation/{id}/working-evidence"));
+                } else {
+                    fs::remove_dir_all(&raw)?;
+                }
             }
             Ok(())
         })();
