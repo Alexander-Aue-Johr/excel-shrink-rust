@@ -238,13 +238,18 @@ impl<'a> VisualBounds<'a> {
             return false;
         }
         self.columns.finalize();
-        // Width-only boundaries cannot change a solid full-width background.
-        // Keep row transitions and every explicit cell below, including overrides.
-        let right = if self
+        // Unfilled columns leave each solid row background unchanged across width
+        // and font boundaries. Explicit cells and finite fill transitions stay below.
+        let columns_without_fill = std::iter::once(&0)
+            .chain(self.column_styles.iter())
+            .all(|index| {
+                self.styles.get(*index).is_some_and(|style| !style.has_visible_fill)
+            });
+        let uniform_column_fill = self
             .columns
             .uniform_background_fill()
-            .is_some_and(|fill| solid_fills.contains(&fill))
-        {
+            .is_some_and(|fill| solid_fills.contains(&fill));
+        let right = if columns_without_fill || uniform_column_fill {
             finite.right.saturating_add(1).min(16_384)
         } else {
             finite.right.max(self.band_right)
@@ -374,6 +379,58 @@ mod tests {
         let (selected, _) = bounds.select(&candidates)?;
         let coalesced = capture_layout::coalesce(&selected)?;
         assert_eq!(coalesced.len(), 164);
+        Ok(())
+    }
+
+    /// Kulturfinanzbericht, Tabelle 8.2-1. Repeated width/font records up to
+    /// XFD formerly added 125 far-tail captures of the same horizontal grey band.
+    #[test]
+    fn unfilled_column_widths_do_not_bound_solid_row_backgrounds() -> Result<()> {
+        let styles = [
+            Xf::default(),
+            Xf {
+                font_id: Some(5),
+                ..Default::default()
+            },
+            Xf {
+                fill_id: Some(2),
+                has_visible_fill: true,
+                apply_fill: true,
+                ..Default::default()
+            },
+            Xf {
+                has_visible_border: true,
+                ..Default::default()
+            },
+        ];
+        for (extra, expected_right, sampled) in [
+            ("", 68, true),
+            (r#"<c r="ZA42" s="3"/>"#, 677, true),
+            (r#"<col min="1000" max="1000" style="2"/>"#, 1001, true),
+            (r#"<col min="1000" max="1000" style="3"/>"#, 0, false),
+            (r#"<col min="1000" max="1000" style="99"/>"#, 0, false),
+        ] {
+            let xml = format!(
+                r#"<col min="1" max="105" width="9" style="0"/><col min="106" max="256" width="11" style="1"/><col min="257" max="16384" width="17" style="1"/><row r="24" s="2" customFormat="1"/>{extra}"#
+            );
+            let mut bounds = VisualBounds::new(&styles);
+            let mut reader = Reader::<32>::new(xml.as_bytes())?;
+            while let Some(tag) = reader.next()? {
+                bounds.observe(tag)?;
+            }
+            assert_eq!(
+                bounds.finish_background_bands(
+                    &BTreeSet::from([2]),
+                    Rectangle::parse("A1:BO113")?,
+                    true,
+                ),
+                sampled,
+            );
+            if sampled {
+                assert_eq!(bounds.bounds.unwrap().right, expected_right);
+                assert_eq!(bounds.bounds.unwrap().bottom, 113);
+            }
+        }
         Ok(())
     }
 

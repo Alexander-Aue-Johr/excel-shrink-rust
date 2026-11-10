@@ -1485,3 +1485,26 @@ comparisons. IG1:JL84 measured 1086 points high in both rebuilt workbooks.
 No capture region reported pixel, geometry or rendering differences. Separate
 height observations in Tabelle 1.1 and Tabelle 1.6 remain recorded. This result
 uses the targeted capture scope and retains its existing coverage limitations.
+
+
+## Unfilled column partitions within a repeating row background
+
+Policy v15 treats known, borderless, unfilled column formats as transparent to
+solid inherited row backgrounds. Width and font partitions in those columns
+cannot introduce a horizontal edge into a blank solid row band. The existing
+supported-background checks still apply. The finite content/CF envelope, row
+transitions, every explicit cell and one following column remain selected.
+A visible column fill, border or unknown style keeps the existing transition
+or conservative fallback. This introduces no pixel tolerance or report rewrite.
+
+In kulturfinanzbericht-gesamtmaterial-1023003229005.xlsx, Tabelle 8.2-1 had 127
+selected regions under v14. Its 125 far-tail findings depict a repeating grey
+row band across changing column widths. Focused tests retain distant explicit
+cells, finite fill edges, border blockers and unknown-style blockers. Retained
+rebuilt snapshots under v15 bound visual formatting to A1:BO114 and A1:BO61,
+instead of extending to column 16,235 in their union. An independent native
+A1:BP114 reference covers the finite union plus context. Both images were
+4625 by 2080 pixels with identical SHA-256 and measured geometry. The reference
+completed in 14.585 seconds. This is finite reference evidence, not yet a full
+v15 native workbook revalidation or a matched speedup measurement. Historical
+v14 findings and their original images remain retained.
