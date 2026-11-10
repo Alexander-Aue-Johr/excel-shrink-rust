@@ -278,13 +278,21 @@ pub(super) fn verify_package(directory: &Path) -> Result<Manifest> {
     let root = directory
         .canonicalize()
         .context("Resolve retained comparison")?;
-    let manifest_path = confined_file(&root, "bundle.json")?;
+    let manifest = read_verified_package_manifest(&root)?;
+    for (relative, identity) in &manifest.images {
+        verify_file(&confined_file(&root, relative)?, identity)?;
+    }
+    Ok(manifest)
+}
+
+pub(super) fn read_verified_package_manifest(root: &Path) -> Result<Manifest> {
+    let manifest_path = confined_file(root, "bundle.json")?;
     let manifest: Manifest = serde_json::from_value(read_json_file(&manifest_path)?)?;
     ensure!(
         manifest.version == FORMAT_VERSION,
         "Unsupported portable comparison version"
     );
-    let report_path = confined_file(&root, "report.json")?;
+    let report_path = confined_file(root, "report.json")?;
     verify_file(&report_path, &manifest.report)?;
     let report = read_json_file(&report_path)?;
     ensure!(
@@ -299,12 +307,11 @@ pub(super) fn verify_package(directory: &Path) -> Result<Manifest> {
             .all(|name| manifest.images.contains_key(name)),
         "Report references an image not listed in its integrity manifest"
     );
-    for (relative, identity) in &manifest.images {
+    for relative in manifest.images.keys() {
         ensure!(
             is_package_image_path(relative),
             "Unexpected file in evidence manifest: {relative}"
         );
-        verify_file(&confined_file(&root, relative)?, identity)?;
     }
     Ok(manifest)
 }
@@ -563,7 +570,7 @@ fn file_identity(path: &Path) -> Result<FileIdentity> {
     })
 }
 
-fn verify_file(path: &Path, expected: &FileIdentity) -> Result<()> {
+pub(super) fn verify_file(path: &Path, expected: &FileIdentity) -> Result<()> {
     ensure!(
         expected.sha256.len() == 64 && expected.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()),
         "Invalid retained file digest"

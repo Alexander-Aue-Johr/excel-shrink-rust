@@ -112,16 +112,20 @@ pub(crate) fn export(source: &Path, destination: &Path) -> Result<()> {
             let report_relative = format!("{image_base}report.json");
             let report_path = evidence::confined_file(&source, &report_relative)?;
             let package_root = report_path.parent().context("Missing comparison package")?;
-            let manifest = evidence::verify_package(package_root)?;
+            let manifest = evidence::read_verified_package_manifest(package_root)?;
             ensure!(
                 read_json_file(&report_path)? == detail["report"],
                 "Atlas detail differs from its source report"
             );
-            for image in manifest.images.keys() {
+            for (image, identity) in &manifest.images {
                 let relative = format!("{image_base}{image}");
-                if !destination.join(&relative).exists() {
-                    copy(&source, &destination, &relative)?;
+                let original = evidence::confined_file(&source, &relative)?;
+                let target = destination.join(evidence::relative_path(&relative)?);
+                if !target.exists() {
+                    fs::create_dir_all(target.parent().context("Missing image parent")?)?;
+                    fs::copy(&original, &target)?;
                 }
+                evidence::verify_file(&target, identity)?;
             }
             let mut omitted = Vec::new();
             project_metadata(&mut detail, "", &mut omitted);

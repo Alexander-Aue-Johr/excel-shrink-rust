@@ -231,3 +231,8 @@ page can load individual captures. Verify the deployed site before adding
 its URL to the manuscript.
 
 [GitHub Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
+
+The public projection validates copied capture files against the source
+package manifest. This checks each published capture's length and SHA-256
+without an additional source-image hashing pass. An integrity failure
+leaves the public destination marked incomplete.
