@@ -286,7 +286,7 @@ function Observatory() {
               resultStyle: "split",
               labelMode: "name",
               view:
-                !focusSheet && (atlasView === "all" || atlasView === "largest")
+                atlasView === "all" || atlasView === "largest"
                   ? "all"
                   : "recent",
               sort:

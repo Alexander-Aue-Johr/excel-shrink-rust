@@ -163,6 +163,11 @@ export function buildWorkbookScene(
     0,
     options.limit ?? Infinity,
   );
+  const focused = snapshot.workbooks.find(
+    (book) => book.id === options.focusWorkbookId,
+  );
+  if (focused && !books.includes(focused) && books.length)
+    books.splice(books.length - 1, 1, focused);
   const visible = new Set(books.map((book) => book.id));
   // Recent view travels along the same absolute X row used by the time overview.
   // Hidden/future workbooks contribute only their already-public placeholder width.
@@ -643,7 +648,11 @@ export function buildWorkbookScene(
       });
 
       // Detailed labels are reserved for the selected Workbook, keeping the overview legible.
-      if (selected && sortedSheets.length <= 18) {
+      if (
+        selected &&
+        sortedSheets.length <= 18 &&
+        (!options.selectedSheetId || options.selectedSheetId === sheet.id)
+      ) {
         result.labels.push({
           id: `sheet-label-${sheet.id}`,
           position: [

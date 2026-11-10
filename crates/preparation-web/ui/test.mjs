@@ -553,4 +553,28 @@ test("atlas byte scale uses only displayed workbooks and includes output growth"
     scene.labels.find((label) => label.id === "atlas-scale-1").text,
     wider.labels.find((label) => label.id === "atlas-scale-1").text,
   );
+  const focused = buildWorkbookScene(snapshot, {
+    ...options,
+    view: "all",
+    sort: "size",
+    limit: 1,
+    focusWorkbookId: "visible-small",
+    selectedSheetId: "visible-small:sheet1",
+  });
+  assert.deepEqual(
+    focused.hits.map((hit) => hit.workbookId),
+    ["visible-small"],
+  );
+  const retained = buildWorkbookScene(snapshot, {
+    ...options,
+    view: "all",
+    sort: "size",
+    limit: 2,
+    focusWorkbookId: "hidden-large",
+    selectedSheetId: "hidden-large:sheet1",
+  });
+  assert.deepEqual(
+    retained.hits.map((hit) => hit.workbookId),
+    ["hidden-large", "visible-small"],
+  );
 });

@@ -53,7 +53,11 @@ export function sceneSvg(spec: SceneSpec, camera: CameraView): string {
   ]);
   const labels = spec.labels
     .filter((label) => {
-      if (label.id.startsWith("job-label") || label.id.startsWith("axis-"))
+      if (
+        label.id.startsWith("job-label") ||
+        label.id.startsWith("axis-") ||
+        label.id.startsWith("book-sheet-order-")
+      )
         return false;
       if (label.id.startsWith("worker-")) return labelledWorkers.has(label.id);
       return true;
