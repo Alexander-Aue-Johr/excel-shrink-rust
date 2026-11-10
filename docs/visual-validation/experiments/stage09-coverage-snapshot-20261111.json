@@ -1,0 +1,973 @@
+{
+  "schema": 1,
+  "snapshot_utc": "2026-11-10T23:50:17.230752+00:00",
+  "scope": "Frozen ranks 1–9 per corpus. Coverage statuses, not equivalence outcomes.",
+  "counts": {
+    "destatis": {
+      "completed_with_limitations": 27,
+      "no eligible completed observation": 1,
+      "completed_normalized": 2,
+      "failed": 14,
+      "variant unavailable in ordinary stratum": 1
+    },
+    "datagov": {
+      "completed_with_limitations": 38,
+      "no eligible completed observation": 1,
+      "failed": 4,
+      "running": 2
+    },
+    "enron": {
+      "completed_with_limitations": 37,
+      "completed_normalized": 1,
+      "variant unavailable in ordinary stratum": 4,
+      "failed": 3
+    }
+  },
+  "slots": [
+    {
+      "corpus": "destatis",
+      "rank": 1,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 2,
+      "tool": "sheetshrink",
+      "status": "no eligible completed observation",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "documented_normalized_baseline"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 4,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 5,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 6,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "documented_normalized_baseline"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 8,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 9,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 1,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 2,
+      "tool": "check_performance",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "tool": "check_performance",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 4,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 5,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 6,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "tool": "check_performance",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 8,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 9,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 1,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 2,
+      "tool": "inquire",
+      "status": "variant unavailable in ordinary stratum",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 4,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 5,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 6,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 8,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 9,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 1,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 2,
+      "tool": "nxpowerlite",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "tool": "nxpowerlite",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 4,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 5,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 6,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "tool": "nxpowerlite",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 8,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 9,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 1,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 2,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "tool": "xlstyles",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 4,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 5,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 6,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "tool": "xlstyles",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 8,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 9,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 1,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 2,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 3,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 4,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 5,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 6,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 7,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 8,
+      "tool": "sheetshrink",
+      "status": "no eligible completed observation",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 9,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 1,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 2,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 3,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 4,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 5,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 6,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 7,
+      "tool": "check_performance",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 8,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 9,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 1,
+      "tool": "inquire",
+      "status": "running",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 2,
+      "tool": "inquire",
+      "status": "running",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 3,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 4,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 5,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 6,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 7,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 8,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 9,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 1,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 2,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 3,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 4,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 5,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 6,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 7,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 8,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 9,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 1,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 2,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 3,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 4,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 5,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 6,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 7,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 8,
+      "tool": "xlstyles",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 9,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 1,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 2,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "documented_normalized_baseline"
+    },
+    {
+      "corpus": "enron",
+      "rank": 3,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 4,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 5,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 6,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 7,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 8,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 9,
+      "tool": "sheetshrink",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 1,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 2,
+      "tool": "check_performance",
+      "status": "variant unavailable in ordinary stratum",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 3,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 4,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 5,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 6,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 7,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 8,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 9,
+      "tool": "check_performance",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 1,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 2,
+      "tool": "inquire",
+      "status": "variant unavailable in ordinary stratum",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 3,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 4,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 5,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 6,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 7,
+      "tool": "inquire",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 8,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 9,
+      "tool": "inquire",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 1,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 2,
+      "tool": "nxpowerlite",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 3,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 4,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 5,
+      "tool": "nxpowerlite",
+      "status": "variant unavailable in ordinary stratum",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 6,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 7,
+      "tool": "nxpowerlite",
+      "status": "variant unavailable in ordinary stratum",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 8,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 9,
+      "tool": "nxpowerlite",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 1,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 2,
+      "tool": "xlstyles",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 3,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 4,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 5,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 6,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 7,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 8,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    },
+    {
+      "corpus": "enron",
+      "rank": 9,
+      "tool": "xlstyles",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original"
+    }
+  ]
+}
