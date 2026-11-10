@@ -76,3 +76,33 @@ The core suite passed 296 tests with one manual timing test ignored.
 native geometry, row heights and the measured cleanup receipt. Full native
 receipts and images are retained locally under
 `C:/SheetShrinkStudies/row-height-fix-20261110/{before,after}`.
+
+## Remaining whole-workbook planning investigation
+
+A separate policy-v15 diagnostic on 10 November 2026 retained the rebuilt
+states but reached no pixel verdict within its ten-minute wall-clock limit.
+The process spent the final long phase in Rust before publication of the
+`before_geometry_partition` index, with approximately 17 GiB private memory.
+The operation was stopped after 600.48 seconds. Its provisional XML candidate
+counts must not be reported as completed captures. An earlier diagnostic was
+stopped prematurely after treating a provisional count as a final plan. Both
+attempts remain separate incomplete observations.
+
+The existing ignored `inspect_retained_background_extents` diagnostic then read
+the retained `OR-rebuilt.xlsx` without Excel in 79.93 seconds. Of 215 sheets,
+101 had archive-only visual bounds `A1:XFD1048576`, while 67 qualified for
+background-tail sampling. For example, sheet `1.3` has cell-content bounds
+`A1:AA95` but whole-grid visual bounds. Its inherited row and column styles have
+solid fills and border ID zero. It also has drawing-related conservatism.
+This archive-only diagnostic does not perform native drawing qualification,
+so these counts cannot establish which bounds survive that qualification in
+the real comparison.
+
+The next investigation must reconcile the retained native drawing inventories
+with the requested rectangles before grid expansion. `ContentBounds::select`
+enumerates grid tiles before `capture_layout::coalesce` and before the parent
+index is published. A large unresolved rectangle can therefore consume memory
+without producing a capture-plan index. This identifies the diagnostic boundary,
+but does not yet prove a safe reduction of this workbook's capture coverage.
+No full-workbook validation success follows from the earlier single-area
+row-height acceptance.
