@@ -122,6 +122,15 @@ Static HTTP and browser checks reached a retained Data.gov/Inquire finding
 through its workbook and sheet. The Atlas reports about 3.53 GB of assets.
 Additional Data.gov comparisons remain in progress.
 
+The Enron stage ledger accounts for all 45 tool slots across the nine frozen
+workbooks. It records 37 completed raw-baseline observations, one completed
+normalized-baseline observation, four unavailable raw variants and three
+comparison failures. Each recorded result identifies its source record and
+retained report by SHA-256 where available. Rank 2's completed SheetShrink
+comparison uses a different normalized workbook from the repaired Check
+Performance preparation. Their baseline hashes remain explicit in the ledger.
+See [the Enron stage outcomes](../visual-validation/experiments/enron-stage09-outcomes-20261110.json).
+
 An exploratory PNG measurement tested six retained images from one large
 Data.gov comparison. Across those images, summed median encoding times were
 157 ms for Fast, 1,112 ms for Default and 2,455 ms for Best. All decoded

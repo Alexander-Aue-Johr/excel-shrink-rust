@@ -1,0 +1,426 @@
+{
+  "scope": "Frozen Enron ranks 1 through 9, five tool slots per workbook. Counts refer to recorded comparison coverage.",
+  "matrix_sha256": "f4767e5b61091ffbcac5daefe8bb3cc9042015db8aa07de399ece93f78980673",
+  "readiness_sha256": "4ca574e3461de04e14a0b9dc90b32d4d3c56dbe4fe05502f2658c67652922584",
+  "counts": {
+    "completed_raw": 37,
+    "completed_normalized": 1,
+    "variant unavailable in ordinary stratum": 4,
+    "failed": 3
+  },
+  "workbooks": [
+    {
+      "rank": 1,
+      "workbook": "b2d0dfef6a1ce21cf3896241052a4a28ffdad659b6bbb6b1ea44f47e4d589c86.xlsx",
+      "original_sha256": "7298df9a6a76d0b69599c21d1653287adc863a5c7dbb9b5eaca275ea23ffada0",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "23b89d34379f2cf346e7b98b",
+          "record_sha256": "ac1d8f0449be25c67accd5757f30a6fe9e10470fab26d2b63167414398358c23",
+          "report_sha256": "dfde7e8e6b5a70eef81f81cfcd5daf0bfddf8926d7249bb371e9e42ef42ed72f",
+          "different_regions": 0
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "23b89d34379f2cf346e7b98b",
+          "record_sha256": "6c649b933e9b9a033c3ed31dd43a434e66f601d47e5606eafef52fbc34e05f0e",
+          "report_sha256": "09a5c859d8f6e1a26b7048d4125002d616368f661a9e69c5f09f0cff6389f008",
+          "different_regions": 9
+        },
+        "inquire": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "23b89d34379f2cf346e7b98b",
+          "record_sha256": "3c60673d13d6618354613e56a987d2feff758764d38a0cbb8c8b3124f6a47162",
+          "report_sha256": "18861c5512b8d4a3054db70c91182cff7ef514126e49277f8e0c307f6b0a5757",
+          "different_regions": 4
+        },
+        "nxpowerlite": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "23b89d34379f2cf346e7b98b",
+          "record_sha256": "6b0ef50349dd4188936734da8074d460d7d6b2dbe01c0043f6ad1639381ea96f",
+          "report_sha256": "9f3177c480139d8e515ccaca53980e60adb27e008f40cac2da14f0bbb67bc090",
+          "different_regions": 3
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "23b89d34379f2cf346e7b98b",
+          "record_sha256": "61bb007d417f0d08638bfa44ee7ca504ee511d15928b5aebe14f09c19ac17d88",
+          "report_sha256": "607f0a0e305ca3d2fe84d9c112138959c3e39e58b84623e87e28bcd2f86a3e06",
+          "different_regions": 0
+        }
+      }
+    },
+    {
+      "rank": 2,
+      "workbook": "9632bf8d4ebca0af7eab93d4b3ee61595b4fa9df3e2a448c585f577adf0191b6.xlsx",
+      "original_sha256": "0565d16f4598592bcb0d5ca0c92f6157df8ec9d4bfa2022ef44d2edbba534e3f",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "documented_normalized_baseline",
+          "record_id": "41cb89710c7679f218112894",
+          "record_sha256": "fbf4e5fed2cae6b73245b378b5fbf672c71fb15f4dbbdfe151576b5c00dc9806",
+          "report_sha256": "42e21f03b5b99d43bcf140aaa24d7fe424a5b41551d2eb3aeecde1955881377f",
+          "different_regions": 0,
+          "normalized_baseline_sha256": "f9a5713fbbc1e6fe4dd4fa22e983327e8d43d8b5375e9147b34de8a99230563e",
+          "candidate_sha256": "ef34e1b88abb2423aaaa872fd4d70cb8e6615286b5e9831e83617a9889c05e12"
+        },
+        "check_performance": {
+          "status": "variant unavailable in ordinary stratum",
+          "baseline_scope": "raw_selected_original",
+          "reason": "A Check Performance output exists for a manually repaired baseline. The raw-original variant is unavailable.",
+          "separate_repaired_baseline_sha256": "f4036b91071682188c0f23206bf15d1a57b6972e07b4a9b9f0eb94234e40c90f"
+        },
+        "inquire": {
+          "status": "variant unavailable in ordinary stratum",
+          "baseline_scope": "raw_selected_original",
+          "reason": "Excel Workbooks.Open failed during preparation. No verified Inquire variant exists for the raw original."
+        },
+        "nxpowerlite": {
+          "status": "failed",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "41cb89710c7679f218112894",
+          "record_sha256": "ce1c8efbb0f1417f1f31a34ced398cd5c853e1f769650a84ace34c11e794b717",
+          "report_sha256": "01e4375054a63293390af999e698875eaa410b2dcb6a83e9f4f7d21c9929b6e5",
+          "reason": "The candidate lane displayed an Excel repair-required dialog during opening. The host declined the prompt."
+        },
+        "xlstyles": {
+          "status": "failed",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "41cb89710c7679f218112894",
+          "record_sha256": "a8699d79bbe580534c040abbfd4e19d94cb62161d1552c8b99d60215f60f4477",
+          "report_sha256": "cf9ed04d2e6a0924494d7600940acba0b92427cfe82bb98cd32ea33059964e97",
+          "reason": "The original lane displayed an Excel repair-required dialog during opening. The host declined the prompt."
+        }
+      }
+    },
+    {
+      "rank": 3,
+      "workbook": "70a7994fc2a6ce011743a2868e81832bcf58c0e05c42b9d907cb6cc012e00921.xlsx",
+      "original_sha256": "e3fbe2b44f676f28d881bcd81cae604a5c872e7647f6ee4bd1610f2d74df6884",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "821c247613e4a6a006971526",
+          "record_sha256": "ddc5f2128cc38a944d218d902faceeafa36206cb9e5902ea31f516fdd9b08c25",
+          "report_sha256": "443ef338a427933bfa0b9e41dac48919e8d6fc597e8e4635fab77e2327dcc16f",
+          "different_regions": 0
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "821c247613e4a6a006971526",
+          "record_sha256": "9d089d6c4ff973f5d6761375ee4c6005d693e0edce25848eddc58fdd63cdc2d8",
+          "report_sha256": "861c63073972c549f84c5065dd1a51c0e2424ca6e3036a6a45ba850142a6e658",
+          "different_regions": 6
+        },
+        "inquire": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "821c247613e4a6a006971526",
+          "record_sha256": "a56133c3029384cfb77f0f8b76ff081cd211f8cdb9d922d2913850827d68dc2a",
+          "report_sha256": "642e213279dfe70ef86d103800df10cdbd2ec5b8005f786938403191e0c3952c",
+          "different_regions": 11
+        },
+        "nxpowerlite": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "821c247613e4a6a006971526",
+          "record_sha256": "e0984c197d692dc27f28a6c31d2eab18a90659c5c8b36a7a59cf93db1a21dcca",
+          "report_sha256": "2300ecdd251c1360c4230fe8b0035a9d6ed59fae53097bdc098ed7cb452dd535",
+          "different_regions": 3
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "821c247613e4a6a006971526",
+          "record_sha256": "f844b579ab33487f8aa0f64bc21432d0a128de76f70acc519cbe03739249fae0",
+          "report_sha256": "23186cf1fc6fa21f08c207f2d5a9b9c395d949a6263fa4e34ae2894e398428de",
+          "different_regions": 0
+        }
+      }
+    },
+    {
+      "rank": 4,
+      "workbook": "ef58bd71ed25f5fba28fdd2d5cddba39f8ee39961bf1030f983f3d9b3b00690b.xlsx",
+      "original_sha256": "ec45600e13323a9d705744f25d4f6d8785c0f05b0273052af915a4ef4b8ce15d",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "1343f1ecc49e131dda410a08",
+          "record_sha256": "18bf5700db5c5a2e4488597f8bed887c7b00c5dc0864e6138aac868021499a8c",
+          "report_sha256": "59759230542acc29ada014d3bd99a70e2e45a631fa29ff1a31eafca0905401b9",
+          "different_regions": 0
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "1343f1ecc49e131dda410a08",
+          "record_sha256": "b6e7a4576f97b0152e1a34364c7c79c4e2d12831be1cf4a6c770daa0466d4c34",
+          "report_sha256": "3f7f5086fb3501bb04eb799460393128c3c94261c5ec3074af9874baa89f2818",
+          "different_regions": 4
+        },
+        "inquire": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "1343f1ecc49e131dda410a08",
+          "record_sha256": "a16555ac732f2750e232207a877bd4bc6849afc65bf00582b5a248f4d35b70ea",
+          "report_sha256": "bb14c5232d089c6cddad99d59b466255db9a5f7b1f2b20e23bf9e13100e972da",
+          "different_regions": 11
+        },
+        "nxpowerlite": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "1343f1ecc49e131dda410a08",
+          "record_sha256": "349b1d1ac9a371702b529906fb9c1befb1b8f9ba62c513d99c277407780bf869",
+          "report_sha256": "5c27ace349f17c71edbb90d5e2ede9b6e73b225bbc4d38b93c73285522f880d9",
+          "different_regions": 3
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "1343f1ecc49e131dda410a08",
+          "record_sha256": "08612bc200e67a544b92c7fbad1f9593479bd010352a01b4a21cb1a722481ce8",
+          "report_sha256": "61508a09987cbfe4184742db418e2bf6d72f0c33c66963c3c189a684b31f3089",
+          "different_regions": 0
+        }
+      }
+    },
+    {
+      "rank": 5,
+      "workbook": "abe00c1b670372f263aa06c8262366e56bc704708ec269a618fc430e6285f4e1.xlsx",
+      "original_sha256": "4bf45224c1f0d7eb81abb965d83a99cf04ab6c0d50e8ccf714103f055632d475",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "a90ce85ed998ecc4a267c5e0",
+          "record_sha256": "17f16407c7b1312697c93fd407c9eca258396850dcbc5d4b7723fb8b536a4112",
+          "report_sha256": "a55dde7e7004de17a02c11065952d909dd5b54de2c2c14833c074175036c404b",
+          "different_regions": 0
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "a90ce85ed998ecc4a267c5e0",
+          "record_sha256": "5967b28bf2892bbee3b773c750ea1f12fe4a1e190b91ee92a49bc2a846aacdfa",
+          "report_sha256": "7cfaf2f7f6da913a5a06c09f41d49916d887922645c0669eb213fef2341f5ecb",
+          "different_regions": 5
+        },
+        "inquire": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "a90ce85ed998ecc4a267c5e0",
+          "record_sha256": "bbcae346e4aab99972c3af74a33c251185bcd2eb1416050cabca9e965a24735b",
+          "report_sha256": "d9c5a1a8a6011f1871a248b465be273dcb4510b195359e638751ba0ec32b1225",
+          "different_regions": 2951
+        },
+        "nxpowerlite": {
+          "status": "variant unavailable in ordinary stratum",
+          "baseline_scope": "raw_selected_original",
+          "reason": "The remote preparation manifest records failed without a verified variant or a more specific error."
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "a90ce85ed998ecc4a267c5e0",
+          "record_sha256": "ecfdc953597ca61831ba4412e2080a928fc8f29d1c96cf4c8cbed34a39d4e1df",
+          "report_sha256": "73c89dcbbc85bd6547936bce117b025684950dfba010c2c7302344880efb0fbd",
+          "different_regions": 0
+        }
+      }
+    },
+    {
+      "rank": 6,
+      "workbook": "1996cd4fcc7db00fcf8943d4163a203ee5b7f87af89a377e4f332b0bd5d71b70.xlsx",
+      "original_sha256": "46b693b3a100aec3314edaf7bd7389387e18c84fdd427965133fc7235c090d58",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "f2b76bc964bd26b656793811",
+          "record_sha256": "79db650beda08eef74429327d25e36f51c9105ef7ae562dec5a1145dd9f14171",
+          "report_sha256": "a7b0d8ef24246c0f6d1e619999e7a0566a7ce8dac33f479ade2fc216fde58cc5",
+          "different_regions": 0
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "f2b76bc964bd26b656793811",
+          "record_sha256": "2b7d4fca2c40311ea5562fe24d01bc66eb772a1d0a15075dfd9eeabc8853f849",
+          "report_sha256": "64e3cca429ef42c06e745d5005d15efbd1bbf71fad1d7e23803eb24e392dc981",
+          "different_regions": 0
+        },
+        "inquire": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "f2b76bc964bd26b656793811",
+          "record_sha256": "90aee08fcc1d3a781b4f1722db90f8119b86a517707855bf4ef0ec803e5ddfc1",
+          "report_sha256": "5e096c3a82e713ceb111c87d1d7b7a8b40ed8bcfbbd9ee74735afa5a56e45719",
+          "different_regions": 0
+        },
+        "nxpowerlite": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "f2b76bc964bd26b656793811",
+          "record_sha256": "177dd39eda1d1c5194c29ca153738b37921124fe62fedcb88309f584d77f7c44",
+          "report_sha256": "86813f4ee3f8321c49553b664a04fda704646d84d993fbc795576c41109b6dad",
+          "different_regions": 0
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "f2b76bc964bd26b656793811",
+          "record_sha256": "cf3f7c8502394ea6ed23ee2e8ecdc34cf99bbb3168bbc65a9ae8233d4608a150",
+          "report_sha256": "3363c48c259da1680b2b5eb45b979d6d67bafaf6e3b4c6de5677350025c9736c",
+          "different_regions": 0
+        }
+      }
+    },
+    {
+      "rank": 7,
+      "workbook": "106bb183b73704d6e7324eb6c879ad6e8536e52b1f5643f8c725e2ca7a74cb7e.xlsx",
+      "original_sha256": "025d2f43723df45fc7a19d921a47733a6c934444c87b658909ffcacf9bbf16f3",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "7b889692ce0f6e20bad1d91a",
+          "record_sha256": "aaa9910bd59f467c8921c0c1d4c6b36ea66ab4a896d070de5edf085de87a8981",
+          "report_sha256": "7e9edd85057da769be7a75df7ab26d480258832fd417988da9a54a51d5d9cc7c",
+          "different_regions": 2
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "7b889692ce0f6e20bad1d91a",
+          "record_sha256": "993aec0b29dd5cea0f7c9892c87d490c57f3fdd35a1d038b475752b9cb6808de",
+          "report_sha256": "191ed73f66928a501077e5d19648c05184a654ed50f97d3791072d6dccf1bb68",
+          "different_regions": 2
+        },
+        "inquire": {
+          "status": "failed",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "7b889692ce0f6e20bad1d91a",
+          "record_sha256": "5fa510f4ea46ac1df07773923b7a9291c44e651be7f48dd98bc275a8474c0511",
+          "reason": "The selector required Run Query!A1:XFD1048576. Finite background and conditional-format coverage was unresolved."
+        },
+        "nxpowerlite": {
+          "status": "variant unavailable in ordinary stratum",
+          "baseline_scope": "raw_selected_original",
+          "reason": "The remote preparation manifest records failed without a verified variant or a more specific error."
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "7b889692ce0f6e20bad1d91a",
+          "record_sha256": "2d8b8b9dc68d01e426782cad6319963a6a66797b7866ac535014269795786e1c",
+          "report_sha256": "e5749356f7879c8c65097569784e38b34404891379459302993924d046ef5619",
+          "different_regions": 0
+        }
+      }
+    },
+    {
+      "rank": 8,
+      "workbook": "7a7618eb5253776dcf73cc2fa7cf8da6f567beb986f098c7f5ef5bfe7dfdfe21.xlsx",
+      "original_sha256": "4533a99497d012d17dfaf9481829dea82874838dfce0ec2cded841d09e1e1f5f",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "b9252abb168c3841324b3724",
+          "record_sha256": "4eae52aab7fdc43279d57f300412e232ec4189351e5d53d98939129ec1678611",
+          "report_sha256": "f49651c6135ca9c1ed4888d80b04548e30ddbfc4f768ab6a58ab97aec4e3b5ae",
+          "different_regions": 0
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "b9252abb168c3841324b3724",
+          "record_sha256": "47f56aff18960006dee27c4d6799e8cdfb7c177803531f42c50df47413d20d14",
+          "report_sha256": "0d75671adb7332a177c2d9bde76ca0923e4c68a369c8a9956951d39c0356c951",
+          "different_regions": 0
+        },
+        "inquire": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "b9252abb168c3841324b3724",
+          "record_sha256": "21a555ca8b29e755ee9ff227be8fb82519f2d3c9696b43341438f346a2bc3ee2",
+          "report_sha256": "29706443b9594c2027de716b80b0b2b98663a479a86682d864da704b9f87f689",
+          "different_regions": 4
+        },
+        "nxpowerlite": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "b9252abb168c3841324b3724",
+          "record_sha256": "74fd31e4105c891b5ce7b863f009196f04ba8a6c5dc1a9d9133f52176339d53e",
+          "report_sha256": "6ee0ce7b1c6e4559e7d4906fd3ec26ec9659e2a9f6d0d6dafaf0c14538273f14",
+          "different_regions": 0
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "b9252abb168c3841324b3724",
+          "record_sha256": "5bcf7377466fccb8f9a66fb4adcc93d3197487a8892b585b9d93d75184e7af69",
+          "report_sha256": "8e86eef117429f54f153db3286226d69e66c10cca9ad23377726b7d9dc2dd3ef",
+          "different_regions": 0
+        }
+      }
+    },
+    {
+      "rank": 9,
+      "workbook": "337e14b0025c639ec34bf4de1ebff6be258b47585119981ee56da95e65b4f5fa.xlsx",
+      "original_sha256": "46df3035fcc8efccf1a75aa5a2104fcc3d9aaa53857f322eae2c4a7aa3c23526",
+      "tools": {
+        "sheetshrink": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "c058eb592f9da94557695f62",
+          "record_sha256": "72c4759fbd777109276ec87d9436d900dee8472988fed92f3b8cf4edbe6bee9d",
+          "report_sha256": "7f99d99d60b8a5ea6f502ccbcd077716db593a483cedbecddd1c94de48307d8a",
+          "different_regions": 1
+        },
+        "check_performance": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "c058eb592f9da94557695f62",
+          "record_sha256": "2a0bf0dc4be41ac7299dd0a5d611e9692d7badb4aac23ffa07c5e89b71cd942b",
+          "report_sha256": "0bf8d2cc4ba6dca47734ecad93510011d39db79007de647b4c0b0d090497514e",
+          "different_regions": 0
+        },
+        "inquire": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "c058eb592f9da94557695f62",
+          "record_sha256": "8364f1a2a678d245de057d5745eef79bd77cf487d58ed5edf5f8f17e2b104ae5",
+          "report_sha256": "a90e1d551b8ef918c769cbf4e1eea701122b8181f229e7aaf0c6a681c27f2748",
+          "different_regions": 4
+        },
+        "nxpowerlite": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "c058eb592f9da94557695f62",
+          "record_sha256": "5a6eeeb62053c390231a5a05c3d00b1109f651e78d24908b1e5c0937fc7b780c",
+          "report_sha256": "89b89142b332c7e63be85a5c1e55c4bb5ef0f59e98ac8f213c738b31fecd0914",
+          "different_regions": 0
+        },
+        "xlstyles": {
+          "status": "completed_with_limitations",
+          "baseline_scope": "raw_selected_original",
+          "record_id": "c058eb592f9da94557695f62",
+          "record_sha256": "18f77bb349819b48c85c1ab3f9ac1628c6be60482d127ee3400c2cdfe975d80e",
+          "report_sha256": "85649a52eed9e3d93383a0c03dcfd2f4be610ecbdba6750fe179669c00902c54",
+          "different_regions": 0
+        }
+      }
+    }
+  ]
+}
