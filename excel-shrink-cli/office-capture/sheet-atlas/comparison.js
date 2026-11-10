@@ -69,11 +69,17 @@ function samePixels(a, b) {
   return true;
 }
 
-function difference(a, b) {
+export function difference(a, b, stride, overlapWidth, overlapHeight) {
   const mask = new Uint8Array(a.length / 4);
   const aa = new Uint32Array(a.buffer, a.byteOffset, a.byteLength / 4);
   const bb = new Uint32Array(b.buffer, b.byteOffset, b.byteLength / 4);
-  for (let i = 0; i < mask.length; i++) mask[i] = aa[i] !== bb[i] ? 1 : 0;
+  for (let row = 0; row < overlapHeight; row++) {
+    const start = row * stride;
+    const end = start + overlapWidth;
+    for (let index = start; index < end; index++) {
+      mask[index] = aa[index] !== bb[index] ? 1 : 0;
+    }
+  }
   return mask;
 }
 
@@ -278,8 +284,12 @@ export class ComparisonView {
     const original = this.images.get('original');
     this.unionMask = new Uint8Array(w * h);
     this.pixelGroups = [];
+    const originalCapture = this.sheet.nativeCaptures?.original;
     for (const item of this.images.values()) {
-      item.mask = difference(original.pixels, item.pixels);
+      const candidateCapture = this.sheet.nativeCaptures?.[item.variant];
+      const overlapWidth = Math.min(w, originalCapture?.naturalWidth ?? w, candidateCapture?.naturalWidth ?? w);
+      const overlapHeight = Math.min(h, originalCapture?.naturalHeight ?? h, candidateCapture?.naturalHeight ?? h);
+      item.mask = difference(original.pixels, item.pixels, w, overlapWidth, overlapHeight);
       for (let i = 0; i < item.mask.length; i++) this.unionMask[i] |= item.mask[i];
       const equal = this.pixelGroups.find(group => samePixels(group.image.pixels, item.pixels));
       if (equal) equal.variants.push(item.variant);
@@ -328,7 +338,7 @@ export class ComparisonView {
       names.prepend(el('span', 'scv-verdict', { equal: '✓ ', different: 'Δ ', unknown: '? ' }[outcome]));
       const isReference = group.variants.includes('original');
       let note = group.variants.length > 1 ? `${group.variants.length} variants · pixel-identical in this context` : isReference ? 'Reference · comparison locations highlighted' : 'Comparison with original';
-      if (!this.differentPixels) note = 'Pixel-identical to original in this context';
+      if (!this.differentPixels) note = 'No changed pixels in the shared image extent';
       const evidenceNotes = group.variants.map(id => this.notes[id]).filter(Boolean);
       if (evidenceNotes.length) note += ' · ' + [...new Set(evidenceNotes)].join(' / ');
       header.append(names, el('div', 'scv-pane-note', note));

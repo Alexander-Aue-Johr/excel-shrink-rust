@@ -192,3 +192,9 @@ reference contexts. They do not complete an ordinary targeted comparison, establ
 whole-sheet coverage or supply a blinded recall estimate. The original source
 directory remains unchanged. Ordinary merge, export and public-Atlas presentation
 are available for the derived report.
+
+The Atlas difference mask and its automatic magnifier use only pixels inside
+both native image extents. Canvas padding remains visible as missing image area
+and does not create a highlighted pixel or choose the magnifier location.
+Recorded geometry, presence and rendering verdicts remain unchanged. Grouping
+of identical captures still requires identical full displayed pixel arrays.

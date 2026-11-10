@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
 import { readGzip, contextKey, assetUrl, candidatePair, sheetSummary, recordedOutcome, groupOutcome } from '../model.js';
 import { bookLayout } from '../gallery.js';
-import { nativeZoomRegion } from '../comparison.js';
+import { difference, nativeZoomRegion } from '../comparison.js';
+
+test('native change masks ignore padded edges and retain changed common pixels', () => {
+  const original = new Uint8ClampedArray(4 * 3 * 4).fill(255);
+  const candidate = new Uint8ClampedArray(original);
+  for (const index of [3, 7, 8, 9, 10, 11]) candidate.fill(0, index * 4, index * 4 + 4);
+  candidate[5 * 4] = 128;
+  const mask = difference(original, candidate, 4, 3, 2);
+  assert.deepEqual([...mask], [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
+});
 
 test('static gzip transport accepts compressed bytes and host-decoded JSON', async () => {
   const savedFetch = globalThis.fetch;
