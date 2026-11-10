@@ -12,7 +12,7 @@ One changed pixel is sufficient to offer an explanation. The explanation is a
 possible dependency path and does not establish the cause of every changed pixel.
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v15`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v16`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -418,6 +418,20 @@ padding helper; overflow can extend farther than that fixed neighborhood.
 A measured zero-width or zero-height rectangle retains geometry and an explicit
 `zero-area-range` observation, with no PNG and no pixel comparison. If only one
 partner is visible, retain its image and report the rendering/geometry transition.
+When both partners have verified zero area, differences between their remaining
+geometry coordinates do not create a visual finding. Version 16 records
+`empty_geometry_ignored=true` when such measurements differ. Both measured
+geometries remain in the evidence and `pixels_compared` remains false. This
+rule requires validated image absence on both sides. It does not apply to a
+missing response or a visibility transition.
+
+The Data.gov workbook `Decentralized Life Cycle Cost Assessment_SF Reuse_69c5be921a2c.xlsx`,
+worksheet `LCCA`, retained nine width-zero tail regions beginning at row 513.
+Their measured heights changed from 2000.25 to 1827 points. Both sides had no
+image. The focused evidence regression covers this geometry, zero-height and
+mixed-axis zero areas, a visible partner, and an invalid missing image. The
+retained version-15 observations remain historical evidence. A new native repeat
+is required before claiming the workbook has completed under version 16.
 Indirect formula, conditional-formatting and rebuild discovery is unaffected.
 
 Split only rectangles whose estimated visible image exceeds 30,000 pixels on

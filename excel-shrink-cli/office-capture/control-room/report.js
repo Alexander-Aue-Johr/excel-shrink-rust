@@ -252,6 +252,7 @@ function showComparisonReport(content, report) {
       region.rendering_differs && 'rendering change', region.presence_differs && 'chart presence change',
       region.blank_margin_ignored && 'blank trailing margin ignored',
       region.capture_extent_ignored && 'comparison restricted to overlapping pixels',
+      region.empty_geometry_ignored && 'both regions have no visible area; measured geometry retained',
       region.pixels_compared === false && 'no pixel comparison',
     ].filter(Boolean);
     note.textContent = `${index + 1} / ${regions.length} · ${observations.join(' · ') || 'No difference recorded'}`;

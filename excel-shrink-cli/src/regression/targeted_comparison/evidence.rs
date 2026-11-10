@@ -18,6 +18,7 @@ pub(super) struct ContentVerdict {
     pub geometry_differs: bool,
     pub blank_margin_ignored: bool,
     pub capture_extent_ignored: bool,
+    pub empty_geometry_ignored: bool,
 }
 
 #[derive(Clone)]
@@ -59,6 +60,15 @@ impl Evidence {
         let left_geometry: Geometry = serde_json::from_value(self.geometry.clone())?;
         let right_geometry: Geometry = serde_json::from_value(other.geometry.clone())?;
         let geometry_differs = left_geometry != right_geometry;
+        if left_geometry.empty() && right_geometry.empty() {
+            return Ok(ContentVerdict {
+                pixels_differ: false,
+                geometry_differs: false,
+                blank_margin_ignored: false,
+                capture_extent_ignored: false,
+                empty_geometry_ignored: geometry_differs,
+            });
+        }
         let blank_pair = match (&self.path, &other.path) {
             (Some(left), Some(right)) if geometry_differs => comparisons.both_blank(left, right)?,
             _ => false,
@@ -73,6 +83,7 @@ impl Evidence {
                         geometry_differs: false,
                         blank_margin_ignored: true,
                         capture_extent_ignored: false,
+                        empty_geometry_ignored: false,
                     });
                 }
                 return Ok(ContentVerdict {
@@ -80,6 +91,7 @@ impl Evidence {
                     geometry_differs: false,
                     blank_margin_ignored: false,
                     capture_extent_ignored: true,
+                    empty_geometry_ignored: false,
                 });
             }
         }
@@ -88,6 +100,7 @@ impl Evidence {
             geometry_differs,
             blank_margin_ignored: false,
             capture_extent_ignored: false,
+            empty_geometry_ignored: false,
         })
     }
 
@@ -417,6 +430,36 @@ mod margin_tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn measured_empty_surfaces_do_not_turn_hidden_geometry_into_a_visual_difference() -> Result<()> {
+        let evidence = |width, height| Evidence {
+            path: None,
+            geometry: json!({"top":8101.5,"left":9381.75,"width":width,"height":height}),
+        };
+        // Data.gov LCCA retained nine zero-width tail regions whose heights
+        // changed from 2000.25 to 1827 points without an image on either side.
+        for (a, b) in [
+            (evidence(0.0, 2000.25), evidence(0.0, 1827.0)),
+            (evidence(20.0, 0.0), evidence(10.0, 0.0)),
+            (evidence(0.0, 20.0), evidence(10.0, 0.0)),
+        ] {
+            let verdict = a.compare_content(&b, &mut ImageComparisons::default())?;
+            assert!(!verdict.geometry_differs && !verdict.pixels_differ);
+            assert!(verdict.empty_geometry_ignored);
+        }
+        let empty = evidence(0.0, 10.0);
+        let visible = Evidence {
+            path: Some("visible.png".into()),
+            geometry: json!({"top":8101.5,"left":9381.75,"width":10.0,"height":10.0}),
+        };
+        let transition = empty.compare_content(&visible, &mut ImageComparisons::default())?;
+        assert!(transition.geometry_differs);
+        assert!(!transition.empty_geometry_ignored);
+        let missing = evidence(10.0, 10.0);
+        assert!(empty.compare_content(&missing, &mut ImageComparisons::default()).is_err());
+        Ok(())
+    }
+
     /// arbeitskraefte-2030218209005.xlsx, 0620T!ACC1070:AGX1166.
     /// Both retained images are white despite different far-tail column origins.
     #[test]
@@ -439,6 +482,7 @@ mod margin_tests {
             geometry_differs: false,
             blank_margin_ignored: true,
             capture_extent_ignored: false,
+            empty_geometry_ignored: false,
         });
         Ok(())
     }
@@ -504,7 +548,8 @@ mod margin_tests {
                     pixels_differ: false,
                     geometry_differs: false,
                     blank_margin_ignored: true,
-                    capture_extent_ignored: false
+                    capture_extent_ignored: false,
+                    empty_geometry_ignored: false,
                 }
             );
         }
@@ -542,7 +587,8 @@ mod margin_tests {
                 pixels_differ: false,
                 geometry_differs: false,
                 blank_margin_ignored: false,
-                capture_extent_ignored: true
+                capture_extent_ignored: true,
+                empty_geometry_ignored: false,
             }
         );
         // Content outside the shared rectangle is outside this comparison's scope.
