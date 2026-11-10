@@ -174,7 +174,7 @@ export class ComparisonView {
       document.head.append(style);
     }
     this.root = el('section', 'scv');
-    this.root.setAttribute('aria-label', 'Pixelvergleich ausgewählter Varianten');
+    this.root.setAttribute('aria-label', 'Pixel comparison of selected variants');
     this.root.tabIndex = 0;
     container.append(this.root);
     this._buildControls();
@@ -199,24 +199,24 @@ export class ComparisonView {
     this.toolbar = el('div', 'scv-toolbar');
     const modes = el('div', 'scv-switch');
     modes.setAttribute('role', 'group');
-    modes.setAttribute('aria-label', 'Bilddarstellung');
-    this.imagesButton = button('Originalbilder', 'Unveränderte Bilder anzeigen', () => this._setMask(false));
-    this.maskButton = button('Differenzmaske', 'Geänderte Originalpixel hervorheben', () => this._setMask(true));
+    modes.setAttribute('aria-label', 'Image display');
+    this.imagesButton = button('Original images', 'Show unmodified images', () => this._setMask(false));
+    this.maskButton = button('Difference mask', 'Highlight changed original pixels', () => this._setMask(true));
     this.imagesButton.setAttribute('aria-pressed', 'true');
     this.maskButton.setAttribute('aria-pressed', 'false');
     modes.append(this.imagesButton, this.maskButton);
     const groupLabel = el('label', 'scv-check');
     this.groupInput = el('input'); this.groupInput.type = 'checkbox'; this.groupInput.checked = true;
     this.groupInput.addEventListener('change', () => { this.grouped = this.groupInput.checked; this._buildPanes(); });
-    groupLabel.append(this.groupInput, el('span', '', 'Gleiches gruppieren'));
-    groupLabel.title = 'Exakt pixelgleiche Bilder im dargestellten Kontext gemeinsam anzeigen';
+    groupLabel.append(this.groupInput, el('span', '', 'Group identical images'));
+    groupLabel.title = 'Group exactly pixel-identical images in the displayed context';
     const pulseLabel = el('label', 'scv-check');
     this.pulseInput = el('input'); this.pulseInput.type = 'checkbox'; this.pulseInput.checked = true;
     this.pulseInput.addEventListener('change', () => { this.pulse = this.pulseInput.checked; this._motionChanged(); });
-    pulseLabel.append(this.pulseInput, el('span', '', 'Kontur pulsieren'));
+    pulseLabel.append(this.pulseInput, el('span', '', 'Pulse outline'));
     this.navigation = el('div', 'scv-nav');
-    this.previousButton = button('←', 'Vorherige Änderung', () => this._step(-1));
-    this.nextButton = button('→', 'Nächste Änderung', () => this._step(1));
+    this.previousButton = button('←', 'Previous change', () => this._step(-1));
+    this.nextButton = button('→', 'Next change', () => this._step(1));
     this.position = el('span', 'scv-position', '–');
     this.position.setAttribute('aria-live', 'polite');
     this.navigation.append(this.previousButton, this.position, this.nextButton);
@@ -242,7 +242,7 @@ export class ComparisonView {
 
     this.setMotion(motion);
     if (!this.sheet || !this.change) {
-      this.images.clear(); this.panes = []; this.grid.replaceChildren(el('div', 'scv-empty', 'Keine Änderung ausgewählt.'));
+      this.images.clear(); this.panes = []; this.grid.replaceChildren(el('div', 'scv-empty', 'No change selected.'));
       this.rangeLabel.textContent = ''; this.scopeLabel.textContent = '';
       this.previousButton.disabled = true; this.nextButton.disabled = true;
       return;
@@ -327,15 +327,15 @@ export class ComparisonView {
       header.title = { equal: 'No recorded difference', different: 'Recorded difference', unknown: 'Not assessed' }[outcome];
       names.prepend(el('span', 'scv-verdict', { equal: '✓ ', different: 'Δ ', unknown: '? ' }[outcome]));
       const isReference = group.variants.includes('original');
-      let note = group.variants.length > 1 ? `${group.variants.length} Varianten · pixelgleich in diesem Kontext` : isReference ? 'Referenz · Markierung der Vergleichsstellen' : 'Vergleich mit Original';
-      if (!this.differentPixels) note = 'Pixelgleich mit Original in diesem Kontext';
+      let note = group.variants.length > 1 ? `${group.variants.length} variants · pixel-identical in this context` : isReference ? 'Reference · comparison locations highlighted' : 'Comparison with original';
+      if (!this.differentPixels) note = 'Pixel-identical to original in this context';
       const evidenceNotes = group.variants.map(id => this.notes[id]).filter(Boolean);
       if (evidenceNotes.length) note += ' · ' + [...new Set(evidenceNotes)].join(' / ');
       header.append(names, el('div', 'scv-pane-note', note));
       const stage = el('div', 'scv-stage');
       const canvas = el('canvas', 'scv-image');
       const overlay = el('canvas', 'scv-emphasis');
-      canvas.setAttribute('aria-label', `${label}: Kontextbild und verbundene Detailvergrößerung`);
+      canvas.setAttribute('aria-label', `${label}: Context image and linked enlarged detail`);
       canvas.setAttribute('role', 'img');
       overlay.setAttribute('aria-hidden', 'true');
       stage.append(canvas, overlay); pane.append(header, stage); this.grid.append(pane);
@@ -347,8 +347,8 @@ export class ComparisonView {
     this.position.textContent = `${index + 1} / ${Math.max(1, this.changes.length)}`;
     this.previousButton.disabled = this.changes.length < 2;
     this.nextButton.disabled = this.changes.length < 2;
-    this.rangeLabel.textContent = `${formatRange(this.sheet, this.change)} · Kontext ${this.region.w} × ${this.region.h} Originalpixel`;
-    this.scopeLabel.textContent = this.differentPixels ? `${groups.length} Bild${groups.length === 1 ? '' : 'er'} aus ${this.variants.length} Varianten · Gleichheit gilt für diesen Kontext` : 'Die verfügbaren Bilder sind in diesem Kontext pixelgleich.';
+    this.rangeLabel.textContent = `${formatRange(this.sheet, this.change)} · Context ${this.region.w} × ${this.region.h} original pixels`;
+    this.scopeLabel.textContent = this.differentPixels ? `${groups.length} image${groups.length === 1 ? '' : 's'} from ${this.variants.length} variants · Equality applies to this context` : 'The available images are pixel-identical in this context.';
     this._schedule();
   }
 
@@ -491,14 +491,14 @@ export class ComparisonView {
     ctx.font = '10px Inter, Segoe UI, Arial, sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillStyle = '#566c60';
-    ctx.fillText(this.maskMode ? 'Kontext · Differenzpixel' : 'Kontext', 12 + dx, 9 + dy);
+    ctx.fillText(this.maskMode ? 'Context · changed pixels' : 'Context', 12 + dx, 9 + dy);
     const zoomLabel = `Detail · ${(z.scale / b.scale).toFixed(1).replace('.', ',')}×`;
     const labelWidth = ctx.measureText(zoomLabel).width + 8;
     ctx.fillStyle = '#eef2ef'; ctx.fillRect(z.x - 3, z.y - 17, labelWidth, 14);
     ctx.fillStyle = '#566c60'; ctx.fillText(zoomLabel, z.x, z.y - 9);
 
     if (this.differentPixels) {
-      // Originalbilder must retain the actual text and fill colours. Dense
+      // Original images must retain the actual text and fill colours. Dense
       // per-pixel contours belong exclusively to the optional mask view.
       if (this.maskMode) {
         overlay.imageSmoothingEnabled = true;

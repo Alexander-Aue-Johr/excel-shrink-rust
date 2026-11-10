@@ -342,7 +342,7 @@ function paintWorkbookCard(canvas, item, options) {
   const aspect = finite(options.aspect, width / height) > 0 ? finite(options.aspect, width / height) : width / height;
   if (!sheets.length) {
     ctx.fillStyle = C.muted; ctx.font = `${12 * unit}px ${FONT}`; ctx.textAlign = 'center';
-    ctx.fillText('Keine Arbeitsblätter', width / 2, height / 2);
+    ctx.fillText('Sheet inventory unavailable', width / 2, height / 2);
     return { hits: [], attachments: [], layoutInfo: { kind: 'workbook', width, height, tileAspect: aspect, sheetCount: 0, tiles: [] } };
   }
   const grid = gridLayout(sheets.length, width, height, aspect, unit);

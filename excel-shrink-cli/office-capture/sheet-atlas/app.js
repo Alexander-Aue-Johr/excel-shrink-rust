@@ -130,7 +130,7 @@ function render() {
   if (state.book) $('breadcrumbs').append(button(state.book.name, () => openBook(state.book), 'quiet-button'));
   if (state.sheet) $('breadcrumbs').append(element('span', '', state.sheet.name));
   $('gallery-eyebrow').textContent = `${state.corpus} · RETAINED VISUAL EVIDENCE`;
-  $('gallery-title').textContent = state.sheet?.name || state.book?.name || 'Arbeitsmappen';
+  $('gallery-title').textContent = state.sheet?.name || state.book?.name || 'Workbooks';
   const active = activeVariants();
   for (const label of $('pipeline-checkboxes').children) label.hidden = !active.has(label.dataset.variant);
   $('pipeline-summary').textContent = `${selectedVariants().size} variants selected`;
@@ -204,7 +204,7 @@ function attachControls() {
   $('webgl-button').addEventListener('click', () => gallery.setMode('webgl'));
   $('motion-button').addEventListener('click', () => {
     gallery.motion = !gallery.motion;
-    $('motion-button').textContent = gallery.motion ? 'Animation an' : 'Animation aus';
+    $('motion-button').textContent = gallery.motion ? 'Animation on' : 'Animation off';
     $('motion-button').setAttribute('aria-pressed', String(gallery.motion));
     comparison?.setMotion(gallery.motion);
   });
@@ -253,7 +253,7 @@ async function start() {
     book: book => { state.token++; state.book = book; state.sheet = null; state.detail = null; render(); },
     sheet: openSheet, findings: openFinding,
     renderer: mode => {
-      $('renderer-status').textContent = mode === 'webgl' ? 'Three.js · WebGL' : mode === 'css' ? 'Flache CSS-Ansicht' : 'WebGL unavailable · choose Flach · CSS';
+      $('renderer-status').textContent = mode === 'webgl' ? 'Three.js · WebGL' : mode === 'css' ? 'Flache CSS-Ansicht' : 'WebGL unavailable · choose Flat · CSS';
       $('webgl-button').setAttribute('aria-pressed', String(mode === 'webgl'));
       $('css-button').setAttribute('aria-pressed', String(mode === 'css'));
       let note = $('webgl-note');
