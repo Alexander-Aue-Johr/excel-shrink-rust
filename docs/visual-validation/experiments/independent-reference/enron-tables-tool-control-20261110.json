@@ -174,5 +174,56 @@
     "No whole-workbook equivalence claim",
     "NXPowerLite output unavailable for this input",
     "Inquire bottom-edge finding remains unclassified"
-  ]
+  ],
+  "extended_edge_control": {
+    "scope": "Post-hoc edge diagnostic on Tables!A1:I160, three extra rows below the initial reference. Same source and variant identities as the corresponding observations.",
+    "observations": [
+      {
+        "tool": "check_performance",
+        "region": "Tables!A1:I160",
+        "dimensions": [
+          [
+            859,
+            2730
+          ],
+          [
+            859,
+            2728
+          ]
+        ],
+        "changed_common_rgba_pixels": 127256,
+        "bbox": [
+          88,
+          16,
+          514,
+          2679
+        ],
+        "original_image_sha256": "8b5f62ac98905abb4ebccd550ea45c92d0ca5569733cd5822233d47544a81dcb"
+      },
+      {
+        "tool": "inquire",
+        "region": "Tables!A1:I160",
+        "dimensions": [
+          [
+            859,
+            2730
+          ],
+          [
+            834,
+            2729
+          ]
+        ],
+        "changed_common_rgba_pixels": 916,
+        "bbox": [
+          88,
+          2661,
+          514,
+          2679
+        ],
+        "original_image_sha256": "8b5f62ac98905abb4ebccd550ea45c92d0ca5569733cd5822233d47544a81dcb"
+      }
+    ],
+    "inspection": "The Inquire output lacks the lower horizontal table border inside the common image rectangle. Original row 157 and its styled blank cells are absent from the rebuilt Inquire working copy. Extra rows below the table retain this difference, ruling out a capture boundary alone as its explanation. The Check Performance difference also persists inside the common rectangle.",
+    "limits": "This developer-selected example does not measure recall or prove whole-workbook equivalence. Extended controls were run only for Check Performance and Inquire."
+  }
 }

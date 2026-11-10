@@ -13,8 +13,18 @@ fresh comparisons. SheetShrink and XLStylesTool each retain the original
 126,404 changed common RGBA pixels. Its targeted height observations record
 rows 1 and 157 decreasing from 13.5 to 12.75 points. Inquire produces 834 by
 2678 pixels, with 490 changed common pixels restricted to the bottom edge.
-The latter remains an unclassified edge finding. NXPowerLite has no available
-output for this input.
+NXPowerLite has no available output for this input.
+
+A subsequent `Tables!A1:I160` reference includes three extra rows below the
+table. The original images again have identical hashes across the two controls.
+Inquire differs at 916 common pixels, within x=88..513 and y=2661..2678.
+Visual inspection confirms a missing lower horizontal table border inside the
+common rectangle. The rebuilt Inquire copy lacks original row 157 and its
+styled blank cells. Extending below the table preserves the missing border,
+ruling out the capture boundary alone as its explanation. Check Performance
+still differs at 127,256 common pixels. Both extended receipts and original
+images are retained. These additional controls cover only these two variants
+and remain post-hoc development evidence.
 
 The checksum and geometry evidence is in
 `enron-tables-tool-control-20261110.json`. Native raw receipts and images remain
