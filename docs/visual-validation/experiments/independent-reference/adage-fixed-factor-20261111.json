@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "workbook": "Adage_oilprice_fixed_factor_b3432e99f632.xlsx",
+  "sheet": "readme",
+  "range": "A1:M22",
+  "image_size": [
+    1368,
+    466
+  ],
+  "selection": "Post-hoc reference area",
+  "recall_evidence": false,
+  "observations": [
+    {
+      "tool": "sheetshrink",
+      "receipt_sha256": "523d824c815d14bdfab931e894e68e9a591485d7c915756d42ea1ae8f06dd43a",
+      "original_sha256": "b3432e99f632ba72533a03c2e77910ff3867f5034b2cbb8f36e1b753ea99f521",
+      "candidate_sha256": "34e3bd03cf03d3cfcac5c90ad901537c68bff25c79aa6a2b51fef854a287bf2a",
+      "original_rgba_sha256": "b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b",
+      "candidate_rgba_sha256": "b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b",
+      "changed_rgba_pixels": 0,
+      "changed_bounds": null
+    },
+    {
+      "tool": "xlstyles",
+      "receipt_sha256": "24a0ea322bdd228773b73ae5e4c69f5e6945ad0c99060167adf1e2115f10cb89",
+      "original_sha256": "b3432e99f632ba72533a03c2e77910ff3867f5034b2cbb8f36e1b753ea99f521",
+      "candidate_sha256": "ee93e5ada2862bedac7d58e7db49dd1bdb556807a9d7eedf3b17aa881d9eee22",
+      "original_rgba_sha256": "b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b",
+      "candidate_rgba_sha256": "b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b",
+      "changed_rgba_pixels": 0,
+      "changed_bounds": null
+    },
+    {
+      "tool": "check_performance",
+      "receipt_sha256": "bc48f936075a97a62cd426e288e542c0b214306cdb8021f3d37406c835f82e6c",
+      "original_sha256": "b3432e99f632ba72533a03c2e77910ff3867f5034b2cbb8f36e1b753ea99f521",
+      "candidate_sha256": "a0f96b6b12697092d76bb34e9d4495b906a7d1e68c388a440984ac90d943b3dd",
+      "original_rgba_sha256": "b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b",
+      "candidate_rgba_sha256": "c200d295a3d87e41a6435e8f9873e213524b5aa1efe5918b27f87b27ad719a00",
+      "changed_rgba_pixels": 16182,
+      "changed_bounds": [
+        748,
+        20,
+        1306,
+        49
+      ]
+    },
+    {
+      "tool": "inquire",
+      "receipt_sha256": "41c160283221ece105175c68fa6e0d8370038aa6eab7a1f5ad0d719e858a5ce1",
+      "original_sha256": "b3432e99f632ba72533a03c2e77910ff3867f5034b2cbb8f36e1b753ea99f521",
+      "candidate_sha256": "b7d8d2d8d696fb2dcdd5e5a2f17a52664cb1cddea989551469a7f2f3bd272850",
+      "original_rgba_sha256": "b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b",
+      "candidate_rgba_sha256": "c200d295a3d87e41a6435e8f9873e213524b5aa1efe5918b27f87b27ad719a00",
+      "changed_rgba_pixels": 16182,
+      "changed_bounds": [
+        748,
+        20,
+        1306,
+        49
+      ]
+    },
+    {
+      "tool": "nxpowerlite",
+      "receipt_sha256": "aa35502171bbb587961210242d1c674311a46537346503d909af2c2b4a032614",
+      "original_sha256": "b3432e99f632ba72533a03c2e77910ff3867f5034b2cbb8f36e1b753ea99f521",
+      "candidate_sha256": "c66f80cb1b1bb1e3619626a505a5c00a68c54fa18a864a847f899a07abc45a11",
+      "original_rgba_sha256": "b0afcddb2547a02c3d4e51210f645083528959fa7ae65bba49c3847e5bc61f0b",
+      "candidate_rgba_sha256": "c200d295a3d87e41a6435e8f9873e213524b5aa1efe5918b27f87b27ad719a00",
+      "changed_rgba_pixels": 16182,
+      "changed_bounds": [
+        748,
+        20,
+        1306,
+        49
+      ]
+    }
+  ]
+}
