@@ -397,3 +397,15 @@ coverage for the original selected workbook.
 
 - Native failure receipt `3840d9c90043beef104fd553fd950e0f95fe432c387f470f24364c8d02da6b49`
 - Reconversion receipt `a7b588fed3a3a597271378b2fdedd5d2d17930956f0d985834a877268f71f9e6`
+
+A later bounded test used the reconverted XLSX as input to the current
+SheetShrink binary. Cleanup produced a candidate (SHA-256
+`c571513855f899322bca03727b15a3e6747d60e3cd79ab235b653d340448e4a7`),
+but the candidate's native opening lane encountered `repair_required`.
+A second test used the reconverted input in both lanes and reproduced
+`repair_required` in the original lane. Neither test accepted repair
+or reached the two planned reference captures. The reconversion does
+not provide an eligible comparison baseline under this opening policy.
+
+- Reconverted pair receipt `96b88e38951c92062858e6380e46f3a3284f561cc71208bba936dcb1bfdaf93c`
+- Reconverted input-only control receipt `220509880d601f9353a72ee02f53029fca95ece10ec7102251efa704e6d82dee`
