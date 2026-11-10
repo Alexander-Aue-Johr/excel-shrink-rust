@@ -72,7 +72,7 @@ try {
         }
         if ($idle.Elapsed.TotalSeconds -ge $CaptureIdleTimeoutSeconds) {
             $captureIdleTimedOut = $true
-            throw "No verified capture or geometry progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
+            throw "No verified validation progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt."
         }
     }
     if ($process.ExitCode -ne 0) { throw "Targeted comparison failed; inspect $Output/failure.json." }
@@ -85,7 +85,7 @@ try {
             # The CLI was terminated before it could publish a failure. Keep the
             # durable error and live mirror consistent with the launcher result.
             try {
-                $message = if ($capturePlanFailure) { $capturePlanFailure.error } else { "No verified capture or geometry progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt." }
+                $message = if ($capturePlanFailure) { $capturePlanFailure.error } else { "No verified validation progress for $CaptureIdleTimeoutSeconds seconds; stopping this attempt." }
                 [void][IO.Directory]::CreateDirectory($Output)
                 $failure = if ($capturePlanFailure) { $capturePlanFailure } else { @{status='failed';error=$message;kind='capture_idle_timeout';timeout_seconds=$CaptureIdleTimeoutSeconds} }
                 [IO.File]::WriteAllText(([IO.Path]::Combine($Output, 'failure.json')),($failure|ConvertTo-Json))

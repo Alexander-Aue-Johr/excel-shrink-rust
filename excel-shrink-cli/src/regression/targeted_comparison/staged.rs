@@ -948,6 +948,10 @@ impl Workflow<'_, '_> {
         let started = Instant::now();
         let mut comparisons = Vec::new();
         for (label, left, right) in self.pairs() {
+            self.comparison.telemetry.update(|state| {
+                state.step(left, Phase::Compare, StepStatus::Running);
+                state.step(right, Phase::Compare, StepStatus::Running);
+            })?;
             let mut findings = Vec::new();
             for candidate in &self.comparison.candidates {
                 let a = self.states[&left]
@@ -960,6 +964,9 @@ impl Workflow<'_, '_> {
                     .context("Missing right evidence")?;
                 let verdict =
                     a.compare_content(b, &mut self.comparison.image_comparisons)?;
+                self.comparison.telemetry.progress(|state| {
+                    state.capture_progress_sequence += 1;
+                })?;
                 findings.push(VisualFinding {
                     sheet: candidate.sheet.clone(),
                     cell: candidate.cell.clone(),
