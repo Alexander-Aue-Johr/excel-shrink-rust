@@ -192,6 +192,35 @@ fn rejected_nested_destination_does_not_mutate_the_source_report() -> Result<()>
 }
 
 #[test]
+fn a_single_pixel_chart_difference_remains_visible_in_the_portable_report() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let raw = fixture.directory("raw")?;
+    let (left, right) = image_pair(&raw)?;
+    write_report(
+        &raw,
+        &json!({"status":"completed_with_limitations","comparisons":[{
+            "left":"OR","right":"SDR","findings":[],"charts":[{
+                "sheet":"Chart","chart":"Revenue",
+                "left_image":left,"right_image":right,
+                "pixels_compared":true,"pixels_differ":true,
+                "geometry_differs":false,"presence_differs":false
+            }]
+        }]}),
+    )?;
+    let packaged = package_comparison(&raw, &fixture.0.join("retained"))?;
+    let report = read_json_file(&packaged.report_path)?;
+    let chart = &report["comparisons"][0]["charts"][0];
+    assert_eq!(packaged.different_regions, 1);
+    assert_eq!(chart["pixels_differ"], true);
+    assert!(chart["left_image"].as_str().unwrap().starts_with("evidence/"));
+    assert!(chart["right_image"].as_str().unwrap().starts_with("evidence/"));
+    let metrics = &report["portable_report"]["diagnostics"]["0:charts:0"]["metrics"];
+    assert_eq!(metrics["changed_pixels"], 1);
+    assert_eq!(metrics["max_channel_delta"], 1);
+    verify_comparison(packaged.report_path.parent().unwrap())
+}
+
+#[test]
 fn jpeg_chart_exports_keep_their_real_format_and_are_not_mislabelled_as_png() -> Result<()> {
     let fixture = Fixture::new()?;
     let raw = fixture.directory("raw")?;

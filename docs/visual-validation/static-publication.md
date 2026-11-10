@@ -6,6 +6,19 @@ Excel installation, or control API. Opening `index.html` locally also keeps the
 embedded report data available. Each comparison's integrity manifest covers its
 scientific report and retained images.
 
+## Retain rendering observations
+
+Pixel differences in charts remain visible findings even when follow-up controls
+attribute them to native rendering variability. Retain both images, exact pixel
+measurements and the original comparison outcome. A small changed-pixel count
+does not suppress the finding. The report describes an observed visual change;
+attribution to a SheetShrink regression requires separate evidence.
+
+Document repeated original-versus-original and original-versus-output controls
+alongside the finding when available. An unreproduced small discrepancy may be
+accepted as a rendering observation while remaining in the report. Unchanged
+chart XML alone does not prove unchanged dependent values, layout or rendering.
+
 ## Freeze a private export
 
 Use the standalone report root produced by DeltaSieve. Corpus studies first need
