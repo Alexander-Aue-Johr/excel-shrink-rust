@@ -211,11 +211,11 @@ def analyze(prepared, output, labels):
     print(json.dumps(summary), flush=True)
 
 
-def compare_controls(run, output):
+def compare_controls(run, output, default_root=None, record_files=None):
     """Summarize completed cases, retaining ordinary-save controls separately."""
     output.mkdir(parents=True, exist_ok=True)
     workbooks, sheets, errors = [], [], []
-    for record_file in (run / "results").glob("*.json"):
+    for record_file in record_files if record_files is not None else (run / "results").glob("*.json"):
         result = json.loads(record_file.read_bytes())
         if result["status"] != "prepared":
             continue
@@ -223,7 +223,8 @@ def compare_controls(run, output):
         attempt = Path(result["attempt"])
         paths = {
             "original": attempt / "inputs/original.xlsx",
-            "default": attempt / "inputs/default/original.xlsx",
+            "default": (default_root / case_id / "original.xlsx" if default_root else
+                        attempt / "inputs/default/original.xlsx"),
             "saved_original": attempt / "artifacts/original.saved.xlsx",
             "cp_before": attempt / "artifacts/check-performance.before-optimization.xlsx",
             "cp_after": attempt / "artifacts/check-performance.optimized.saved.xlsx"}
@@ -233,6 +234,8 @@ def compare_controls(run, output):
                 with zipfile.ZipFile(path) as archive:
                     inventories[name] = sheet_directory(archive)
             row = {"case_id": case_id, "source_member": result["source_member"]}
+            if default_root:
+                row["historical_default_xlsx_bytes"] = (attempt / "inputs/default/original.xlsx").stat().st_size
             row.update({name + "_xlsx_bytes": path.stat().st_size for name, path in paths.items()})
             row["default_reduction_percent"] = reduction(row["original_xlsx_bytes"], row["default_xlsx_bytes"])
             row["cp_roundtrip_reduction_percent"] = reduction(row["original_xlsx_bytes"], row["cp_after_xlsx_bytes"])

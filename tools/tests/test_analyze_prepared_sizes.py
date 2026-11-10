@@ -90,6 +90,19 @@ class MetadataOnlyTests(unittest.TestCase):
             self.assertEqual(float(sheet["cp_roundtrip_xml_reduction_percent"]), 95)
             self.assertAlmostEqual(float(sheet["cp_optimization_xml_reduction_percent"]), 100 * 650 / 700)
 
+            fresh = root / "fresh/fixture/original.xlsx"
+            fresh.parent.mkdir(parents=True)
+            fresh.write_bytes(workbook(b"x"))
+            with patch("builtins.print"):
+                sizes.compare_controls(root, root / "fresh-comparison", root / "fresh",
+                                       [root / "results/fixture.json"])
+            with (root / "fresh-comparison/workbooks.csv").open(encoding="utf-8-sig") as stream:
+                refreshed = next(csv.DictReader(stream))
+            self.assertEqual(int(refreshed["default_xlsx_bytes"]), fresh.stat().st_size)
+            self.assertEqual(int(refreshed["historical_default_xlsx_bytes"]),
+                             (attempt / "inputs/default/original.xlsx").stat().st_size)
+            self.assertEqual(Path(refreshed["default_path"]), fresh)
+
 
 if __name__ == "__main__":
     unittest.main()
