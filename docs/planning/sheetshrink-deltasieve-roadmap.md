@@ -13,6 +13,25 @@ All processor variants use these same original identities and frozen ranks.
 
 ### Latest output-identity checkpoint on 2026-11-10
 
+The eleven selected Check Performance automation failures now have separately
+retained interactive outputs. The author recovered one input and visible Excel
+interaction recovered the remaining ten. All ten source hashes remained
+unchanged, and all thirteen resulting output/baseline XLSX archives passed ZIP
+CRC checks. Seven of the ten recoveries required no structural normalization.
+Two Enron inputs required Excel repair and Finanzgerichte required resolution
+of a conflicting Print_Area name. Repair-only baselines and explicit provenance
+keep those three outside the ordinary matched preparation counts. Current
+ordinary Check Performance availability is 48 Destatis, 49 Data.gov and 47 Enron
+identities, plus the three separately normalized identities. Their visual
+validation remains pending.
+
+Five Enron cases succeeded with an ordinary worksheet selected. One visibly
+failed on a chart sheet before succeeding after a worksheet switch. This is a
+candidate automation explanation, not a completed controlled timing experiment
+or a deployed behavior change. ScienceHub's suggestion scan eventually completed
+and optimization succeeded after a multi-minute wait. Its earlier timeout must
+not be treated as evidence of unsupported workbook contents.
+
 The later policy-v15 checkpoint supersedes the running/queued status below.
 All 26 changed Destatis outputs completed their repeat, and Wanderungen's
 separate controlled opening recovery completed with zero differences. The
