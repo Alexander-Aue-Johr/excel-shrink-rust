@@ -10,6 +10,34 @@ use zip::ZipArchive;
 pub(crate) const MAX_ROWS: u32 = 1_048_576;
 pub(crate) const MAX_COLUMNS: u32 = 16_384;
 
+/// Include hidden worksheets and chart sheets in their original workbook order.
+pub(crate) fn workbook_sheet_inventory(bytes: &[u8]) -> Result<Vec<serde_json::Value>> {
+    let mut sheets = Vec::new();
+    let mut reader = Reader::<64>::new(bytes)?;
+    while let Some(tag) = reader.next()? {
+        if tag.kind == Kind::End || tag.local() != b"sheet" { continue; }
+        sheets.push(serde_json::json!({
+            "id":decode_attr(tag.attr(b"sheetId")?.context("Missing sheetId")?)?,
+            "name":decode_sheet_name(tag.attr(b"name")?.context("Missing sheet name")?)?,
+            "state":decode_attr(tag.attr(b"state")?.unwrap_or(b"visible"))?,
+            "order":sheets.len()
+        }));
+    }
+    Ok(sheets)
+}
+
+#[cfg(test)]
+mod inventory_tests {
+    #[test]
+    fn inventory_preserves_order_hidden_sheets_and_xml_names() {
+        let sheets = super::workbook_sheet_inventory(br#"<workbook><sheets><sheet name="Z &amp; A" sheetId="9" state="veryHidden"/><sheet name="Empty" sheetId="2"/></sheets></workbook>"#).unwrap();
+        assert_eq!(sheets[0]["name"], "Z & A");
+        assert_eq!(sheets[0]["state"], "veryHidden");
+        assert_eq!(sheets[1]["id"], "2");
+        assert_eq!(sheets[1]["order"], 1);
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct CaptureColumnSpan {
     pub min: u32,

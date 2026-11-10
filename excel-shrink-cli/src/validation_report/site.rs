@@ -61,13 +61,13 @@ pub(crate) fn write_site(report_root: &Path, run: &Value) -> Result<PathBuf> {
         } else { None },
         "pairs": rows
     });
-    let path = root.join("index.html");
+    let path = root.join("report.html");
     write_derived(
         &root,
         &path,
         render_page("DeltaSieve validation report", "", &data)?.as_bytes(),
     )?;
-    Ok(path)
+    super::atlas::write(&root, run)
 }
 
 /// Create only one pair's viewer page. The shared region model, pixel inspector,
@@ -104,7 +104,7 @@ fn write_pair_page_contents(root: &Path, report_relative: &str, label: &str) -> 
     );
     let prefix = "../".repeat(parent.components().count());
     let data = json!({
-        "kind": "comparison", "title": label, "back": format!("{prefix}index.html"),
+        "kind": "comparison", "title": label, "back": format!("{prefix}report.html"),
         "report": report
     });
     let page = report_path.with_file_name("index.html");
@@ -129,6 +129,7 @@ pub(crate) fn export_site(source_root: &Path, destination: &Path) -> Result<Path
     run["index_complete"] = json!(true);
     let rows = overview_rows(&source, &run)?;
     let destination = evidence::create_destination(&source, destination)?;
+    super::atlas::copy_labels(&source, &destination)?;
     let mut identities = BTreeSet::new();
     let mut audit_files = vec![String::from("run.json")];
     for row in rows {
@@ -299,7 +300,7 @@ fn html_text(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn ensure_owned_directory(root: &Path, directory: &Path) -> Result<()> {
+pub(super) fn ensure_owned_directory(root: &Path, directory: &Path) -> Result<()> {
     let metadata = fs::symlink_metadata(directory)?;
     ensure!(
         metadata.is_dir() && !metadata.file_type().is_symlink(),
@@ -320,7 +321,7 @@ fn ensure_owned_directory(root: &Path, directory: &Path) -> Result<()> {
     Ok(())
 }
 
-fn write_derived(root: &Path, path: &Path, bytes: &[u8]) -> Result<()> {
+pub(super) fn write_derived(root: &Path, path: &Path, bytes: &[u8]) -> Result<()> {
     ensure_owned_directory(root, path.parent().context("Viewer output has no parent")?)?;
     if path.try_exists()? {
         let relative = path

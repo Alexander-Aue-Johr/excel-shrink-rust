@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#10191f">
+  <meta name="description" content="Sheet Atlas: räumliche Workbook- und Sheet-Karten in Three.js, gefaltete Blattübersichten und der Vergleich ausgewählter Bereinigungspipelines.">
+  <title>Sheet Atlas · Visual Changes</title>
+  <link rel="stylesheet" href="./atlas-assets/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2310191f'/%3E%3Cpath d='M7 8h18v16H7zM7 14h18M13 8v16' stroke='%238bc6b7' fill='none' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./atlas-assets/atlas.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <button class="brand" id="home-button" aria-label="Zur Workbookübersicht"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Sheet Atlas<small>VISUAL CHANGES</small></span></button>
+    <div class="selectors">
+      <label class="select-field"><span>Korpus</span><select id="corpus-select" aria-label="Korpus"></select></label>
+      <div class="select-field pipeline-field"><span id="pipeline-label">Bereinigungspipeline</span><details id="pipeline-menu" class="pipeline-menu"><summary aria-labelledby="pipeline-label pipeline-summary"><span id="pipeline-summary">SheetShrink</span><span class="chevron" aria-hidden="true">⌄</span></summary><div class="pipeline-options"><div class="pipeline-reference"><span>Referenz</span><strong>Original</strong></div><div id="pipeline-checkboxes"></div><p>Eine oder mehrere Varianten auswählen.</p></div></details></div>
+    </div>
+    <div class="top-actions"><a class="demo-tag" href="./report.html">DETAILED REPORT</a><button id="help-button" class="icon-button" aria-label="Hinweise zum Atlas">?</button></div>
+  </header>
+  <nav class="contextbar" aria-label="Aktuelle Ansicht"><div class="breadcrumb-wrap"><button id="back-button" class="back-button" aria-label="Eine Ebene zurück" disabled>←</button><div id="breadcrumbs" class="breadcrumbs"></div></div><div class="context-right"><span class="changes-only"><span class="status-dot"></span>Visual Changes nach der Bearbeitung</span><button id="motion-button" class="quiet-button" aria-pressed="true">Animation an</button></div></nav>
+  <main id="workspace" class="workspace">
+    <div id="viewer-layout" class="viewer-layout">
+      <section id="stage-shell" class="stage-shell" aria-label="Workbook- und Sheet-Galerie">
+        <header class="stage-header"><div class="stage-heading"><div id="gallery-eyebrow" class="eyebrow">KORPUSÜBERSICHT</div><h1 id="gallery-title">Arbeitsmappen mit Änderungen</h1><p id="gallery-description"></p></div><div class="stage-actions"><div class="segmented" aria-label="Renderer"><button id="webgl-button" aria-pressed="true">3D · Three.js</button><button id="css-button" aria-pressed="false">Flach · CSS</button></div><button class="square-button fullscreen-button" data-fullscreen aria-label="Vollbild öffnen" title="Vollbild öffnen">⛶</button><button id="pane-toggle" class="square-button pane-toggle" aria-label="Seitenleiste ausblenden" title="Seitenleiste ausblenden">◧</button></div></header>
+        <div id="gallery-container" class="gallery-container" aria-label="Kartenübersicht"></div>
+        <div id="empty-selection" class="empty-selection" hidden><strong>Keine Variante ausgewählt</strong><p>Wähle oben mindestens eine Bearbeitungsvariante aus.</p></div>
+        <footer class="stage-footer"><div><span id="renderer-status" class="renderer-status">Three.js · WebGL</span><span class="footer-separator">·</span><span id="aspect-status" class="aspect-status"></span></div><span id="gallery-hint">Workbook öffnen</span><button id="reset-view" class="quiet-button">Ansicht zentrieren ↗</button></footer>
+      </section>
+      <aside id="side-panel" class="side-panel"><div class="rail-top"><h2 id="rail-title">Schnellzugriff</h2><span id="rail-count" class="small-count"></span></div><div class="rail-tabs"><button id="rail-items" aria-pressed="true">Workbooks</button><button id="rail-findings" aria-pressed="false">Befunde</button></div><div id="explorer-list" class="explorer-list"></div><div class="rail-bottom"><div id="selected-sheet-info" class="selected-sheet-info" hidden></div><div class="legend-row"><i class="legend-box changed"></i><span>Visuell verändert</span></div><div class="legend-row"><i class="legend-box viewport"></i><span>Im Thumbnail sichtbarer Bereich</span></div><div class="legend-row"><i class="legend-box unknown"></i><span>Keine Bildaufnahme vorhanden</span></div><p id="rail-explanation" class="rail-explanation">Jedes Sheet erhält eine Kachel. Rot zeigt Änderungen zu den ausgewählten Varianten.</p><p class="demo-footnote">Retained DeltaSieve evidence<br><span id="publication-status">{{PUBLICATION_STATUS}}</span></p></div></aside>
+    </div>
+    <section id="compare-page" class="compare-page" aria-label="Vergleich der ausgewählten Varianten" hidden><header class="compare-heading"><div><div id="compare-eyebrow" class="eyebrow"></div><h1 id="compare-title">Visueller Vergleich</h1><p id="compare-description"></p></div><div class="compare-head-actions"><button id="back-to-sheet" class="outline-button">← Zum Sheet</button><button class="square-button fullscreen-button" data-fullscreen aria-label="Vollbild öffnen" title="Vollbild öffnen">⛶</button></div></header><div id="comparison-host" class="comparison-host"></div></section>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </main>
+  <dialog id="help-dialog"><form method="dialog"><button class="dialog-close" aria-label="Schließen">×</button></form><div class="eyebrow">DELTASIEVE ATLAS</div><h2>Workbook → Sheet → Änderung</h2><p>Dieser Atlas zeigt gespeicherte DeltaSieve-Beobachtungen. Neutrale Kacheln beweisen keine vollständige visuelle Gleichheit. Aufnahmen und Vergleichszustände bestimmen die verfügbare Abdeckung.</p><div class="help-step"><b>1</b><div><strong>Die ganze Arbeitsmappe</strong><p>Eine gleichförmige Kachel für jedes Sheet. Rote Kacheln zeigen Abweichungen zu mindestens einer ausgewählten Pipeline.</p></div></div><div class="help-step"><b>2</b><div><strong>Hineinzoomen</strong><p>Im Workbook erscheinen die Sheet-Thumbnails. Lange Blätter werden unten beziehungsweise rechts gefaltet dargestellt. Die Schnittkanten lassen keine Bereiche aus. Nicht aufgenommene Bereiche bleiben leer.</p></div></div><div class="help-step"><b>3</b><div><strong>Rote Bereiche öffnen</strong><p>Ein Befund öffnet Original und ausgewählte Varianten. Konturen und Verbindungslinien führen zu den vergrößerten Details. Gleiche Bilder können gruppiert werden.</p></div></div><p class="help-shortcuts"><kbd>Esc</kbd> Eine Ebene zurück <span>·</span> <kbd>⛶</kbd> Vollbild</p><p class="help-renderer">3D verwendet den Three.js-WebGLRenderer. Die flache CSS-Ansicht ist separat auswählbar.</p></dialog>
+</div>
+<script type="module" src="./atlas-assets/app.js"></script>
+</body>
+</html>

@@ -52,6 +52,7 @@ mod worksheet_stream;
 mod streaming_xml;
 pub(crate) mod addin_probe;
 mod office_plan;
+pub(crate) use office_plan::workbook_sheet_inventory;
 mod row_heights;
 mod office_capture;
 mod visual_compare;

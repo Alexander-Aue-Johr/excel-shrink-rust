@@ -127,6 +127,7 @@ struct Finding {
 
 #[derive(Serialize)]
 struct Report {
+    workbook_inventory: Value,
     workbook_bytes: BTreeMap<String, u64>,
     capture_policy: &'static str,
     execution_strategy: &'static str,
@@ -229,6 +230,7 @@ impl<'a> Comparison<'a> {
             report: {
                 let mut report = new_report();
                 report.input_identity = input_identity;
+                report.workbook_inventory = crate::validation_report::read_workbook_inventory(&args.original)?;
                 report.chart_capture_mode = args.chart_capture_mode;
                 if !args.skip_check_performance {
                     report.check_performance = "pending";

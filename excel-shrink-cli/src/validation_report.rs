@@ -9,6 +9,11 @@ mod publication;
 mod replay;
 mod site;
 mod merge;
+mod atlas;
+mod inventory;
+
+pub(crate) use inventory::read as read_workbook_inventory;
+pub(crate) use atlas::label_atlas;
 
 pub(crate) use site::{export_site, write_pair_page, write_site};
 pub(crate) use merge::merge_reports;

@@ -84,8 +84,28 @@ enum Command {
     },
     /// Open an existing independent report without Excel or the original workbooks.
     Open { report: PathBuf },
+    /// Refresh the derived Atlas without copying retained evidence or opening Excel.
+    Atlas {
+        report: PathBuf,
+        #[arg(long)]
+        labels: Option<PathBuf>,
+    },
+    /// Serve the static Atlas over loopback so browsers can fetch compressed data.
+    Serve {
+        report: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+        #[arg(long)]
+        no_open: bool,
+    },
     /// Copy a completed report into a new, publishable static website directory.
-    Export { report: PathBuf, output: PathBuf },
+    Export {
+        report: PathBuf,
+        output: PathBuf,
+        /// Presentation-only corpus and variant labels keyed by source run ID.
+        #[arg(long)]
+        labels: Option<PathBuf>,
+    },
     /// List embedded corpus profiles and their pinned archive identities without downloading.
     CorpusList,
     /// Verify an external Enron extraction and prepare a local candidate archive.
@@ -280,6 +300,8 @@ impl Default for CaptureOptions {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct RunConfig {
+    /// Presentation labels, independent of comparison policy and verdicts.
+    pub atlas: serde_json::Value,
     pub source_a: String,
     pub source_b: Option<String>,
     /// Identity and producer evidence for an explicitly imported prepared corpus.
@@ -341,6 +363,7 @@ fn data_directory() -> PathBuf {
 impl Default for RunConfig {
     fn default() -> Self {
         Self {
+            atlas: serde_json::Value::Null,
             source_a: String::new(),
             source_b: None,
             preparation_index: None,
@@ -579,8 +602,23 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
         Some(Command::Open { report }) => {
             let root = report_root(&report)?;
             let run = read_run(&root)?;
-            let index = crate::validation_report::write_site(&root, &run)?;
+            crate::validation_report::write_site(&root, &run)?;
+            // Keep direct file viewing available for the self-contained report.
+            let index = root.join("report.html");
             open_browser(index.as_os_str())
+        }
+        Some(Command::Serve { report, port, no_open }) => {
+            serve_static_atlas(&report_root(&report)?, port, no_open)
+        }
+        Some(Command::Atlas { report, labels }) => {
+            let root = report_root(&report)?;
+            if let Some(labels) = labels {
+                crate::validation_report::label_atlas(&root, &labels)?;
+            } else {
+                crate::validation_report::write_site(&root, &read_run(&root)?)?;
+            }
+            println!("Static Atlas: {}", root.join("index.html").display());
+            Ok(())
         }
         Some(Command::PreparationExport { preparation, output }) => {
             let header = crate::validation_preparation::package::export(&preparation, &output)?;
@@ -603,9 +641,12 @@ pub(crate) fn run_cli_for(application: crate::validation_room::Application) -> R
             println!("{}", serde_json::to_string_pretty(&preview)?);
             Ok(())
         }
-        Some(Command::Export { report, output }) => {
+        Some(Command::Export { report, output, labels }) => {
             let root = report_root(&report)?;
             crate::validation_report::export_site(&root, &output)?;
+            if let Some(labels) = labels {
+                crate::validation_report::label_atlas(&output, &labels)?;
+            }
             println!("Static report: {}", output.display());
             Ok(())
         }
@@ -703,6 +744,22 @@ pub(crate) fn report_root(path: &Path) -> Result<PathBuf> {
 }
 
 /// Hand the exact path/URL to the OS without evaluating it as shell code.
+fn serve_static_atlas(root: &Path, port: u16, no_open: bool) -> Result<()> {
+    ensure!(root.join("atlas-data/catalog.json.gz").is_file(),
+        "This directory has no Atlas. Export the report with this version first.");
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+        let url = format!("http://127.0.0.1:{}/", listener.local_addr()?.port());
+        println!("Static Atlas: {url}");
+        println!("Press Ctrl+C to stop the read-only server.");
+        if !no_open { open_browser(OsStr::new(&url))?; }
+        let app = axum::Router::new().fallback_service(tower_http::services::ServeDir::new(root));
+        axum::serve(listener, app).await?;
+        Ok(())
+    })
+}
+
 pub(crate) fn open_browser(target: &OsStr) -> Result<()> {
     #[cfg(windows)]
     let target = {

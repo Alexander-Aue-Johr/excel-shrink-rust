@@ -94,7 +94,8 @@ pub(crate) fn merge_reports(inputs: &[PathBuf], output: &Path) -> Result<PathBuf
                     observation[field] = json!(format!("{prefix}/{relative}"));
                 }
             }
-            observation["merge_source"] = json!({"source_run_sha256":source.digest,"snapshot_id":source.snapshot_id,"pair_id":id});
+            observation["merge_source"] = json!({"source_run_sha256":source.digest,"snapshot_id":source.snapshot_id,
+                "pair_id":id,"previous":pair["merge_source"]});
             if let Some(key) = comparable_key(
                 &destination,
                 &observation,
@@ -210,6 +211,7 @@ fn publish_collection(destination: &Path, run: &Value) -> Result<PathBuf> {
 /// Export each source below its existing namespace, preserving source replay links.
 pub(super) fn export_collection(source: &Path, run: &Value, output: &Path) -> Result<PathBuf> {
     let destination = evidence::create_destination(source, output)?;
+    super::atlas::copy_labels(source, &destination)?;
     fs::write(
         destination.join(".incomplete"),
         b"Report collection export in progress\n",

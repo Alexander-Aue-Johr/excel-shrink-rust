@@ -199,6 +199,7 @@ mod audit_timing_tests {
 /// Scientific coverage limits apply independently of the display or process health.
 pub(super) fn new_report() -> Report {
     Report {
+        workbook_inventory: Value::Null,
         workbook_bytes: BTreeMap::new(),
         capture_policy: super::CAPTURE_POLICY,
         execution_strategy: super::EXECUTION_STRATEGY,
