@@ -78,3 +78,29 @@ in image comparison. These observations identify an upper tail to account
 for before expanding the cohort. They do not isolate selection from
 rendering and transport, measure the candidate-producing tools themselves,
 or compare matched populations across tools.
+
+### PFAS across three candidate producers
+
+The three completed pair reports for `195786a2d0056e298e98a7ce` have
+identical original package-member inventories, including SHA-256 values.
+The candidate and selected regions vary by producer.
+
+| Candidate producer | Worksheet captures per side | Differing regions | Selection and transport (s) |
+|---|---:|---:|---:|
+| Inquire | 4,277 | 129 | 1,668.137 |
+| Check Performance | 63 | 0 | 24.025 |
+| XLStylesTool | 0 | 0 | 0.032 |
+
+All three are `completed_with_limitations`. XLStylesTool produced no
+worksheet or chart captures for this pair. Check Performance measured 63
+regions on `BSAF_Data (2)`. The zero counts therefore have different
+coverage. A matched-region reference capture of all variants would be
+needed to compare their rendering at the Inquire finding. This observation
+does not support a tool-wide preservation claim or a comparison of the
+tools' own cleanup speed.
+
+Pair report SHA-256 values:
+
+- Inquire `091cab656b5bb08744e212ba008218bf09be7a91f63aed734c6ff343d22412a8`
+- Check Performance `7edbb8425f435055e6a67ca49391cfedab766f4ac73184b5da4bb7624349d0af`
+- XLStylesTool `40526ab3e464f64042736c9e081db71e3f13d29f57d36896397ae984836c3929`
