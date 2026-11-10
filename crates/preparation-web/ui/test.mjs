@@ -217,3 +217,30 @@ test("atlas supports seven recent workbooks and descending size order", async ()
     ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
   );
 });
+
+test("explicit horizontal framing fills wide and narrow viewports consistently", async () => {
+  const bundled = await build({
+    entryPoints: ["lib/camera.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { cameraMatrix, defaultView, project } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].contents).toString("base64")}`
+  );
+  const scene = {
+    target: [12, 0, 0],
+    span: 30,
+    horizontalSpan: 26,
+    yaw: 0,
+    pitch: 0,
+  };
+  for (const width of [400, 1600]) {
+    const matrix = cameraMatrix(defaultView(scene, width, 400));
+    const left = project([0, 0, 0], matrix, width, 400);
+    const right = project([24, 0, 0], matrix, width, 400);
+    assert.ok(Math.abs((right.x - left.x) / width - 24 / 26) < 0.00001);
+    assert.ok(left.visible && right.visible);
+  }
+});

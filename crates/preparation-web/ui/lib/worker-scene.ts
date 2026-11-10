@@ -42,7 +42,11 @@ export function buildWorkerScene(
     duration < 2 ? `${(seconds * 1000).toFixed(1)} ms` : fmtTime(seconds);
   const leftTime = options.overview
     ? 0
-    : Math.max(0, snapshot.time - duration * 0.86);
+    : Math.max(
+        0,
+        snapshot.time -
+          duration * (options.workUnit === "worksheet" ? 1 : 0.86),
+      );
   const rightTime = options.overview
     ? Math.max(snapshot.time * 1.035, 12)
     : leftTime + duration;
@@ -78,6 +82,11 @@ export function buildWorkerScene(
     hits: [],
     target: [(leftX + rightX) / 2 - 0.15, middleY, depth / 2],
     span: Math.max(28, (depth * 0.74 + maxY * 0.7 + 3.1) * 1.8),
+    // Keep the full time axis legible on wide dashboards without cropping lanes.
+    horizontalSpan:
+      options.workUnit === "worksheet"
+        ? (24 * Math.cos(0.22) + depth * Math.sin(0.22)) * 1.08
+        : undefined,
     yaw: 0.22,
     pitch: 0.82,
     footer: options.overview

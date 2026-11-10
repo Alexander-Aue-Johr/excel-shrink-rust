@@ -172,7 +172,7 @@ function Observatory() {
             jobStyle: "blocks",
             windowSeconds:
               update?.operation === "sheet-shrink"
-                ? Math.max(0.05, Math.min(70, (update.elapsed_ms / 1000) * 1.2))
+                ? Math.max(0.05, Math.min(70, update.elapsed_ms / 1000))
                 : 120,
             overview: false,
             selectedWorkbookId: selected,

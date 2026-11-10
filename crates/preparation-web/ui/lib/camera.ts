@@ -5,6 +5,7 @@ export interface CameraView {
   pitch: number;
   zoom: number;
   span: number;
+  horizontalSpan?: number;
   width: number;
   height: number;
 }
@@ -28,7 +29,10 @@ export function cameraMatrix(v: CameraView): Float32Array {
   const up = cross(dir, right);
   const height =
     v.span / Math.min(v.width / Math.max(v.height, 1), 1.8) / v.zoom;
-  const width = (height * v.width) / Math.max(v.height, 1);
+  const width =
+    v.horizontalSpan !== undefined
+      ? v.horizontalSpan / v.zoom
+      : (height * v.width) / Math.max(v.height, 1);
   const depth = Math.max(200, v.span * 20);
   return new Float32Array([
     (2 * right[0]) / width,
@@ -73,6 +77,7 @@ export function defaultView(
   return {
     target: [...spec.target],
     span: spec.span,
+    horizontalSpan: spec.horizontalSpan,
     yaw: spec.yaw ?? 0.2,
     pitch: spec.pitch ?? 0.75,
     zoom: 1,

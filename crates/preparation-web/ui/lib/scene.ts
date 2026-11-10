@@ -34,6 +34,8 @@ export interface SceneSpec {
   hits: HitTarget[];
   target: Vec3;
   span: number;
+  /** Optional horizontal framing, independent of the viewport aspect ratio. */
+  horizontalSpan?: number;
   yaw?: number;
   pitch?: number;
   footer?: string;

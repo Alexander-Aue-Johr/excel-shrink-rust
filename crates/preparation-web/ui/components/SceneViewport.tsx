@@ -141,6 +141,7 @@ export default function SceneViewport({
       const cv = view.current;
       cv.width = rect.width;
       cv.height = rect.height;
+      cv.horizontalSpan = spec.horizontalSpan;
       if (!interacted.current) {
         let change = 0;
         const distance = Math.hypot(
