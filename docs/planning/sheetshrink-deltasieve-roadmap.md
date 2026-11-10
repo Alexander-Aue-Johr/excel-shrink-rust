@@ -3,10 +3,13 @@
 ## Current governing scope on 2026-11-10
 
 This checkpoint supersedes the historical full-corpus launch queues below.
-The current visual evaluation freezes the top 100 complete workbooks per corpus
+The current visual evaluation freezes the top 49 complete workbooks per corpus
 by absolute compressed XLSX byte reduction, selected from the existing top-144
 manifests. Individual worksheet reductions do not add inputs. Destatis, Data.gov
-and Enron remain separate cohorts, totaling 300 workbook identities.
+and Enron remain separate cohorts, totaling 147 workbook identities. This user
+revision replaces the previous top-100 evaluation scope. Existing observations
+outside the top 49 remain retained history and do not enlarge subsequent runs.
+All processor variants use these same original identities and frozen ranks.
 
 ### Completed work and verified changes
 
@@ -44,6 +47,14 @@ and Enron remain separate cohorts, totaling 300 workbook identities.
 
 ### Current observations and remaining work
 
+The following observation counts describe the earlier top-100 preparation pool.
+Reconcile their selected top-49 subset before reporting final cohort totals.
+The top-49 artifact audit verified all 147 SheetShrink and all 147 XLStyles
+outputs. Missing outputs are 18 NXPowerLite, 46 Inquire and 11 Check Performance
+variants. The Inquire handover marks 33 of its missing outputs as delegated,
+12 as failed and one as unsupported. Remote output availability and completed
+visual validation remain separate states.
+
 An identity-based audit currently accepts 68 completed native Destatis records
 for the current outputs, with no recorded differences. Two additional explicit
 reference controls cover Auszug and Bevoelkerungsbewegung under their documented
@@ -79,11 +90,10 @@ is unresolved.
    Fix confirmed SheetShrink regressions and selectively revalidate affected
    output identities. Volatile formulas or small pixel counts alone do not
    authorize suppression.
-3. Then validate the external NXPowerLite and XLStyles outputs announced by
-   the external preparation host in the private SSH handover. Its index lists 600 combinations,
-   564 available outputs and 36 missing outputs. All 600 declared input hashes
-   match the frozen top-100 selections. Transfer and independently verify output
-   hashes before comparison. Investigate unnecessary captures and full-grid
+3. Then validate the matching top-49 external NXPowerLite, XLStyles and Inquire
+   outputs announced in the private SSH handover or supplied on the transfer
+   drive. The larger top-100 indexes remain provenance. Transfer and independently
+   verify output hashes before comparison. Investigate unnecessary captures and full-grid
    fallbacks, retain external-tool regressions and do not modify those cleaners.
 4. Reconcile corpus and tool totals, provenance, environment records, exclusions,
    reference controls and the difference ledger. Complete static export, replay,
