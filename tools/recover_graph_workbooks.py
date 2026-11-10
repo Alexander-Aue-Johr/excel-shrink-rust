@@ -26,6 +26,14 @@ REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 
 
+class WorkerFailed(RuntimeError):
+    """A native worker exited or exceeded its deadline."""
+
+
+class GraphJobBlocked(RuntimeError):
+    """A failed object's receipt is durable and the next object can proceed."""
+
+
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -122,6 +130,22 @@ def powerpoint_processes():
             if (process.info["name"] or "").lower() == "powerpnt.exe"]
 
 
+def com_call(operation):
+    """Office briefly rejects calls while its chart converter is committing."""
+    import pythoncom
+    import pywintypes
+
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            return operation()
+        except pywintypes.com_error as error:
+            if error.hresult not in (-2147418111, -2147417846) or time.monotonic() >= deadline:
+                raise
+            pythoncom.PumpWaitingMessages()
+            time.sleep(0.1)
+
+
 def worker(root):
     import pythoncom
     import psutil
@@ -176,10 +200,11 @@ def worker(root):
             try:
                 create_carrier(template, directory / "carrier.pptx", (directory / "source.bin").read_bytes())
                 stage = "open carrier"
-                presentation = app.Presentations.Open(str(directory / "carrier.pptx"), 0, 0, -1)
+                presentation = com_call(lambda: app.Presentations.Open(str(directory / "carrier.pptx"), 0, 0, -1))
                 stage = "activate Graph"
                 shape = presentation.Slides(1).Shapes(1)
                 shape.Select()
+                (root / "unsupported-chart").unlink(missing_ok=True)
                 (root / "convert-active").touch()
                 window = presentation.Windows(1)
                 window.Activate()
@@ -208,6 +233,8 @@ def worker(root):
                 win32gui.PostMessage(handle, win32con.WM_LBUTTONUP, 0, position)
                 deadline = time.monotonic() + 15
                 while time.monotonic() < deadline:
+                    if (root / "unsupported-chart").exists():
+                        raise ValueError("PowerPoint cannot convert this chart format")
                     if monitor.poll() is not None:
                         raise RuntimeError("Graph conversion dialog monitor exited")
                     try:
@@ -221,7 +248,8 @@ def worker(root):
                 (root / "convert-active").unlink(missing_ok=True)
                 if not presentation.Slides(1).Shapes(1).HasChart:
                     raise RuntimeError("PowerPoint did not create a modern chart")
-                presentation.SaveAs(str(directory / "converted.pptx"), 24)
+                stage = "save converted chart"
+                com_call(lambda: presentation.SaveAs(str(directory / "converted.pptx"), 24))
                 payload = extracted_workbook(directory / "converted.pptx")
                 (directory / "data.xlsx.pending").write_bytes(payload)
                 (directory / "data.xlsx.pending").replace(directory / "data.xlsx")
@@ -232,8 +260,8 @@ def worker(root):
             finally:
                 (root / "convert-active").unlink(missing_ok=True)
                 if presentation is not None:
-                    presentation.Saved = -1
-                    presentation.Close()
+                    com_call(lambda: setattr(presentation, "Saved", -1))
+                    com_call(lambda: presentation.Close())
                     presentation = None
             write_json(directory / "response.json", response)
     finally:
@@ -283,9 +311,9 @@ def wait_for(path, process, root, timeout, reserve_gib):
     while not path.exists():
         check_resources(root, reserve_gib)
         if process.poll() is not None:
-            raise RuntimeError(f"Graph worker exited with {process.returncode}")
+            raise WorkerFailed(f"Graph worker exited with {process.returncode}")
         if time.monotonic() >= deadline:
-            raise TimeoutError(f"Graph recovery exceeded {timeout} seconds")
+            raise WorkerFailed(f"Graph recovery exceeded {timeout} seconds")
         time.sleep(0.2)
     return json.loads(path.read_text())
 
@@ -357,6 +385,8 @@ def run_locked(args, root):
     session.mkdir()
     process = None
     count = 0
+    scanned = 0
+    graphs = 0
     source = str((args.candidates or args.extraction_workspace).resolve())
     write_json(session / "recipe.json", {
         "revision": REVISION, "python": sys.version,
@@ -366,9 +396,11 @@ def run_locked(args, root):
     with candidate_payloads(args) as candidates, (session / "worker.log").open("w") as log:
         try:
             for member, payload in candidates:
+                scanned += 1
                 check_resources(root, args.reserve_gib)
                 if not is_graph(payload):
                     continue
+                graphs += 1
                 identity = sha256(payload)
                 directory = root / identity
                 directory.mkdir(exist_ok=True)
@@ -401,12 +433,12 @@ def run_locked(args, root):
                 started = time.monotonic()
                 try:
                     response = wait_for(directory / "response.json", process, root, args.timeout, args.reserve_gib)
-                except (RuntimeError, TimeoutError) as error:
+                except WorkerFailed as error:
                     write_json(directory / "receipt.json", {
                         "success": False, "source_sha256": identity, "source_member": member,
                         "error": str(error), "session": session.name,
                     })
-                    raise
+                    raise GraphJobBlocked(str(error)) from error
                 receipt = dict(response, revision=REVISION, source_sha256=identity,
                                source_member=member, source_archive=source,
                                producer="PowerPoint Graph conversion", derived_data_only=True,
@@ -435,6 +467,7 @@ def run_locked(args, root):
             if process is not None:
                 stop_worker(process, session)
             all_receipts = []
+            failures = []
             for path in sorted(root.glob("*/receipt.json")):
                 receipt = json.loads(path.read_text())
                 if receipt.get("success"):
@@ -442,13 +475,16 @@ def run_locked(args, root):
                     if sha256(output.read_bytes()) != receipt["xlsx_sha256"]:
                         raise ValueError(f"Recovered XLSX checksum changed: {output}")
                     all_receipts.append(receipt)
+                else:
+                    failures.append(receipt)
             write_json(root / "derived-workbooks.json", {
                 "version": REVISION, "kind": "microsoft-graph-derived-data",
-                "source_archive": source, "workbooks": all_receipts,
+                "source_archive": source, "workbooks": all_receipts, "failures": failures,
             })
             write_json(root / "status.json", {
                 "state": "stopped" if sys.exc_info()[0] else "finished",
                 "successful_total": len(all_receipts), "attempts_this_session": count,
+                "failed_total": len(failures), "scanned_candidates": scanned, "graph_objects_seen": graphs,
                 "limit": args.limit,
             })
 
@@ -484,7 +520,25 @@ def main():
             from prepare_enron import Preparation, prepare_corpus
             request = Preparation(tuple(args.source_url), args.extraction_workspace, args.seven_zip)
             prepare_corpus(request)
-        recover(args)
+        restarts_without_progress = 0
+        previous_successes = -1
+        while True:
+            try:
+                recover(args)
+                break
+            except GraphJobBlocked as error:
+                if args.limit:
+                    raise
+                status = json.loads((args.output / "status.json").read_text())
+                successes = status["successful_total"]
+                restarts_without_progress = restarts_without_progress + 1 if successes == previous_successes else 0
+                if restarts_without_progress >= 3:
+                    raise RuntimeError("Three worker restarts made no progress; inspect the session logs") from error
+                previous_successes = successes
+                # Retry is explicit for old failures. Newly blocked objects have
+                # already received a receipt and must not trap the batch in a loop.
+                args.retry_failed = False
+                print(f"Worker restarted after blocked object: {error}", flush=True)
 
 
 if __name__ == "__main__":

@@ -166,7 +166,11 @@ Verified successful outputs are reused after a restart. Failed receipts require
 `--retry-failed` for another attempt, with the previous receipt retained. Put
 `stop.request` in the output directory to stop the controller. Remove it before
 resuming. `--limit` bounds new attempts for a pilot. `status.json` reports the
-controller state and `derived-workbooks.json` inventories the recovered data.
+controller state and `derived-workbooks.json` inventories the recovered data and
+failed objects. An unbounded run restarts its owned worker after a durable
+blocked-object receipt and continues with the next object. Three restarts without
+progress stop the run. Memory, storage, startup and integrity failures stop it
+without this automatic restart.
 
 On 2026-11-10, five different real Graph objects converted in one warm PowerPoint
 16.0 process. A repeat reused all five verified outputs without starting
@@ -177,3 +181,11 @@ PowerPoint conversion. A larger pilot recovered 14 distinct objects. An initial
 UI Automation race raised `ElementNotAvailableException` when a dialog closed
 during enumeration. The monitor now re-enumerates after that specific exception.
 These bounded tests do not reproduce the multi-day source download/extraction.
+
+The larger pilot subsequently recovered 50 distinct objects. Graph payload
+`02b6604f968797eebc9fe588cb111c791fe7ca69aa95580cebb410e2b6da174f`
+produced PowerPoint's explicit message that the chart cannot be converted to the
+current Office chart format. The monitor acknowledges only that specific failure
+message and the object receives a failed receipt. The following objects continued
+successfully in the same process. Short `RPC_E_CALL_REJECTED` and server-busy
+responses during native conversion are retried within a ten-second deadline.

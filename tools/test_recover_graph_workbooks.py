@@ -83,6 +83,42 @@ class GraphRecoveryTests(unittest.TestCase):
             recovery.main()
         self.assertEqual(order, ["extract", "graph"])
 
+    def test_only_transient_office_busy_errors_are_retried(self):
+        import types
+
+        class ComError(Exception):
+            def __init__(self, hresult):
+                self.hresult = hresult
+
+        modules = {"pywintypes": types.SimpleNamespace(com_error=ComError),
+                   "pythoncom": types.SimpleNamespace(PumpWaitingMessages=lambda: None)}
+        with mock.patch.dict("sys.modules", modules), mock.patch.object(recovery.time, "sleep"):
+            operation = mock.Mock(side_effect=[ComError(-2147418111), "ready"])
+            self.assertEqual(recovery.com_call(operation), "ready")
+            self.assertEqual(operation.call_count, 2)
+            operation = mock.Mock(side_effect=ComError(-1))
+            with self.assertRaises(ComError):
+                recovery.com_call(operation)
+            self.assertEqual(operation.call_count, 1)
+
+    def test_blocked_job_resumes_but_memory_guard_does_not(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "status.json").write_text(json.dumps({"successful_total": 1}))
+            arguments = ["recover_graph_workbooks.py", "--candidates", "inputs.zip",
+                         "--output", str(root)]
+            with mock.patch("sys.argv", arguments), mock.patch.object(
+                    recovery, "recover", side_effect=[recovery.GraphJobBlocked("blocked"), None]) as run:
+                recovery.main()
+                self.assertEqual(run.call_count, 2)
+            with mock.patch("sys.argv", arguments), mock.patch.object(
+                    recovery, "recover", side_effect=RuntimeError("RAM reserve reached")) as run:
+                with self.assertRaisesRegex(RuntimeError, "RAM reserve"):
+                    recovery.main()
+                self.assertEqual(run.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
