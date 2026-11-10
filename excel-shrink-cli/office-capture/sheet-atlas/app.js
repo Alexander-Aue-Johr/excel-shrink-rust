@@ -172,7 +172,7 @@ function renderSidebar() {
       item.dataset.changed = count > 0;
       item.append(element('small', '', `${count} findings · ${sheet.state}`)); list.append(item);
     }
-    if (!state.book.sheets.length) list.append(element('p', 'atlas-status', 'No sheet inventory retained. Open the source report for the failed observation.'));
+    if (!state.book.sheets.length) list.append(element('p', 'atlas-status', 'Sheet inventory is unavailable. This view does not establish visual equality.'));
     for (const observation of state.book.observations.filter(o => !o.detail)) {
       list.append(element('p', 'atlas-status', `${names[observation.variant]} · ${observation.status} · ${observation.error || 'No comparison report retained'}`));
     }
