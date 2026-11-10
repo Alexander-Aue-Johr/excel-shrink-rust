@@ -708,19 +708,47 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             }
         }
     }
-    let finite = super::content_bounds::Rectangle {
+    let mut finite = super::content_bounds::Rectangle {
         top: 1,
         left: 1,
         bottom: bottom.max(1),
         right: right.max(1),
     };
+    if !cf_blank_tail_inactive {
+        for block in &model.conditional.blocks {
+            if let Some(areas) = super::conditional_formatting::application_areas(&block.sqref) {
+                for area in areas {
+                    finite.bottom = finite.bottom.max(area.bottom.saturating_add(1).min(1_048_576));
+                    finite.right = finite.right.max(area.right);
+                }
+            }
+        }
+    }
+    // A rule confined to the finite capture envelope cannot affect its tail.
+    // Its application area still contributes to capture selection above.
+    let cf_inside_finite = model.value_namespace_supported
+        && model.cf_columns.is_resolved()
+        && uniform_background_supported
+        && finite.bottom < 1_048_576
+        && finite.right < 16_384
+        && model.conditional.namespace_supported.len() == model.conditional.blocks.len()
+        && model.conditional.namespace_supported.iter().all(|supported| *supported)
+        && model.conditional.blocks.iter().all(|block| {
+            super::conditional_formatting::application_areas(&block.sqref).is_some_and(|areas| {
+                !areas.is_empty()
+                    && areas.iter().all(|area| {
+                        area.bottom <= finite.bottom && area.right <= finite.right
+                    })
+            })
+        });
+    let background_tail_supported = cf_blank_tail_inactive || cf_inside_finite;
     model.background_tail_sampling = visual.finish_background_bands(
         solid_fills,
         finite,
-        cf_blank_tail_inactive && sheet_views > 0 && sheet_views_supported,
+        background_tail_supported && sheet_views > 0 && sheet_views_supported,
     );
     if !model.background_tail_sampling {
-        visual.finish_columns(solid_fills, finite, cf_blank_tail_inactive);
+        visual.finish_columns(solid_fills, finite, background_tail_supported);
     }
     model.visual_bounds = visual.bounds;
     if let Some(bounds) = model.visual_bounds {
@@ -1041,6 +1069,47 @@ mod tests {
             )?;
             assert_eq!(model.visual_bounds.unwrap().bottom, expected_bottom);
             assert!(!model.rebuild_blockers.is_empty());
+            drop(archive);
+            std::fs::remove_file(path)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn finite_conditional_formatting_keeps_background_tail_bounded() -> Result<()> {
+        use std::io::Write;
+        let styles_xml = br#"<styleSheet><fills><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill></fills><cellXfs><xf fontId="0" fillId="0" borderId="0"/><xf fontId="0" fillId="1" borderId="0" applyFill="1"/></cellXfs></styleSheet>"#;
+        let styles = excel_shrink_core::styles::parse_xfs(styles_xml)?;
+        let identity = super::super::style_identity::StyleIdentity::read(styles_xml)?;
+        let fills = super::super::style_identity::solid_fill_ids(styles_xml)?;
+        for (application, expected_bounds, expected_sampling) in [
+            ("B2:C10", "A1:U21", true),
+            ("B2:AC25", "A1:AD26", true),
+            ("B2:XFD1048576", "A1:XFD1048576", false),
+        ] {
+            let xml = format!(r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><cols><col min="1" max="16384" style="1"/></cols><sheetData><row r="20"><c r="T20"><v>7</v></c></row></sheetData><conditionalFormatting sqref="{application}"><cfRule type="colorScale" priority="1"><colorScale><cfvo type="min"/><cfvo type="max"/><color rgb="FF92D050"/><color rgb="FFFF0000"/></colorScale></cfRule></conditionalFormatting></worksheet>"#);
+            let path = std::env::temp_dir()
+                .join(format!("finite-cf-background-{}.zip", uuid::Uuid::new_v4()));
+            let mut writer = zip::ZipWriter::new(File::create(&path)?);
+            writer.start_file("sheet.xml", zip::write::FileOptions::default())?;
+            writer.write_all(xml.as_bytes())?;
+            writer.finish()?;
+            let mut archive = ZipArchive::new(File::open(&path)?)?;
+            let model = read_sheet::<true>(
+                &mut archive,
+                "sheet.xml",
+                20,
+                20,
+                None,
+                &styles,
+                &identity,
+                &fills,
+                true,
+            )?;
+            assert_eq!(model.background_tail_sampling, expected_sampling);
+            assert!(!model.cf_blank_tail_excluded);
+            assert_eq!(model.conditional.blocks.len(), 1);
+            assert_eq!(model.visual_bounds.unwrap().address(), expected_bounds);
             drop(archive);
             std::fs::remove_file(path)?;
         }
