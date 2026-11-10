@@ -535,7 +535,6 @@ function Observatory() {
                     (sheet) => sheet.id === event.target.value,
                   )?.workbookId ?? null,
                 );
-                if (event.target.value) setAtlasView("three");
               }}
             >
               <option value="">Link a worksheet across views</option>
