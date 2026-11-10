@@ -112,6 +112,23 @@ function workbookWidth(book: WorkbookState): number {
     : UNKNOWN_WIDTH;
 }
 
+/** Page only workbooks observed at the current replay time, largest first. */
+export function workbookPage(
+  snapshot: Snapshot,
+  requestedPage: number,
+  pageSize: number,
+) {
+  const books = getAtlasBooks(snapshot, { view: "all", sort: "size" });
+  const size = Math.max(1, Math.min(24, Math.floor(pageSize)));
+  const lastPage = Math.max(0, Math.ceil(books.length / size) - 1);
+  const page = Math.max(0, Math.min(lastPage, Math.floor(requestedPage)));
+  return {
+    page,
+    total: books.length,
+    workbooks: books.slice(page * size, (page + 1) * size),
+  };
+}
+
 function percentage(original: number, cleaned: number): string {
   const saved = original > 0 ? (1 - cleaned / original) * 100 : 0;
   return `${saved < 0 ? "+" : "−"}${PERCENT.format(Math.abs(saved))} %`;
@@ -208,7 +225,8 @@ export function buildWorkbookScene(
       split ? 0.9 : 1.25,
       BASE_D / 2 + (split ? 0.12 : 0),
     ],
-    span: 10.8,
+    // Wide pages also need room for the vertical component of the tilted X axis.
+    span: Math.max(10.8, width * 0.2 + 6),
     horizontalSpan: Math.max(10.8, width + 3.6) * 1.06,
     yaw: 0.13,
     pitch: 0.74,

@@ -7,7 +7,7 @@ import { presentScene, type Theme } from "./lib/presentation";
 import { replayAt } from "./lib/replay";
 import { downloadSvg, figureSvg } from "./lib/export-scene";
 import type { HitTarget } from "./lib/scene";
-import { buildWorkbookScene } from "./lib/workbook-scene";
+import { buildWorkbookScene, workbookPage } from "./lib/workbook-scene";
 import { buildWorkerScene } from "./lib/worker-scene";
 import { buildDistributionScene } from "./lib/chart-scene";
 import { fmtBytes } from "./lib/scene";
@@ -82,6 +82,7 @@ function Observatory() {
   const jobs = replay?.jobs ?? liveJobs;
   const tasks = replay?.tasks ?? liveTasks;
   const focusSheet = hoverSheet ?? pinnedSheet;
+  const replaying = replayTime !== null;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -187,7 +188,7 @@ function Observatory() {
   }, [update?.run_id]);
 
   useEffect(() => {
-    if (atlasView !== "all" || !update) return;
+    if (atlasView !== "all" || !update || replaying) return;
     const controller = new AbortController();
     let timer = 0;
     async function load() {
@@ -214,7 +215,14 @@ function Observatory() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [atlasView, atlasPage, atlasPageSize, update?.run_id, update?.status]);
+  }, [
+    atlasView,
+    atlasPage,
+    atlasPageSize,
+    update?.run_id,
+    update?.status,
+    replaying,
+  ]);
 
   const rendering = useMemo(
     () => (update ? scenes(update, jobs, tasks) : null),
@@ -267,52 +275,70 @@ function Observatory() {
         : null,
     [rendering],
   );
-  const atlas = useMemo(
-    () =>
-      rendering
-        ? buildWorkbookScene(
-            atlasView === "all" && replayTime === null && !focusSheet
-              ? atlasSnapshot(
-                  scenes(
-                    update!,
-                    atlasHistory?.run_id === update!.run_id
-                      ? atlasHistory.jobs
-                      : [],
-                  ).snapshot,
-                  atlasHistory?.jobs ?? [],
-                )
-              : atlasSnapshot(rendering.snapshot, jobs),
-            {
-              resultStyle: "split",
-              labelMode: "name",
-              view:
-                atlasView === "all" || atlasView === "largest"
-                  ? "all"
-                  : "recent",
-              sort:
-                atlasView === "all" || atlasView === "largest"
-                  ? "size"
-                  : "time",
-              limit: atlasView === "largest" ? 3 : undefined,
-              recentCount: atlasView === "seven" ? 7 : 3,
-              selectedWorkbookId: selected,
-              selectedSheetId: focusSheet,
-              focusWorkbookId: rendering.snapshot.sheets.find(
-                (sheet) => sheet.id === focusSheet,
-              )?.workbookId,
-            },
-          )
-        : null,
-    [
-      rendering,
-      selected,
-      jobs,
-      atlasView,
-      atlasHistory,
-      focusSheet,
-      replayTime,
-    ],
+  const observedAtlas = useMemo(
+    () => (rendering ? atlasSnapshot(rendering.snapshot, jobs) : null),
+    [rendering, jobs],
   );
+  const replayPage = useMemo(
+    () =>
+      replaying && observedAtlas
+        ? workbookPage(observedAtlas, atlasPage, atlasPageSize)
+        : null,
+    [replaying, observedAtlas, atlasPage, atlasPageSize],
+  );
+  const pageInfo = replayPage ?? atlasHistory;
+  const displayedAtlasPage = pageInfo?.page ?? atlasPage;
+  const atlas = useMemo(() => {
+    if (!rendering || !observedAtlas) return null;
+    let snapshot = observedAtlas;
+    if (atlasView === "all") {
+      if (replayPage) {
+        snapshot = { ...observedAtlas, workbooks: replayPage.workbooks };
+      } else {
+        const pageJobs =
+          atlasHistory?.run_id === update!.run_id ? atlasHistory.jobs : [];
+        snapshot = atlasSnapshot(scenes(update!, pageJobs).snapshot, pageJobs);
+      }
+    }
+    const focusedWorkbook = observedAtlas.workbooks.find((book) =>
+      book.sheets.some((sheet) => sheet.id === focusSheet),
+    );
+    if (
+      focusedWorkbook &&
+      !snapshot.workbooks.some((book) => book.id === focusedWorkbook.id)
+    ) {
+      snapshot = {
+        ...snapshot,
+        workbooks: [...snapshot.workbooks, focusedWorkbook],
+      };
+    }
+    return buildWorkbookScene(snapshot, {
+      resultStyle: "split",
+      labelMode: "name",
+      view: atlasView === "all" || atlasView === "largest" ? "all" : "recent",
+      sort: atlasView === "all" || atlasView === "largest" ? "size" : "time",
+      limit:
+        atlasView === "all"
+          ? atlasPageSize
+          : atlasView === "largest"
+            ? 3
+            : undefined,
+      recentCount: atlasView === "seven" ? 7 : 3,
+      selectedWorkbookId: selected,
+      selectedSheetId: focusSheet,
+      focusWorkbookId: focusedWorkbook?.id,
+    });
+  }, [
+    rendering,
+    observedAtlas,
+    atlasView,
+    replayPage,
+    atlasHistory,
+    update?.run_id,
+    atlasPageSize,
+    selected,
+    focusSheet,
+  ]);
 
   if (!update || !config || !rendering || !workerScene || !distributions)
     return (
@@ -878,25 +904,26 @@ function Observatory() {
                       <output>{atlasPageSize}</output>
                     </label>
                     <button
-                      disabled={atlasPage === 0}
-                      onClick={() => setAtlasPage((page) => page - 1)}
+                      disabled={displayedAtlasPage === 0}
+                      onClick={() => setAtlasPage(displayedAtlasPage - 1)}
                     >
                       Previous page
                     </button>
                     <span>
-                      Page {(atlasHistory?.page ?? atlasPage) + 1} /{" "}
+                      Page {displayedAtlasPage + 1} /{" "}
                       {Math.max(
                         1,
-                        Math.ceil((atlasHistory?.total ?? 0) / atlasPageSize),
+                        Math.ceil((pageInfo?.total ?? 0) / atlasPageSize),
                       )}{" "}
-                      · {atlasHistory?.total ?? 0} workbooks
+                      · {pageInfo?.total ?? 0} workbooks
                     </span>
                     <button
                       disabled={
-                        !atlasHistory ||
-                        (atlasPage + 1) * atlasPageSize >= atlasHistory.total
+                        !pageInfo ||
+                        (displayedAtlasPage + 1) * atlasPageSize >=
+                          pageInfo.total
                       }
-                      onClick={() => setAtlasPage((page) => page + 1)}
+                      onClick={() => setAtlasPage(displayedAtlasPage + 1)}
                     >
                       Next page
                     </button>

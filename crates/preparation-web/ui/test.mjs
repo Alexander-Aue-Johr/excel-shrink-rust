@@ -474,6 +474,76 @@ test("atlas supports seven recent workbooks and descending size order", async ()
   );
 });
 
+test("replay atlas pages respect page size, navigation and backward seeking", async () => {
+  const bundle = await build({
+    entryPoints: ["lib/workbook-scene.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { workbookPage, buildWorkbookScene } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
+  );
+  const snapshot = {
+    time: 100,
+    knownBooks: 10,
+    workbooks: Array.from({ length: 10 }, (_, index) => ({
+      id: String(index),
+      name: `book-${index}`,
+      index,
+      startAt: index,
+      originalBytes: 1000 - index,
+      cleanedBytes: 10,
+      completedAt: index + 1,
+      known: true,
+      status: "complete",
+      progress: 1,
+      sheets: [],
+    })),
+  };
+  assert.deepEqual(
+    workbookPage(snapshot, 0, 3).workbooks.map((book) => book.id),
+    ["0", "1", "2"],
+  );
+  assert.deepEqual(
+    workbookPage(snapshot, 1, 3).workbooks.map((book) => book.id),
+    ["3", "4", "5"],
+  );
+  const last = workbookPage(snapshot, 99, 3);
+  assert.equal(last.page, 3);
+  assert.equal(last.total, 10);
+  assert.deepEqual(
+    last.workbooks.map((book) => book.id),
+    ["9"],
+  );
+  const earlier = workbookPage(
+    { ...snapshot, workbooks: snapshot.workbooks.slice(0, 2) },
+    3,
+    3,
+  );
+  assert.equal(earlier.page, 0);
+  assert.equal(earlier.total, 2);
+  assert.deepEqual(
+    earlier.workbooks.map((book) => book.id),
+    ["0", "1"],
+  );
+  for (const pageSize of [1, 3, 7]) {
+    const page = workbookPage(snapshot, 0, pageSize);
+    const scene = buildWorkbookScene(
+      { ...snapshot, workbooks: page.workbooks },
+      {
+        view: "all",
+        sort: "size",
+        limit: pageSize,
+        resultStyle: "split",
+        labelMode: "name",
+      },
+    );
+    assert.equal(scene.hits.length, pageSize);
+  }
+});
+
 test("explicit horizontal framing fills wide and narrow viewports consistently", async () => {
   const bundled = await build({
     entryPoints: ["lib/camera.ts"],
