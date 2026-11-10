@@ -2,6 +2,50 @@
 
 ## Current governing scope on 2026-11-10
 
+### Highest priority. Staged multi-tool reports
+
+The user's latest delivery priority is an incremental static comparison report
+for the DeltaSieve paper within the remaining submission window. Prepare stages
+of 9, 16, 25, 36 and 49 complete workbooks, preserving the frozen absolute
+SheetShrink-reduction ranking and corpus boundaries. The working interpretation
+is that each stage applies per corpus, pending the user's clarification. Each
+workbook compares the original independently against SheetShrink, Check
+Performance, Inquire, XLStylesTool and the recorded NXPowerLite profile. Missing
+or unsupported outputs stay explicit cells in the report and denominator.
+Do not replace them with more convenient lower-ranked inputs.
+
+Complete and export the 3-by-3 stage before expanding to 4-by-4, then 5-by-5,
+6-by-6 and, if time permits, 7-by-7. Reuse identity-compatible finished evidence
+and retain all prior observations. Export each stage through the ordinary
+merge/static-report path. Verify aligned workbook and region identities across
+processor reports, stable links into Sheet Atlas and detail views, and explicit
+rendering-variation, unexplained-difference and failed/unavailable categories.
+Existing merge support alone does not prove this cross-tool presentation works.
+
+The requested first-page illustration combines the real merged workbook-tile
+overview with a legible zoom of a measured cross-tool example. Use an example
+where the evidence actually supports the caption. A SheetShrink-only preservation
+example is desirable, but remains contingent on the measurements. Preserve
+original screenshots and provenance. The overview must include unavailable and
+unresolved cases, rather than imply complete success from a curated inset.
+
+For DeltaSieve, evaluate detection/coverage against independent reference areas,
+candidate and capture reductions, analysis/capture cost, supported fallback
+behavior and report inspection. Processor pixel differences provide application
+results. They do not establish the validator's recall without an independent
+reference, and totals from different captured areas are not directly comparable.
+SheetShrink's cleanup savings and preservation outcomes remain its own tool
+evaluation. Shared benchmark evidence may be cited with these distinct questions.
+
+The newly arrived Inquire diagnostic handover contains 15 recovered outputs.
+Their mapping and output hashes were verified locally. Four Inquire outputs
+remain unavailable across the 147 identities. Check Performance has 144 ordinary
+outputs and three separately normalized outputs. NXPowerLite's cell-formatting
+profile has 139 local outputs, including six protected-part-change cases retained
+as a separate stratum. Exact missing identities and stage readiness are recorded
+in the private stage-availability manifest. These are artifact counts, not
+completed visual comparisons.
+
 This checkpoint supersedes the historical full-corpus launch queues below.
 The current visual evaluation freezes the top 49 complete workbooks per corpus
 by absolute compressed XLSX byte reduction, selected from the existing top-144
