@@ -7,8 +7,8 @@
 The user's latest delivery priority is an incremental static comparison report
 for the DeltaSieve paper within the remaining submission window. Prepare stages
 of 9, 16, 25, 36 and 49 complete workbooks, preserving the frozen absolute
-SheetShrink-reduction ranking and corpus boundaries. The working interpretation
-is that each stage applies per corpus, pending the user's clarification. Each
+SheetShrink-reduction ranking and corpus boundaries. The user explicitly confirmed
+that each stage applies per corpus. Each
 workbook compares the original independently against SheetShrink, Check
 Performance, Inquire, XLStylesTool and the recorded NXPowerLite profile. Missing
 or unsupported outputs stay explicit cells in the report and denominator.
