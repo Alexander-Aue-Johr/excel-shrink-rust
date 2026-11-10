@@ -106,3 +106,20 @@ without producing a capture-plan index. This identifies the diagnostic boundary,
 but does not yet prove a safe reduction of this workbook's capture coverage.
 No full-workbook validation success follows from the earlier single-area
 row-height acceptance.
+
+The next bounded native diagnostic used the new pre-expansion summary and
+stopped after collecting it in 236.67 seconds. Its owned process and both Excel
+PIDs were confirmed exited. There were 5,192,711 requested candidates across
+208 sheets before grid expansion, with whole-grid content envelopes on 99 of
+those sheets. `5.1.4_(2)`, `10.1`, `10.3` and `5.1.1_(1)` each contributed
+approximately 1,048,500 candidates. This shows that candidate construction must
+also be investigated, before attributing all memory growth to tile expansion.
+It supplies no pixel verdict. A separate archive inventory found drawing text
+bodies on 96 of the 101 archive-only whole-grid sheets, outside the existing
+closed horizontal-line family.
+
+Layout selection now combines contiguous changed inherited row formats before
+creating candidate objects. A focused test checks gaps and exact padded grid
+coverage across the 128-row boundary against separate row requests. This is an
+intermediate representation optimization. Its effect on this retained workbook
+and the remaining drawing fallback still require an independent repeat.

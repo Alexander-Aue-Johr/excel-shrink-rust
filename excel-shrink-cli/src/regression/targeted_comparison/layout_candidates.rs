@@ -53,6 +53,7 @@ pub(super) fn select(
             }
         }
         let rows: BTreeSet<_> = left.rows.keys().chain(right.rows.keys()).copied().collect();
+        let mut changed_runs: Vec<super::content_bounds::Rectangle> = Vec::new();
         for row in rows {
             if row < bounds.top || row > bounds.bottom {
                 continue;
@@ -64,12 +65,19 @@ pub(super) fn select(
                         != right.rows.get(&row).and_then(|attrs| attrs.get(attribute))
                 });
             if changed {
-                add(super::content_bounds::Rectangle {
-                    top: row,
-                    bottom: row,
-                    ..bounds
-                });
+                if let Some(last) = changed_runs.last_mut().filter(|last| last.bottom + 1 == row) {
+                    last.bottom = row;
+                } else {
+                    changed_runs.push(super::content_bounds::Rectangle {
+                        top: row,
+                        bottom: row,
+                        ..bounds
+                    });
+                }
             }
+        }
+        for run in changed_runs {
+            add(run);
         }
     }
     Ok(())
@@ -120,6 +128,34 @@ mod tests {
             }]
             .into()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn consecutive_row_changes_share_a_range_with_identical_grid_coverage() -> Result<()> {
+        let mut before = snapshot();
+        before.sheets.get_mut("Data").unwrap().visual_bounds =
+            Some(super::super::content_bounds::Rectangle::parse("C1:E256")?);
+        let mut after = before.clone();
+        let changed = [127, 128, 129, 140, 142];
+        for row in changed {
+            Arc::make_mut(&mut after.sheets.get_mut("Data").unwrap().rows)
+                .insert(row, [("s".into(), "different actual format".into())].into());
+        }
+        let mut bounds = ContentBounds::default();
+        bounds.include(&before);
+        bounds.include(&after);
+        let mut merged = BTreeSet::new();
+        select(&before, &after, &bounds, &mut merged)?;
+        assert_eq!(
+            merged.iter().map(|candidate| candidate.cell.as_str()).collect::<BTreeSet<_>>(),
+            BTreeSet::from(["C127:E129", "C140:E140", "C142:E142"])
+        );
+        let separate = changed.into_iter().map(|row| Candidate {
+            sheet: "Data".into(),
+            cell: format!("C{row}:E{row}"),
+        }).collect();
+        assert_eq!(bounds.select(&merged)?.0, bounds.select(&separate)?.0);
         Ok(())
     }
 

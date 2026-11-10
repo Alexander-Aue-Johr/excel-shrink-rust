@@ -731,6 +731,13 @@ Drawing metadata rejected before native line qualification is also retained in
 the parser's reason. Such an entry records a conservative rejection and contains
 no native object observation.
 
+Consecutive changed inherited row formats share one requested rectangle for
+their exact contiguous run. An unchanged or absent row splits the run. The
+existing one-cell padding, clipping and tile selection then apply to that run,
+preserving the same tile union as separate row requests, including grid-boundary
+neighbors. This reduces intermediate candidate objects without excluding any
+changed row or changing the final geometric image partition.
+
 The targeted launcher observes the atomic `capture-regions.jsonl` index before
 geometry partitioning. A literal `A1:XFD1048576` region produces an explicit
 `unbounded_capture_plan` failure with unverified coverage. Owned processes are
