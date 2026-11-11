@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "case": "CyanoPhyto_qPCR_dataset_87a55675e15a.xlsx / Check Performance",
+  "original_sha256": "87a55675e15a65159ecc20788721b8b0def37ec8f7adc96fba4dbae0e9dd3d03",
+  "variant_sha256": "b94022b1452a3957f2b04e71ff8a95315aff492e189a38fcb722cb84b4f0dc4c",
+  "input_states": "Raw frozen Original and Check Performance variant, before native rebuilding",
+  "observations": [
+    {
+      "capture_policy": "targeted-content-grid-v17",
+      "diagnostic_sha256": "0f0e449674c1ec33d985320f9898b635dd3031e100fdc7cee5f8f6fe617a4bb9",
+      "cell_or_layout_changes": 6271,
+      "conditional_decision_count": 1,
+      "conditional_reasons": [
+        {
+          "count": 1,
+          "outcome": "capture",
+          "reason": "format-string-theme-or-workbook-context-changed"
+        }
+      ],
+      "layout_logical_region_count": 5,
+      "layout_region_examples": [
+        {
+          "cell": "A1:XFD227",
+          "sheet": "Read_me"
+        },
+        {
+          "cell": "A1:GT208",
+          "sheet": "Summed_17_18_Physico_Bio"
+        },
+        {
+          "cell": "A1:DY430",
+          "sheet": "Summed_2019_Physico"
+        },
+        {
+          "cell": "A1:DD194",
+          "sheet": "qPCR_Data_First"
+        },
+        {
+          "cell": "A1:XFD1048576",
+          "sheet": "qPCR_Data_Second"
+        }
+      ]
+    },
+    {
+      "capture_policy": "targeted-content-grid-v18",
+      "diagnostic_sha256": "5a4b1ad0c42102d460cf5f61b667be85165e848703604a46c68fd704e34084a7",
+      "cell_or_layout_changes": 6271,
+      "conditional_decision_count": 1,
+      "conditional_reasons": [
+        {
+          "count": 1,
+          "outcome": "capture",
+          "reason": "format-string-theme-or-workbook-context-changed"
+        }
+      ],
+      "layout_logical_region_count": 4,
+      "layout_region_examples": [
+        {
+          "cell": "A1:GT208",
+          "sheet": "Summed_17_18_Physico_Bio"
+        },
+        {
+          "cell": "A1:DY430",
+          "sheet": "Summed_2019_Physico"
+        },
+        {
+          "cell": "A1:DD194",
+          "sheet": "qPCR_Data_First"
+        },
+        {
+          "cell": "A1:XFD1048576",
+          "sheet": "qPCR_Data_Second"
+        }
+      ]
+    },
+    {
+      "capture_policy": "targeted-content-grid-v19",
+      "diagnostic_sha256": "06ac359681269f80b4c7e9589eee77c03557194dcbbf4cf83ce1d4b794a10190",
+      "cell_or_layout_changes": 6271,
+      "conditional_decision_count": 1,
+      "conditional_reasons": [
+        {
+          "count": 1,
+          "outcome": "capture",
+          "reason": "format-string-theme-or-workbook-context-changed"
+        }
+      ],
+      "layout_logical_region_count": 1,
+      "layout_region_examples": [
+        {
+          "cell": "A341:XFD445",
+          "sheet": "qPCR_Data_Second"
+        }
+      ]
+    }
+  ],
+  "merge_fix_commit": "edaa2df0",
+  "height_hint_fix_commit": "c71b0b83",
+  "interpretation": [
+    "All seventeen qPCR_Data_Second merge rectangles are unchanged but reordered. Merge normalization alone leaves a whole-grid layout range because a row thickTop hint also changed.",
+    "Policy v19 routes valid row border-height hints to the live height checks. Its read-only layout selection retains A341:XFD445 instead of A1:XFD1048576.",
+    "This is a layout-candidate reduction. Ordinary cell candidates and conditional-formatting areas remain independently selected. The output does not yet include live geometry partitioning or a pixel verdict.",
+    "The earlier native failure and its full-grid planning remain historical evidence. A new native comparison is pending."
+  ],
+  "visual_verdict": "not_observed"
+}
