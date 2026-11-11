@@ -35,6 +35,11 @@ whole-corpus result. Preserve formula/time/filename diagnostics and unsupported
 cases without suppressing raw differences. The original199-pair pilot remains
 separately identifiable in its ledger.
 
+The Data.gov completed-pair audit now covers898 pairs with equal saved contents.
+Two selected cases still lack a successful partner in the returned matched
+packages. Preserve these exceptions. Selection follows small original ZIP sizes
+and cannot establish whole-corpus preservation. See the Data.gov packet ledgers.
+
 Native rebuild workers now enable automatic calculation during full rebuild and
 restore manual calculation before saving. Three formerly stalled cases completed
 in a bounded four-input reused-worker test. Other requests can still remain
@@ -42,7 +47,8 @@ in a bounded four-input reused-worker test. Other requests can still remain
 explicit failed attempt, preserving the request and stage evidence. This is an
 execution guard, not proof of a defective input or of an exclusive UDF cause.
 Successful old producer receipts remain immutable while unfinished inputs are
-retried under the new producer. Four active machines have adopted the revision.
+retried under the new producer. The remote machine paused by the author remains held with its scheduled tasks
+disabled. Other authorized assignments continue with their recorded revisions.
 Offline machine revision and return status remain unverified.
 
 ### Highest priority on 2026-11-11: complete the 7x7 comparison Atlas

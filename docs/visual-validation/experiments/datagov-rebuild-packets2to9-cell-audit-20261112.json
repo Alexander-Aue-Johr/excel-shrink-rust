@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "scope": "Eight sequential 100-pair Data.gov packets ordered by original compressed size. One missing successful partner remains excluded explicitly. This is a small-file completed-pair selection, not a random or whole-corpus result.",
+  "requested_pairs": 800,
+  "complete_audited_pairs": 799,
+  "unpaired_cases": 1,
+  "equal_cell_contents": 799,
+  "differences_found": 0,
+  "audit_seconds": 20.42334639999899,
+  "transport_sha256": "075d8b0f7d158f5eed43039bc8d71e68c06e670a20da790245643bfd309bc3ff",
+  "summary_sha256": "1de0d9a0bf56d24faca579e09c47f0876f71e4171a1283b89816119cc87c5c5f",
+  "audit_binary_sha256": "02eac3849e9207c570ecba952c75fe1ecc1e5aba6a0486d107a0d4fef306eea5",
+  "verification": [
+    "ZIP SHA-256 and CRC verified",
+    "Archive paths checked before extraction",
+    "Each source SHA-256 matched the independent packet assignment",
+    "Each rebuilt output SHA-256 matched its full-rebuild receipt",
+    "Strict saved formula and typed cell-content comparison completed for every included pair"
+  ],
+  "cumulative_datagov_partial_audit": {
+    "equal_pairs": 898,
+    "different_pairs": 0,
+    "unpaired_cases": 2
+  },
+  "limits": "No visual-equivalence or whole-corpus value-preservation conclusion follows from this selected completed subset."
+}
