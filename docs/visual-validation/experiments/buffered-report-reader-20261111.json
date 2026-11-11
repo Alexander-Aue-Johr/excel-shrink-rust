@@ -1,0 +1,89 @@
+{
+  "scope": "Standalone Windows process IO probe of the same serde_json File versus BufReader<File> parsing expressions, 128-MiB admission bound retained. Not a full Atlas benchmark.",
+  "fixture_bytes": 2248227,
+  "fixture_sha256": "53a7723db3a5a6db13f4efbfec07fe243bb602d9451abb91fbf3a786259ca03c",
+  "parsed_outputs_equal": true,
+  "parsed_output_sha256": "de070f7df3dac015b9f6481944f3727e5d4e248640606cef57f5d18aea22ce3a",
+  "probe_sha256": "2ae082eedec25ace0a32f6b7b8df268ec1bf900eefd039c9f073d0f0f8bded40",
+  "probe_source_sha256": "584e9479e534b1ea112b2bc14d5f9567c13d29c452b25b6806a1246838377241",
+  "trials": [
+    {
+      "mode": "unbuffered",
+      "read_bytes": 2248227,
+      "read_operations": 2248228,
+      "seconds": 2.9579448,
+      "trial": 1
+    },
+    {
+      "mode": "buffered",
+      "read_bytes": 2248227,
+      "read_operations": 276,
+      "seconds": 0.0121422,
+      "trial": 2
+    },
+    {
+      "mode": "buffered",
+      "read_bytes": 2248227,
+      "read_operations": 276,
+      "seconds": 0.0144743,
+      "trial": 3
+    },
+    {
+      "mode": "unbuffered",
+      "read_bytes": 2248227,
+      "read_operations": 2248228,
+      "seconds": 2.5395935,
+      "trial": 4
+    },
+    {
+      "mode": "unbuffered",
+      "read_bytes": 2248227,
+      "read_operations": 2248228,
+      "seconds": 2.6035536,
+      "trial": 5
+    },
+    {
+      "mode": "buffered",
+      "read_bytes": 2248227,
+      "read_operations": 276,
+      "seconds": 0.0138797,
+      "trial": 6
+    }
+  ],
+  "medians": {
+    "unbuffered": {
+      "seconds": 2.6035536,
+      "read_operations": 2248228
+    },
+    "buffered": {
+      "seconds": 0.0138797,
+      "read_operations": 276
+    }
+  },
+  "compiler": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "serde_json_version": "1.0.150",
+  "production_change": "validation_report::read_json_file wraps the admitted File in std::io::BufReader before serde_json::from_reader.",
+  "verification": {
+    "reader_tests_passed": 2,
+    "validation_report_tests_passed": 19,
+    "report_size_bound_bytes": 134217728,
+    "native_comparisons_restarted": 0
+  },
+  "observed_merge_before_fix": {
+    "read_operations": 674454100,
+    "read_transfer_bytes": 20520894337,
+    "write_transfer_bytes": 6511040791,
+    "scope": "Single running merge process at the investigation checkpoint; includes all IO by that process."
+  },
+  "scope_limit": "Probe medians concern a 2.25-MB synthetic JSON parse only. Whole-Atlas wall time remains separately observed.",
+  "serde_json_rlib_sha256": "0c8c0dcd56e4543cf404ec66dfa7cb96b318c0a7aeb572a5d842d1417788b872",
+  "derived_atlas_verification": {
+    "normalized_control_books": 7,
+    "scope": "Partial retained observations over 49 frozen books per corpus. Native validation continues.",
+    "books": 154,
+    "scientific_metadata_files_unchanged": 408,
+    "derived_atlas_seconds": 7.796999999991385,
+    "binary_sha256": "7752d07f5c51a3df1e6da0fa00618ae245f8cc91bdabac39ce88fbac412d507b"
+  },
+  "production_source_sha256": "34cf8e6d850b3a64165f1df030cc220dbf8a7e7e34e94e46dc7b7455f47e6984"
+}

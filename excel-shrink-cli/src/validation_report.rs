@@ -136,7 +136,8 @@ fn read_json_file(path: &Path) -> Result<Value> {
         file.metadata()?.len() <= MAX_REPORT_BYTES,
         "Report exceeds the 128 MiB reading bound"
     );
-    serde_json::from_reader(file).with_context(|| format!("Read report {}", path.display()))
+    serde_json::from_reader(std::io::BufReader::new(file))
+        .with_context(|| format!("Read report {}", path.display()))
 }
 
 fn is_difference(finding: &Value) -> bool {

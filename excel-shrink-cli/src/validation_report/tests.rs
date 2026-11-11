@@ -29,6 +29,32 @@ fn write_report(directory: &Path, report: &Value) -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn report_reader_preserves_large_json_and_rejects_trailing_data() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let path = fixture.0.join("report.json");
+    let expected = json!({"label": "Größe", "regions": vec!["A1:B2"; 4096]});
+    let mut bytes = serde_json::to_vec(&expected)?;
+    fs::write(&path, &bytes)?;
+    assert_eq!(read_json_file(&path)?, expected);
+
+    bytes.extend_from_slice(b" trailing");
+    fs::write(&path, bytes)?;
+    let error = read_json_file(&path).unwrap_err();
+    assert!(error.to_string().contains("Read report"));
+    Ok(())
+}
+
+#[test]
+fn report_reader_keeps_the_file_size_bound() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let path = fixture.0.join("oversized.json");
+    fs::File::create(&path)?.set_len(MAX_REPORT_BYTES + 1)?;
+    let error = read_json_file(&path).unwrap_err();
+    assert!(error.to_string().contains("128 MiB"));
+    Ok(())
+}
+
 fn report_with_pair(left: &Path, right: &Path) -> Value {
     json!({
         "status": "completed_with_limitations",
