@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-11-11T12:28:10.035081+00:00",
+  "scope": "Two already-running Data.gov Original/Inquire comparisons from the first nine frozen workbook ranks. Capture-success sequence counts individual native images across both retained states.",
+  "runtime_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "capture_policy": "targeted-content-grid-v15",
+  "system_reserve_gib": 8,
+  "cases": [
+    {
+      "case": "QT/RR A",
+      "controls_before": {
+        "capture_batch_ranges": 4,
+        "capture_batch_megapixels": 128
+      },
+      "trial_controls": {
+        "capture_batch_ranges": 8,
+        "capture_batch_megapixels": 256
+      },
+      "windows": [
+        {
+          "phase": "baseline",
+          "start_utc": "2026-11-11T12:21:54Z",
+          "end_utc": "2026-11-11T12:22:54Z",
+          "elapsed_seconds": 60.14100000000326,
+          "successful_images": 112,
+          "images_per_second": 1.8622902844979952,
+          "minimum_available_ram_gib": 53.07106399536133,
+          "minimum_commit_headroom_gib": 37.17457580566406
+        },
+        {
+          "phase": "trial",
+          "start_utc": "2026-11-11T12:22:54Z",
+          "end_utc": "2026-11-11T12:23:54Z",
+          "elapsed_seconds": 60.03100000000268,
+          "successful_images": 168,
+          "images_per_second": 2.7985540803916726,
+          "minimum_available_ram_gib": 52.23175048828125,
+          "minimum_commit_headroom_gib": 36.074947357177734
+        }
+      ],
+      "observed_rate_ratio": 1.5027485799003992,
+      "decision": "gain observed; maintaining guarded trial"
+    },
+    {
+      "case": "QT/RR B",
+      "controls_before": {
+        "capture_batch_ranges": 4,
+        "capture_batch_megapixels": 128
+      },
+      "trial_controls": {
+        "capture_batch_ranges": 8,
+        "capture_batch_megapixels": 256
+      },
+      "windows": [
+        {
+          "phase": "baseline",
+          "start_utc": "2026-11-11T12:25:25Z",
+          "end_utc": "2026-11-11T12:26:25Z",
+          "elapsed_seconds": 60.04699999999866,
+          "successful_images": 112,
+          "images_per_second": 1.8652055889553598,
+          "minimum_available_ram_gib": 59.5435905456543,
+          "minimum_commit_headroom_gib": 44.888702392578125
+        },
+        {
+          "phase": "trial",
+          "start_utc": "2026-11-11T12:26:25Z",
+          "end_utc": "2026-11-11T12:27:25Z",
+          "elapsed_seconds": 60.04699999999866,
+          "successful_images": 200,
+          "images_per_second": 3.330724265991714,
+          "minimum_available_ram_gib": 57.56136703491211,
+          "minimum_commit_headroom_gib": 42.826026916503906
+        }
+      ],
+      "observed_rate_ratio": 1.7857142857142858,
+      "decision": "gain observed; maintaining guarded trial"
+    }
+  ],
+  "safety": "Each control update is bound to one exact native process creation time and run ID. A live guard restores the preceding controls at memory pressure, terminal state or process change; external settings are preserved.",
+  "limitations": [
+    "Sequential adjacent-region windows, with concurrent work continuing; neither randomized nor a corpus-wide speedup estimate.",
+    "This observation measures scheduling throughput; pixel-equivalence evidence belongs to separate controlled capture-package experiments.",
+    "Native region selection, source files and comparison verdict rules were unchanged. Trials remained active after these recorded windows."
+  ]
+}
