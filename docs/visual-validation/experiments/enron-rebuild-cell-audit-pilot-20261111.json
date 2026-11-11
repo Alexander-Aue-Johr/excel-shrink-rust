@@ -22,5 +22,13 @@
   "fixture_checks": {
     "deliberately_stale_cached_values_detected": 2,
     "two_native_rebuilds_equal": true
+  },
+  "width_scoped_followup": {
+    "equal_cell_contents": 199,
+    "failed_pairs": 0,
+    "summary_sha256": "8571af319c680d7fe5fe744255c9dca5c8b7e29f7ff9fa1224d0a0b406e35403",
+    "audit_executable_sha256": "5f0317146f72e9a82c5d41f5a19d1aade1cf425127cf2cb121843f33abd21178",
+    "cause": "The dedicated content audit excludes column-width range validation. The prior width failure remains retained as the initial attempt. Capture and preservation callers retain width validation. Separate cache namespaces prevent cross-scope acceptance.",
+    "verification": "All 33 focused value-comparison tests passed, with 2 ignored benchmarks. The new test checks equality, a real changed value, and continued rejection by layout-validating callers after the content-audit cache is populated."
   }
 }
