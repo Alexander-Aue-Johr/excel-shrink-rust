@@ -1,0 +1,442 @@
+{
+  "kind": "paired-memchr-x86-dispatch-ablation",
+  "status": "completed",
+  "environment": {
+    "cpu": "AMD Ryzen 7 7800X3D",
+    "logical_processors": 16,
+    "rustc": "1.96.0 (ac68faa20 2026-05-25)",
+    "llvm": "22.1.2",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "protocol": {
+    "source_revision": "6568787c76ef686916a0751283ad11c8fe2d8421",
+    "cases": [
+      {
+        "case_id": "wanderungen",
+        "input_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712"
+      },
+      {
+        "case_id": "finance",
+        "input_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603"
+      },
+      {
+        "case_id": "qt-rr",
+        "input_sha256": "84eb838fbc4627fb2ca1dd8461e8a05493a0b31ade8e27c66b437a22d932a577"
+      }
+    ],
+    "repetitions": 3,
+    "rayon_threads": 1,
+    "writer_workers": 1,
+    "max_active_workbooks": 1,
+    "order": "Alternate native-portable and portable-native by repetition, fixed case order",
+    "wall_endpoint": "Process creation through process exit; verification excluded",
+    "correctness": "Every uncompressed ZIP member name, byte length and SHA256 must match the first native output",
+    "context": "Concurrent native visual comparisons and bounded library follow-up; filesystem caches are not reset",
+    "reserve_bytes": 8589934592,
+    "job_commit_limit_bytes": 8589934592,
+    "timeout_seconds": 180,
+    "binary_sha256": {
+      "native": "23a7801532e0c600eea750fdae41695bb52e5c64fc5530cf94fafc9185aaf2b0",
+      "portable": "3698c7b111c9e60e2378d54061910fb84e6c16d71b084a78a39e5ce55c92b046"
+    }
+  },
+  "summaries": [
+    {
+      "case": "finance",
+      "modes": {
+        "native": {
+          "n": 3,
+          "median_wall_seconds": 17.75,
+          "minimum_wall_seconds": 17.640999999995984,
+          "maximum_wall_seconds": 17.796000000002095,
+          "median_user_cpu_seconds": 16.484375
+        },
+        "portable": {
+          "n": 3,
+          "median_wall_seconds": 18.43699999999808,
+          "minimum_wall_seconds": 18.17199999999866,
+          "maximum_wall_seconds": 18.531000000002678,
+          "median_user_cpu_seconds": 17.0625
+        }
+      },
+      "portable_over_native_median_ratio": 1.0387042253520045
+    },
+    {
+      "case": "qt-rr",
+      "modes": {
+        "native": {
+          "n": 3,
+          "median_wall_seconds": 22.671000000002095,
+          "minimum_wall_seconds": 22.57800000000134,
+          "maximum_wall_seconds": 23.0309999999954,
+          "median_user_cpu_seconds": 20.890625
+        },
+        "portable": {
+          "n": 3,
+          "median_wall_seconds": 24.125,
+          "minimum_wall_seconds": 24.093999999997322,
+          "maximum_wall_seconds": 24.5,
+          "median_user_cpu_seconds": 22.6875
+        }
+      },
+      "portable_over_native_median_ratio": 1.0641347977591535
+    },
+    {
+      "case": "wanderungen",
+      "modes": {
+        "native": {
+          "n": 3,
+          "median_wall_seconds": 3.5780000000013388,
+          "minimum_wall_seconds": 3.062999999994645,
+          "maximum_wall_seconds": 3.6719999999986612,
+          "median_user_cpu_seconds": 2.71875
+        },
+        "portable": {
+          "n": 3,
+          "median_wall_seconds": 3.3280000000013388,
+          "minimum_wall_seconds": 3.264999999999418,
+          "maximum_wall_seconds": 3.8280000000013388,
+          "median_user_cpu_seconds": 2.953125
+        }
+      },
+      "portable_over_native_median_ratio": 0.9301285634432905
+    }
+  ],
+  "trials": [
+    {
+      "case_id": "wanderungen",
+      "repetition": 0,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 3.5780000000013388,
+      "resources": {
+        "peak_job_committed_bytes": 259629056,
+        "peak_process_committed_bytes": 258351104,
+        "cpu_user_seconds": 2.671875,
+        "cpu_kernel_seconds": 0.296875,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+      "zip_member_count": 138
+    },
+    {
+      "case_id": "wanderungen",
+      "repetition": 0,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 3.8280000000013388,
+      "resources": {
+        "peak_job_committed_bytes": 259727360,
+        "peak_process_committed_bytes": 258469888,
+        "cpu_user_seconds": 2.953125,
+        "cpu_kernel_seconds": 0.234375,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+      "zip_member_count": 138
+    },
+    {
+      "case_id": "wanderungen",
+      "repetition": 1,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 3.3280000000013388,
+      "resources": {
+        "peak_job_committed_bytes": 259493888,
+        "peak_process_committed_bytes": 258232320,
+        "cpu_user_seconds": 2.96875,
+        "cpu_kernel_seconds": 0.1875,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+      "zip_member_count": 138
+    },
+    {
+      "case_id": "wanderungen",
+      "repetition": 1,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 3.6719999999986612,
+      "resources": {
+        "peak_job_committed_bytes": 259530752,
+        "peak_process_committed_bytes": 258252800,
+        "cpu_user_seconds": 2.984375,
+        "cpu_kernel_seconds": 0.421875,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+      "zip_member_count": 138
+    },
+    {
+      "case_id": "wanderungen",
+      "repetition": 2,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 3.062999999994645,
+      "resources": {
+        "peak_job_committed_bytes": 259715072,
+        "peak_process_committed_bytes": 258445312,
+        "cpu_user_seconds": 2.71875,
+        "cpu_kernel_seconds": 0.203125,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+      "zip_member_count": 138
+    },
+    {
+      "case_id": "wanderungen",
+      "repetition": 2,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 3.264999999999418,
+      "resources": {
+        "peak_job_committed_bytes": 259362816,
+        "peak_process_committed_bytes": 258109440,
+        "cpu_user_seconds": 2.828125,
+        "cpu_kernel_seconds": 0.234375,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+      "zip_member_count": 138
+    },
+    {
+      "case_id": "finance",
+      "repetition": 0,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 17.75,
+      "resources": {
+        "peak_job_committed_bytes": 526348288,
+        "peak_process_committed_bytes": 525082624,
+        "cpu_user_seconds": 16.484375,
+        "cpu_kernel_seconds": 0.953125,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "6343cd819d026a6b76c358c345136b6e56e99f13df3cccd5820a774eca3c239a",
+      "zip_member_count": 225
+    },
+    {
+      "case_id": "finance",
+      "repetition": 0,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 18.531000000002678,
+      "resources": {
+        "peak_job_committed_bytes": 526147584,
+        "peak_process_committed_bytes": 524886016,
+        "cpu_user_seconds": 17.0625,
+        "cpu_kernel_seconds": 1.078125,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "6343cd819d026a6b76c358c345136b6e56e99f13df3cccd5820a774eca3c239a",
+      "zip_member_count": 225
+    },
+    {
+      "case_id": "finance",
+      "repetition": 1,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 18.17199999999866,
+      "resources": {
+        "peak_job_committed_bytes": 526290944,
+        "peak_process_committed_bytes": 525033472,
+        "cpu_user_seconds": 16.875,
+        "cpu_kernel_seconds": 1.1875,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "6343cd819d026a6b76c358c345136b6e56e99f13df3cccd5820a774eca3c239a",
+      "zip_member_count": 225
+    },
+    {
+      "case_id": "finance",
+      "repetition": 1,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 17.796000000002095,
+      "resources": {
+        "peak_job_committed_bytes": 526565376,
+        "peak_process_committed_bytes": 525291520,
+        "cpu_user_seconds": 16.359375,
+        "cpu_kernel_seconds": 0.921875,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "6343cd819d026a6b76c358c345136b6e56e99f13df3cccd5820a774eca3c239a",
+      "zip_member_count": 225
+    },
+    {
+      "case_id": "finance",
+      "repetition": 2,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 17.640999999995984,
+      "resources": {
+        "peak_job_committed_bytes": 526254080,
+        "peak_process_committed_bytes": 525000704,
+        "cpu_user_seconds": 16.515625,
+        "cpu_kernel_seconds": 0.875,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "6343cd819d026a6b76c358c345136b6e56e99f13df3cccd5820a774eca3c239a",
+      "zip_member_count": 225
+    },
+    {
+      "case_id": "finance",
+      "repetition": 2,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 18.43699999999808,
+      "resources": {
+        "peak_job_committed_bytes": 526446592,
+        "peak_process_committed_bytes": 525180928,
+        "cpu_user_seconds": 17.171875,
+        "cpu_kernel_seconds": 1.0,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "6343cd819d026a6b76c358c345136b6e56e99f13df3cccd5820a774eca3c239a",
+      "zip_member_count": 225
+    },
+    {
+      "case_id": "qt-rr",
+      "repetition": 0,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 22.671000000002095,
+      "resources": {
+        "peak_job_committed_bytes": 539869184,
+        "peak_process_committed_bytes": 538611712,
+        "cpu_user_seconds": 20.703125,
+        "cpu_kernel_seconds": 1.5625,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "d6bcf5ebe0e1de921a25adac61090cf69781aac4e0c96266a870298ae1ffb082",
+      "zip_member_count": 24
+    },
+    {
+      "case_id": "qt-rr",
+      "repetition": 0,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 24.093999999997322,
+      "resources": {
+        "peak_job_committed_bytes": 540073984,
+        "peak_process_committed_bytes": 538804224,
+        "cpu_user_seconds": 22.3125,
+        "cpu_kernel_seconds": 1.4375,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "d6bcf5ebe0e1de921a25adac61090cf69781aac4e0c96266a870298ae1ffb082",
+      "zip_member_count": 24
+    },
+    {
+      "case_id": "qt-rr",
+      "repetition": 1,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 24.125,
+      "resources": {
+        "peak_job_committed_bytes": 539836416,
+        "peak_process_committed_bytes": 538574848,
+        "cpu_user_seconds": 22.6875,
+        "cpu_kernel_seconds": 1.234375,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "d6bcf5ebe0e1de921a25adac61090cf69781aac4e0c96266a870298ae1ffb082",
+      "zip_member_count": 24
+    },
+    {
+      "case_id": "qt-rr",
+      "repetition": 1,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 22.57800000000134,
+      "resources": {
+        "peak_job_committed_bytes": 539467776,
+        "peak_process_committed_bytes": 538206208,
+        "cpu_user_seconds": 20.890625,
+        "cpu_kernel_seconds": 1.328125,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "d6bcf5ebe0e1de921a25adac61090cf69781aac4e0c96266a870298ae1ffb082",
+      "zip_member_count": 24
+    },
+    {
+      "case_id": "qt-rr",
+      "repetition": 2,
+      "mode": "native",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 23.0309999999954,
+      "resources": {
+        "peak_job_committed_bytes": 539885568,
+        "peak_process_committed_bytes": 538628096,
+        "cpu_user_seconds": 21.15625,
+        "cpu_kernel_seconds": 1.5,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "d6bcf5ebe0e1de921a25adac61090cf69781aac4e0c96266a870298ae1ffb082",
+      "zip_member_count": 24
+    },
+    {
+      "case_id": "qt-rr",
+      "repetition": 2,
+      "mode": "portable",
+      "exit_code": 0,
+      "reason": null,
+      "wall_seconds": 24.5,
+      "resources": {
+        "peak_job_committed_bytes": 540467200,
+        "peak_process_committed_bytes": 539205632,
+        "cpu_user_seconds": 22.921875,
+        "cpu_kernel_seconds": 1.1875,
+        "active_processes": 0
+      },
+      "all_uncompressed_members_equal": true,
+      "canonical_member_manifest_sha256": "d6bcf5ebe0e1de921a25adac61090cf69781aac4e0c96266a870298ae1ffb082",
+      "zip_member_count": 24
+    }
+  ],
+  "runtime_probe": {
+    "checks_per_mode": 161,
+    "native_cached_finder": "AVX2",
+    "portable_cached_finder": "scalar two-way with portable prefilter",
+    "portable_x86_dispatch_log_entries": 0
+  },
+  "parser_tests": {
+    "native_xml_tests_passed": 9,
+    "portable_xml_tests_passed": 9
+  },
+  "interpretation": "Small selected-case end-to-end effects under concurrent work; this isolates memchr architecture dispatch, not all SIMD or a corpus-wide speedup"
+}
