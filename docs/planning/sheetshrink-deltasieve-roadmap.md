@@ -1094,6 +1094,15 @@ Use a predefined, feasible Check Performance sample with saved-original controls
 
 Acceptance requires reproducible tables, declared denominators, evidence for claimed invariants, and a reviewed regression ledger.
 
+The SheetShrink manuscript records the cleanup screening for all three prepared
+populations in paper commit `620a9241`, with a path-free evidence record at
+`papers/sheetshrink/evidence/cleanup-screening.json`. The Data.gov inventory
+reconciles 8,623 processed files and 494 namespace skips against 9,117 listed
+members. The processed files include seven recovered outputs. Its retry ended
+with a run-level failure, so its elapsed time is excluded from the comparison.
+These results establish package-size outcomes for the screening, with native
+validation and matched performance measurements tracked independently.
+
 ## 13 Evaluate DeltaSieve detection and cost
 
 - [ ] Validate candidate selection against an independent full-capture reference and controlled mutations.
@@ -1121,8 +1130,10 @@ remain open.
 
 Five controlled comparator pairs now also have explicit reference observations
 independent of the selector. All five completed, with a pixel-equal identical
-control and differences in the four deliberately changed pairs. Continuous
-256-row reference tiling localized the visible B2000 and J2099 changes and kept
+control and differences in the four deliberately changed pairs. The
+[reference evidence](../visual-validation/experiments/independent-reference/comparator-pilot-evidence.json)
+records the independently reproduced pixel count for each tile.
+Continuous 256-row reference tiling localized the visible B2000 and J2099 changes and kept
 the hidden B3000 tile equal. The experiment records its supplied area limits,
 producer/source hashes, deadlines, raw images and the initial failed path attempt
 in `../visual-validation/experiments/independent-reference/comparator-pilot-20261109.md`.
