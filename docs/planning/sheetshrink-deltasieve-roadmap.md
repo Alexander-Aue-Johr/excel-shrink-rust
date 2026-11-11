@@ -28,6 +28,17 @@ Do not fabricate these labels from formula presence, a large extent or a pixel
 difference. The inventory and proposed richer encoding are recorded in
 `docs/visual-validation/static-publication.md`.
 
+Publication is now available at
+<https://alexander-aue-johr.github.io/excel-shrink-paper/atlas/stage-09/?theme=light>.
+The `gh-pages` deployment branch keeps the static snapshot separate from source
+commits. Browser verification opened the nine-workbook overview, selected the
+Adage Fixed Factor readme sheet and loaded the native Original/Inquire detail
+without browser errors. All 125 compact detail payloads remain byte-identical
+to the preceding public export. A presentation derivation records the changed
+catalog, UI revision and scope. The DeltaSieve opening caption includes an
+actual PDF link annotation to this site. Source and both manuscript PDFs were
+rebased above concurrent paper changes and pushed in `7743a1c7`.
+
 ### Urgent complete-corpus distributions on 2026-11-11
 
 The user's latest priority places three fresh normal-policy SheetShrink runs
