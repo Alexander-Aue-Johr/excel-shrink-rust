@@ -7,6 +7,14 @@ shared gate for diagnosis. Fixed noninteractive batches retain their old policy.
 
 ## Actual process operations
 
+If a resident exits while a capture or geometry response is pending, the
+comparison error includes its retained `metrics.json` error when available.
+Missing or unreadable metrics still produce an explicit resident-exit failure.
+This diagnostic propagation preserves the original failed outcome and does
+not infer which process caused system memory pressure. The fixture
+`targeted-resident-exit.tests.ps1` covers recorded errors, empty metrics,
+malformed JSON and an absent metrics file without starting Excel.
+
 `ResidentProcesses.Start` assigns each Excel process to a per-launcher Windows
 Job Object before resuming it. Children normally inherit membership. The job
 uses `KILL_ON_JOB_CLOSE | JOB_MEMORY`. `resident.ps1` disposes this job on group

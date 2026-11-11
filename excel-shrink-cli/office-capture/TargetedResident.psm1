@@ -339,7 +339,18 @@ function Invoke-TargetedJobs {
     while ($pending.Count -gt 0) {
         for ($index = $pending.Count - 1; $index -ge 0; $index--) {
             $job = $pending[$index]
-            if ($job.entry.launcher.HasExited) { throw 'Targeted resident exited without a response.' }
+            if ($job.entry.launcher.HasExited) {
+                $message = 'Targeted resident exited without a response.'
+                try {
+                    $metrics = Read-TargetedJson (Join-Path $job.entry.session 'metrics.json')
+                    if ($null -ne $metrics -and $metrics.error) {
+                        $message += ' ' + [string]$metrics.error
+                    }
+                } catch {
+                    $message += ' Resident diagnostic could not be read.'
+                }
+                throw $message
+            }
             $response = Read-TargetedJson $job.response
             if ($null -eq $response) { continue }
             $resolved = [pscustomobject](Resolve-TargetedResponse $job $response)
