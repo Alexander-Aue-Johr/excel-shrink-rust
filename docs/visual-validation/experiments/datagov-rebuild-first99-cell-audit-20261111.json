@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "selection": "100 smallest original workbooks by compressed byte size from the frozen Data.gov processed-pair inventory",
+  "complete_pairs_compared": 99,
+  "equal_saved_contents_pairs": 99,
+  "summary_sha256": "4d13dc1ebfc58ee4d43b3a1ba63261e6116c5b74b65a5901535701afede18ec8",
+  "transport_archive_sha256": "89dffcd041beecd4352371cec2266518cd2c4d8c00f5a23b9d1a338fa004af0b",
+  "rebuild_attempts": {
+    "successful": 199,
+    "failed": 1
+  },
+  "exception": {
+    "workbook": "Data submission for A-pk17_f2afc662da1d.xlsx",
+    "side": "original",
+    "source_sha256": "f2afc662da1db10e5c3fa7a065a1f9ec1aae682b5eee860f391c9948318f7be6",
+    "error": "Saving XLSX conversion failed because a file already existed.",
+    "fresh_retry_in_another_environment": "prepared",
+    "retry_output_sha256": "fadb70775b472475a87eb8b35d35feb56a5302aea556c583982253dd5567d87d",
+    "scope": "Alternate-environment recovery is retained separately. The paired99-result count uses matched original/Shrink results from the assigned machine."
+  },
+  "scope": "Size-targeted partial corpus, not a representative or whole-corpus preservation claim."
+}
