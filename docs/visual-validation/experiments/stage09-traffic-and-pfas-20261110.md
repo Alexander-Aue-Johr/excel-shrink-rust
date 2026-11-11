@@ -377,6 +377,16 @@ before the stop, with no successful capture. This separates the save
 permission issue from the remaining native comparison workload. The
 normalized follow-up supplies no visual verdict for either baseline.
 
+The retained PubMed save-stage evidence contains 2.84 GB of XML scratch
+files and a 1.32 GB compressed change stream. The three largest saved
+worksheet XML members, totaling 488.25 MB on each side, matched by
+SHA-256 after decompression. The next largest sheet,
+`MC - Emissions (diff)`, decreased from 192.33 to 71.24 MB on the
+original save path and from 84.63 to 69.28 MB on the SheetShrink save
+path. These are save-stage XML sizes. They identify a substantial
+normalization workload without attributing the pending candidate count
+to any one sheet or establishing visual equivalence.
+
 ## Enron SheetShrink chart findings in the top-49 selection
 
 The current-output identity audit selects five Enron workbook observations
