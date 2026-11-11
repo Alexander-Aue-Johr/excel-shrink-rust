@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "scope": "Three disjoint remote assignment selections,1000 previously unaudited complete pairs each. Transport, assignment source and output receipt hashes verified. All differences retained; dependency evidence remains diagnostic. Completed-pair selections are not representative random samples.",
+  "results": [
+    {
+      "assignment": "remote-A",
+      "pairs": 1000,
+      "statuses": {
+        "equal_cell_contents": 968,
+        "differences_found": 32
+      },
+      "difference_kinds": {
+        "changed": 133
+      },
+      "summary_sha256": "e59cdb461b6f1fce3bb14b318df93f6a76bf2ec21279196e160752daf88abc97",
+      "assignment_manifest_sha256": "496f5ef32e8937ca167a6f342def2dc35ea2db91efc4c47beee21b3d676f5829"
+    },
+    {
+      "assignment": "remote-B",
+      "pairs": 1000,
+      "statuses": {
+        "equal_cell_contents": 885,
+        "differences_found": 115
+      },
+      "difference_kinds": {
+        "changed": 1289
+      },
+      "summary_sha256": "29667e9bc3ee2f34f3cfa82ae05bdcb7aa27a0e69a0e7eaae7028f4eb71acbec",
+      "assignment_manifest_sha256": "8b176529c37590a7fd14423bdd1064a1b5bf250c9c7d1bf65fe9cf133eefdc1a"
+    },
+    {
+      "assignment": "remote-C",
+      "pairs": 1000,
+      "statuses": {
+        "equal_cell_contents": 832,
+        "differences_found": 168
+      },
+      "difference_kinds": {
+        "changed": 492
+      },
+      "summary_sha256": "043f78e7717bbb7757a5d8069965d1c1bc933489803558ab629d7f046d8c0dd5",
+      "assignment_manifest_sha256": "add928ae07e2b279cd20a35c82d04d60e92a2aef0378a819085fc8da87cbbf6c"
+    }
+  ]
+}
