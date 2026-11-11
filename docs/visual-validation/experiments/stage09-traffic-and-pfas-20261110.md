@@ -395,6 +395,14 @@ writing evidence. The comparison of the two input packages recorded
 rendered regions. The saved snapshot contains no completed capture
 selection or final post-rebuild region count.
 
+The original save-control stream starts with cell entries from `BART`.
+That worksheet XML and the style table have identical hashes between
+the two input lanes and identical hashes between the two saved lanes.
+Both members changed on save in the same way on both sides.
+`sharedStrings.xml` is byte-identical across all four packages. These
+checks localize a recorded change to the common save transition. They
+do not qualify other worksheets or the unfinished rebuilt comparison.
+
 ## Enron SheetShrink chart findings in the top-49 selection
 
 The current-output identity audit selects five Enron workbook observations
