@@ -100,7 +100,9 @@ therefore keeps screened results separate from complete visual validation.
 See the [two confirmed Default formatting regressions](confirmed-default-regressions.md) for the controlled findings.
 
 This guide assumes you have saved a corpus configuration. If you have not,
-run **Excel Shrink: Configure corpus run** in VS Code. The full
+run **DeltaSieve: Configure validation** in VS Code. The web-start and receipt-based
+resume instructions are in [DeltaSieve configuration and reports](deltasieve.md).
+The full
 [launcher guide](corpus-launcher.md) covers setup, archive binding, and
 additional options.
 

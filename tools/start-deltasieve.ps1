@@ -4,6 +4,7 @@ param(
     [string]$DataRoot = $env:DELTASIEVE_DATA_DIR,
     [string]$BinaryPath,
     [string]$Config,
+    [string]$StudyConfig,
     [ValidateRange(0, 65535)][int]$Port = 0,
     [switch]$NoOpen
 )
@@ -56,6 +57,9 @@ try {
     $arguments = @('observatory', '--port', [string]$Port)
     if ($Config) {
         $arguments += @('--config', (Resolve-Path -LiteralPath $Config).Path)
+    }
+    if ($StudyConfig) {
+        $arguments += @('--study-config', (Resolve-Path -LiteralPath $StudyConfig).Path)
     }
     if ($NoOpen) { $arguments += '--no-open' }
     & $BinaryPath @arguments

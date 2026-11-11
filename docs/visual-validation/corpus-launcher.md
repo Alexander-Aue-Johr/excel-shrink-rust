@@ -3,10 +3,14 @@
 For the short command sequence, partition choice and rebuild after a pull, see
 [Running corpus studies](README.md).
 
-Run the VS Code task **Excel Shrink: Configure corpus run**. It opens the
-same kind of PowerShell/WPF dialog used by the existing workbook demo tasks.
-The dialog configures the existing `regression study` runner; it does not create
-a separate results format or a separate comparison engine.
+For ordinary startup, run the VS Code task **DeltaSieve: Configure validation**
+in the tool repository. See
+[DeltaSieve configuration and reports](deltasieve.md) for web startup,
+configuration prefill and receipt-based resume.
+
+The explicit PowerShell corpus command below retains its saved launcher
+configuration and existing `regression study` runner. Its legacy dialog and
+WSL deployment options remain available during configuration migration.
 
 For a terminal command independent of VS Code, run this once from the repository:
 

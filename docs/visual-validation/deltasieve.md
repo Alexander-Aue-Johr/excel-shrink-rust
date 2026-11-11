@@ -100,12 +100,23 @@ The VS Code task `DeltaSieve: Configure validation` invokes
 `V:\deltasieve-data`. Pass `-DataRoot` or set `DELTASIEVE_DATA_DIR` to use
 another drive. The starter places builds, temporary files, and logs beneath
 that root. `-BinaryPath` uses an existing build, and `-Config` loads a saved
-standalone configuration. An isolated HTTP smoke test verified the starter's
+standalone comparison configuration. `-StudyConfig` forwards a saved archive-study
+configuration to `observatory --study-config`, prepopulating the corpus form.
+Both options leave the configuration page open for review before Start.
+For example, with an existing executable:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\start-deltasieve.ps1 -BinaryPath 'V:\runtime\deltasieve.exe' -StudyConfig 'V:\profiles\study.json'
+```
+
+The starter handoff test uses an inert script to check argument boundaries,
+paths containing spaces and temporary-directory placement without opening Excel.
+An isolated HTTP smoke test verified the starter's
 session and working paths on V:.
 
-The existing Windows VS Code task `Excel Shrink: Configure corpus run` now opens
-the same web configurator. Its label remains as a compatibility alias for saved
-task selections. Explicit PowerShell corpus configurations and the WSL launcher
+The tool repository's ordinary task is `DeltaSieve: Configure validation`.
+Older instructions using `Excel Shrink: Configure corpus run` refer to a historical
+task label. Explicit PowerShell corpus configurations and the WSL launcher
 remain available through their existing scripts while profile migration proceeds.
 
 Choose `Resume a corpus study` in the web configurator and select the study's
