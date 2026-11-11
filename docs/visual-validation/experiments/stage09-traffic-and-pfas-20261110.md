@@ -380,6 +380,28 @@ in rank order, are:
 - `a7f2526fe95c5afc6a22b453a25d083805f6f152bf98f62ef2989b1dd808757f`
 - `9a091bdb450f45fdc33e883630aa47a4f94a3084c809497819a4e7b01ff580a9`
 
+### Enron chart controls with identical workbook members
+
+Separate conservative captures repeated the five workbook inputs above.
+In each control the second package differed only in its ZIP comment.
+Every workbook member matched by SHA-256 before native opening. The five
+controls captured ten charts. Two changed in the same chart identities
+as the corresponding SheetShrink observations:
+
+| Frozen rank | Sheet | Chart | Changed RGBA pixels in control |
+|---:|---|---|---:|
+| 7 | Run Query | Diagramm 4 | 2 |
+| 12 | Results | Chart 1 | 7 |
+
+The other eight control captures were equal. Both changed controls kept
+the same image dimensions and reported no geometry change. After opening
+and rebuild, the changed package members were confined to workbook XML,
+core properties and, in rank 7, the calculation chain. These controls show
+that differences of this scale can occur without a workbook-member
+transformation in these two charts. They do not establish that the
+original pixel masks have the same cause. All six original findings
+remain in the report.
+
 ### Enron rank 30 raw opening exception
 
 The top-49 identity audit has no eligible comparison for rank 30,
