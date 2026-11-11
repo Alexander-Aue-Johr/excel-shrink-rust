@@ -167,7 +167,7 @@ export function initWorkerMonitor({ selectGroup, navigateToCaptures } = {}) {
       for (const [name,value] of counts) field(fields, `Pane: ${name.replaceAll('_',' ')}`, value.toLocaleString('en-US'));
     }
     if (row.job) {
-      field(fields, 'Current job', `${row.job.kind} · ${row.job.id}`);
+      field(fields, 'Current job', `${row.job.operation_kind || row.job.kind} · ${row.job.id}`);
       field(fields, 'Job regions', (row.job.locations || []).map(item => [item.sheet_name || item.name, item.range].filter(Boolean).join('!')).join(', ') || 'Not specified in job');
     }
     if (row.uploadedImages != null) field(fields, 'Images received / jobs completed', `${row.uploadedImages} / ${row.completedCommands}`);

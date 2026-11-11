@@ -384,6 +384,12 @@ fn command_timing(source: &Value) -> Option<Value> {
 }
 
 fn describe(command: &Value) -> Value {
+    if command["kind"] == "diagnosis"
+        && command["operation"] == "targeted"
+        && command["request"].is_object()
+    {
+        return describe_targeted(command);
+    }
     let mut result = pick(command, &["id", "kind", "sheet_index", "sheet_name"]);
     let tiles: Vec<_> = command["tiles"]
         .as_array()
@@ -428,6 +434,45 @@ fn describe(command: &Value) -> Value {
     result
 }
 
+fn describe_targeted(command: &Value) -> Value {
+    let request = &command["request"];
+    let mut result = pick(command, &["id", "kind"]);
+    result["operation_kind"] = request["kind"].clone();
+    let ranges: Vec<_> = request["ranges"]
+        .as_array()
+        .map(|ranges| ranges.iter().collect())
+        .unwrap_or_else(|| vec![request]);
+    let locations: Vec<_> = ranges
+        .iter()
+        .filter_map(|item| {
+            let range = item.as_str().or_else(|| item["range"].as_str())?;
+            let mut location = json!({"range":range});
+            location["sheet_name"] = item
+                .get("sheet")
+                .or_else(|| request.get("sheet"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            Some(location)
+        })
+        .collect();
+    result["range_count"] = json!(locations.len());
+    result["sheet_count"] = json!(locations
+        .iter()
+        .filter_map(|location| location["sheet_name"].as_str())
+        .collect::<HashSet<_>>()
+        .len());
+    result["tile_count"] = json!(if matches!(
+        request["kind"].as_str(),
+        Some("capture" | "capture_many")
+    ) {
+        locations.len()
+    } else {
+        0
+    });
+    result["locations"] = json!(locations.into_iter().take(8).collect::<Vec<_>>());
+    result
+}
+
 fn pick(source: &Value, names: &[&str]) -> Value {
     let mut result = json!({});
     for name in names {
@@ -441,6 +486,35 @@ fn pick(source: &Value, names: &[&str]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn targeted_capture_description_retains_transport_and_bounded_locations() {
+        let command = json!({"id":"targeted-1","kind":"diagnosis","operation":"targeted",
+            "request":{"kind":"capture_many","sheet":"Data",
+                "ranges":(1..=12).map(|row| json!({"range":format!("A{row}:D{row}")})).collect::<Vec<_>>()}});
+        let description = describe(&command);
+        assert_eq!(description["kind"], "diagnosis");
+        assert_eq!(description["operation_kind"], "capture_many");
+        assert_eq!(description["tile_count"], 12);
+        assert_eq!(description["sheet_count"], 1);
+        assert_eq!(description["locations"].as_array().unwrap().len(), 8);
+        assert_eq!(
+            description["locations"][0],
+            json!({"sheet_name":"Data","range":"A1:D1"})
+        );
+    }
+
+    #[test]
+    fn targeted_geometry_description_counts_ranges_without_claiming_captures() {
+        let description = describe(
+            &json!({"id":"targeted-2","kind":"diagnosis","operation":"targeted",
+            "request":{"kind":"measure_batch","sheet":"A","ranges":["A1","B2"]}}),
+        );
+        assert_eq!(description["operation_kind"], "measure_batch");
+        assert_eq!(description["range_count"], 2);
+        assert_eq!(description["sheet_count"], 1);
+        assert_eq!(description["tile_count"], 0);
+    }
 
     #[test]
     fn capture_counts_cover_large_sheet_plans_and_reject_impossible_counts() {

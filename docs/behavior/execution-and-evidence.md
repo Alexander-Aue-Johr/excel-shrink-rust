@@ -6,6 +6,17 @@ outcomes, scheduling, diagnostic telemetry and disposable working files.
 
 ## Runtime Office assets
 
+Resident job descriptions retain the transport kind and ID. For a targeted
+diagnosis envelope they additionally expose `operation_kind`, the requested
+range count, distinct named-sheet count and up to eight sheet/range locations.
+Geometry batches accept their actual string-range form. Capture batches accept
+their range objects and inherit the enclosing sheet. Only capture operations
+contribute to `tile_count`. Missing locations stay unavailable. The Worker
+Monitor displays the operation kind when supplied and the transport kind for
+older records. This description does not execute an Office operation or create
+missing historical observations. Existing immutable hosts require a later
+build/restart to emit these fields.
+
 The resident opening sequence is orchestrated by `Open-ResidentClient` in
 `office-capture/resident.ps1`. Its cohesive implementation steps live in
 `office-capture/resident/Opening.ps1`: initialize the request and capacity,
