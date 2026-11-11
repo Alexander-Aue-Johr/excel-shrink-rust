@@ -53,3 +53,20 @@ The full native/resource case-study join still requires tool-version/profile
 verification, fresh resource-output identity checks for the other cases, and
 resolution or explicit treatment of missing native scopes. These obligations
 remain open alongside the staged public Atlas.
+
+## Exact resource-output follow-up
+
+`opening-memory-resource-output-identity-20261111.json` compares the two
+Destatis Check Performance outputs from the older resource-study manifest
+with their stage-nine counterparts. Both downloaded source archives match
+the resource manifest's SHA-256. The stage outputs also match their native
+candidate member manifests.
+
+Migration differs in three uncompressed members, covering document properties,
+the calculation chain and workbook metadata. Finance differs in 114 members,
+including styles and worksheet XML. These are content-identity differences.
+They do not establish a visual change or its cause. The stage-nine measurements
+remain in their own identified observation lane. Reuse for the older resource
+table requires its exact retained native reports or a new matched comparison.
+The private handover requests the unchanged completed Finance reports already
+identified by the paper's source-report digests.
