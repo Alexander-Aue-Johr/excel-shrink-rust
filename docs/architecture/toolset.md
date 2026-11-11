@@ -82,3 +82,19 @@ available alongside the output. Calculation uses each machine's Excel environmen
 and cached external links. Volatile functions and unavailable external references
 can change calculated values and require separate attribution. This operation
 alone establishes neither cell-value preservation nor visual equivalence.
+
+### Saved cell-content audit
+
+`deltasieve regression cell-audit --left LEFT.xlsx --right RIGHT.xlsx --output NEW_DIRECTORY`
+compares saved values and formulas through the existing borrowed-byte comparator.
+For a batch, `--manifest` accepts an array of `{label,left,right}` objects.
+Worksheet names, order and relationship targets must agree. Both raw input hashes
+are verified again after the comparison. Empty layout-only cells are ignored by
+the existing strict missing-cell policy. Any parser or input-integrity failure
+produces an explicit failed pair and a failing process exit after the batch.
+
+Per-pair evidence retains all differences. Formula diagnostics sample at most32
+records and retain unsupported or budget-limited cases. Dependency paths are
+explanations and do not suppress differences or establish exclusive causation.
+The compact progress record is replaced per pair; the full summary is written
+once at the end. The audit neither starts Excel nor establishes visual equality.

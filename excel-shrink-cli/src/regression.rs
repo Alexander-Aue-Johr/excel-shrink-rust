@@ -45,6 +45,7 @@ pub(crate) fn prepare_performance_manifest(
 }
 mod launcher_journal;
 mod xlsx_value_compare;
+mod cell_audit;
 pub(crate) mod artifact_cache;
 pub(crate) use artifact_cache::atomic_write as write_atomic_artifact;
 mod xml_views;
@@ -88,6 +89,8 @@ pub struct RegressionCli {
 
 #[derive(Subcommand, Debug)]
 enum RegressionCommand {
+    /// Compare saved cell values and formulas without opening Excel.
+    CellAudit(cell_audit::Args),
     /// Prepare Check Performance artifacts in continuously refilled owned Excel workers.
     #[cfg(windows)]
     PerformancePrepare(legacy_conversion::performance::Args),
@@ -477,6 +480,7 @@ pub fn run(cli: RegressionCli) -> anyhow::Result<()> {
     match cli.command {
         #[cfg(windows)]
         RegressionCommand::PerformancePrepare(args) => legacy_conversion::performance::run(args),
+        RegressionCommand::CellAudit(args) => cell_audit::run(args),
         RegressionCommand::Archive(args) => archive::run(args, console_log_level),
         RegressionCommand::Study(args) => archive::run_study(args, console_log_level),
         RegressionCommand::TargetedCompare(args) => targeted_comparison::run(args),

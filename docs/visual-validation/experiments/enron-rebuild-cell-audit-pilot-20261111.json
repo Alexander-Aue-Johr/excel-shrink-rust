@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "operation": "saved cell and formula preservation after native full rebuild",
+  "pilot_selection": "199 complete pairs from two size-selected Enron transfer packages; not a representative corpus sample",
+  "input_verification": [
+    "Assignment source SHA256 matched each rebuild receipt",
+    "Rebuild operation, full-rebuild flag and calculation phase verified",
+    "Producer SHA256 and returned output SHA256 verified"
+  ],
+  "rebuild_producer_sha256": "838fb75c667306acc1739d059baa6372b636d226a4c117af406cb07e4924853d",
+  "equal_cell_contents": 198,
+  "failed_pairs": [
+    {
+      "name": "8a92437336bb9f7a9da53c5fc27d30857c4aa7a24c6bb3711a9331953388758c.xlsx",
+      "evidence": {
+        "error": "invalid column width 273.5703125",
+        "status": "failed"
+      }
+    }
+  ],
+  "scope": "Strict stored cell contents and formulas. No visual-equivalence or whole-corpus result is established. One additional source pair lacks one successful rebuild and is excluded from this complete-pair audit.",
+  "fixture_checks": {
+    "deliberately_stale_cached_values_detected": 2,
+    "two_native_rebuilds_equal": true
+  }
+}
