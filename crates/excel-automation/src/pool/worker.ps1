@@ -153,9 +153,25 @@ try {
                 $phase = 'full calculation rebuild'
                 Set-Phase $request.directory $phase
                 $phaseClock.Restart()
+                Write-Receipt (Join-Path $request.directory 'calculation-state.json') @{
+                    stage='calling_full_rebuild';updated_utc=[DateTime]::UtcNow.ToString('o')
+                }
                 $excel.CalculateFullRebuild()
-                while ($excel.CalculationState -ne 0) {
+                $calculationState = $excel.CalculationState
+                Write-Receipt (Join-Path $request.directory 'calculation-state.json') @{
+                    stage='full_rebuild_returned';state=$calculationState
+                    updated_utc=[DateTime]::UtcNow.ToString('o')
+                }
+                while ($calculationState -ne 0) {
                     Start-Sleep -Milliseconds 100
+                    $nextState = $excel.CalculationState
+                    if ($nextState -ne $calculationState) {
+                        Write-Receipt (Join-Path $request.directory 'calculation-state.json') @{
+                            stage='waiting_for_calculation';state=$nextState
+                            updated_utc=[DateTime]::UtcNow.ToString('o')
+                        }
+                    }
+                    $calculationState = $nextState
                 }
                 $phaseTimes[$phase] = $phaseClock.Elapsed.TotalSeconds
                 $excel.CalculateBeforeSave = $false

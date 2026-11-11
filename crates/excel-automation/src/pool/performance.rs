@@ -851,7 +851,10 @@ mod tests {
         assert_ne!(Mode::Rebuild.name(), Mode::Conversion.name());
         let script = include_str!("worker.ps1");
         assert!(script.contains("$excel.CalculateFullRebuild()"));
-        assert!(script.contains("while ($excel.CalculationState -ne 0)"));
+        assert!(script.contains("while ($calculationState -ne 0)"));
+        assert!(script.contains("calculation-state.json"));
+        assert!(script.contains("stage='calling_full_rebuild'"));
+        assert!(script.contains("stage='full_rebuild_returned'"));
     }
 
     #[test]
