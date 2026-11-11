@@ -2,6 +2,17 @@
 
 ## Current governing scope on 2026-11-10
 
+### Submission-scope correction on 2026-11-11
+
+The author is shortening both manuscripts and now prioritizes verification of
+the retained claims and necessary measurements. Further UI, architecture and
+release extensions are deferred behind that submission work. The author removed
+Municipal Finance from the detailed case tables and cancelled its proposed
+larger-host Excel follow-up. That measurement had not started. Preserve the
+earlier experiment's raw evidence and its historical provenance. Remove the
+obsolete editorial measurement request from the manuscript, and assess remaining
+measurements against the current pulled paper scope. Native supervision continues.
+
 ### Opening figure and public Atlas priority on 2026-11-11
 
 After the full-grid request compaction fix, the user prioritizes a full-width
