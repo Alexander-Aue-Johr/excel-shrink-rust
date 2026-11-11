@@ -154,6 +154,16 @@ and tasks remain available for Atlas pagination and inspection. This removes
 repeated event-prefix reconstruction while leaving full-trace loading, retained
 history size and browser scene rendering as separate performance costs.
 
+A bounded browser probe on 2026-11-11 loaded all 136,630 recorded Destatis
+events through a read-only loopback proxy serving the current UI assets against
+the completed run. Playback advanced, paused, and an End-key seek reached the
+recorded 119.80-second endpoint. The final accessibility observation exposed
+33,059 worksheet-selector items. The seek plus observation took approximately
+25 seconds in the automation call, which does not isolate rendering time from
+accessibility extraction. This exposes a remaining large-history UI cost and
+does not establish responsive full-corpus playback. The temporary tab and proxy
+were closed after the probe. Production native workers remained active.
+
 A [100,000-checkpoint recording experiment](../visual-validation/experiments/replay-cost-20261108.md)
 verified all retained event identities and bounded chunk sizes. It measured
 17.369 seconds of recording wall time and approximately 3.30 MB of logical
