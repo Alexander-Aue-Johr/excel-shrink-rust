@@ -1,0 +1,332 @@
+{
+  "schema": 1,
+  "pairs": 500,
+  "equal_pairs": 462,
+  "different_pairs": 38,
+  "difference_records": 655,
+  "missing_cell_records": 0,
+  "direct_formula_categories": {
+    "direct_time_formula": 186,
+    "requires_dependency_or_value_review": 442,
+    "direct_filename_formula": 27
+  },
+  "scope": "Direct formulas inspected in saved left state. Dependency evidence is diagnostic and does not establish exclusive cause. Raw differences retained.",
+  "cases": [
+    {
+      "label": "enron/local/case-000175",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000192",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_time_formula": 1,
+        "requires_dependency_or_value_review": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000194",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_time_formula": 1,
+        "requires_dependency_or_value_review": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000197",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000230",
+      "differences": 66,
+      "direct_formula_categories": {
+        "direct_filename_formula": 1,
+        "direct_time_formula": 44,
+        "requires_dependency_or_value_review": 21
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000280",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_filename_formula": 3
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000296",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000390",
+      "differences": 2,
+      "direct_formula_categories": {
+        "direct_time_formula": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000426",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000488",
+      "differences": 2,
+      "direct_formula_categories": {
+        "direct_time_formula": 2
+      },
+      "diagnostic_status": "unavailable"
+    },
+    {
+      "label": "enron/local/case-000495",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000511",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000603",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_time_formula": 1,
+        "requires_dependency_or_value_review": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000659",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000698",
+      "differences": 2,
+      "direct_formula_categories": {
+        "direct_time_formula": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000743",
+      "differences": 6,
+      "direct_formula_categories": {
+        "direct_time_formula": 6
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000796",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_time_formula": 3
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000818",
+      "differences": 18,
+      "direct_formula_categories": {
+        "direct_time_formula": 18
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000871",
+      "differences": 13,
+      "direct_formula_categories": {
+        "requires_dependency_or_value_review": 12,
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000881",
+      "differences": 1,
+      "direct_formula_categories": {
+        "requires_dependency_or_value_review": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000962",
+      "differences": 2,
+      "direct_formula_categories": {
+        "direct_time_formula": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-000986",
+      "differences": 2,
+      "direct_formula_categories": {
+        "direct_filename_formula": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001123",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_time_formula": 3
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001172",
+      "differences": 124,
+      "direct_formula_categories": {
+        "direct_time_formula": 33,
+        "requires_dependency_or_value_review": 91
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001265",
+      "differences": 10,
+      "direct_formula_categories": {
+        "direct_filename_formula": 5,
+        "direct_time_formula": 5
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001322",
+      "differences": 309,
+      "direct_formula_categories": {
+        "requires_dependency_or_value_review": 309
+      },
+      "diagnostic_status": "unavailable"
+    },
+    {
+      "label": "enron/local/case-001333",
+      "differences": 2,
+      "direct_formula_categories": {
+        "direct_time_formula": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001353",
+      "differences": 38,
+      "direct_formula_categories": {
+        "direct_time_formula": 38
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001371",
+      "differences": 12,
+      "direct_formula_categories": {
+        "direct_filename_formula": 12
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001443",
+      "differences": 4,
+      "direct_formula_categories": {
+        "direct_time_formula": 4
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001497",
+      "differences": 4,
+      "direct_formula_categories": {
+        "direct_time_formula": 4
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001502",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001561",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_time_formula": 1,
+        "requires_dependency_or_value_review": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001640",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_filename_formula": 1,
+        "direct_time_formula": 2
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001661",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "unavailable"
+    },
+    {
+      "label": "enron/local/case-001753",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001756",
+      "differences": 3,
+      "direct_formula_categories": {
+        "direct_filename_formula": 3
+      },
+      "diagnostic_status": "diagnostic_samples"
+    },
+    {
+      "label": "enron/local/case-001817",
+      "differences": 1,
+      "direct_formula_categories": {
+        "direct_time_formula": 1
+      },
+      "diagnostic_status": "diagnostic_samples"
+    }
+  ],
+  "summary_sha256": "f558a8d51dfeb1d0e9725b6e001fd2424e53bba94128afdb8f646fe3b98acbf4",
+  "selection": "First 500 complete, receipt- and source-hash-verified pairs from one active Enron rebuild assignment. This is not a random corpus sample."
+}
