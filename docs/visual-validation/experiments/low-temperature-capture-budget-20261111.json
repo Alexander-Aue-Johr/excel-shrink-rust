@@ -49,5 +49,46 @@
     "available_commit_bytes": 40530759680,
     "sampled_utc": "2026-11-11T16:48:03Z"
   },
-  "interpretation": "Observed image throughput increased approximately 32 percent in sequential operational windows. Other QT/RR comparisons remained active and capture regions advanced between windows. This is not an isolated causal benchmark or a new visual-equality claim. The per-image image bound and capture selection policy were unchanged. The native comparison remains incomplete."
+  "interpretation": "Observed image throughput increased approximately 32 percent in sequential operational windows. Other QT/RR comparisons remained active and capture regions advanced between windows. This is not an isolated causal benchmark or a new visual-equality claim. The per-image image bound and capture selection policy were unchanged. The native comparison remains incomplete.",
+  "larger_package_follow_up": {
+    "baseline_controls": {
+      "capture_batch_ranges": 4,
+      "capture_batch_megapixels": 128
+    },
+    "trial_controls": {
+      "capture_batch_ranges": 8,
+      "capture_batch_megapixels": 256
+    },
+    "baseline": {
+      "first": {
+        "ticks": 809393812096,
+        "frequency": 10000000,
+        "utc": "2026-11-11T16:49:48.1414442Z",
+        "images": 5228
+      },
+      "last": {
+        "ticks": 810682363894,
+        "utc": "2026-11-11T16:51:56.9951782Z",
+        "images": 6100
+      },
+      "images_per_second": 6.767287130819711
+    },
+    "measurement": {
+      "first": {
+        "ticks": 811034294977,
+        "utc": "2026-11-11T16:52:32.1879026Z",
+        "images": 6348
+      },
+      "last": {
+        "ticks": 812091324809,
+        "utc": "2026-11-11T16:54:17.8898534Z",
+        "images": 7100
+      },
+      "images_per_second": 7.114274140940234,
+      "throughput_ratio": 1.0512741669464958
+    },
+    "decision": "no material additional gain; restored four ranges and 128 MP",
+    "rollback_accepted": true,
+    "threshold_for_retaining_change": 1.1
+  }
 }
