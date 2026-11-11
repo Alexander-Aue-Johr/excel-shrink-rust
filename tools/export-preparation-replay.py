@@ -6,10 +6,22 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 
 
-def export(run, destination):
+def redact_local_paths(value):
+    """Replace standalone Windows paths while retaining domain names and numbers."""
+    if isinstance(value, dict):
+        return {key: redact_local_paths(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_local_paths(item) for item in value]
+    if isinstance(value, str) and re.match(r"^(?:[A-Za-z]:[\\/]|\\\\)", value):
+        return value.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    return value
+
+
+def export(run, destination, *, redact_paths=False):
     metadata = json.loads((run / "distribution-run.json").read_text(encoding="utf-8"))
     events = run / metadata["replay"]
     previous_time = -1
@@ -67,13 +79,23 @@ def export(run, destination):
     destination.mkdir(parents=True, exist_ok=False)
     for name in ("app.js", "app.css"):
         shutil.copyfile(assets / name, destination / name)
-    shutil.copyfile(events, destination / "events.jsonl.gz")
+    exported_events = destination / "events.jsonl.gz"
+    if redact_paths:
+        with gzip.open(events, "rt", encoding="utf-8") as stream, exported_events.open("wb") as output:
+            with gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0) as compressed:
+                for line in stream:
+                    projected = redact_local_paths(json.loads(line))
+                    compressed.write((json.dumps(projected, separators=(",", ":")) + "\n").encode("utf-8"))
+    else:
+        shutil.copyfile(events, exported_events)
     manifest = {
         "schema": 1,
         "events_file": "events.jsonl.gz",
         "event_count": count,
-        "events_bytes": events.stat().st_size,
-        "events_sha256": source["run_id"],
+        "events_bytes": exported_events.stat().st_size,
+        "events_sha256": hashlib.sha256(exported_events.read_bytes()).hexdigest(),
+        "source_events_sha256": source["run_id"],
+        "path_projection": "standalone_windows_paths_to_basename" if redact_paths else "unchanged",
         "source": source,
         "producer_revision": metadata["code_revision"],
         "producer_sha256": metadata["binary_sha256"],
@@ -107,5 +129,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run", type=Path)
     parser.add_argument("destination", type=Path)
+    parser.add_argument("--redact-local-paths", action="store_true",
+                        help="Replace standalone Windows paths with basenames; publication review remains required.")
     args = parser.parse_args()
-    export(args.run, args.destination)
+    export(args.run, args.destination, redact_paths=args.redact_local_paths)

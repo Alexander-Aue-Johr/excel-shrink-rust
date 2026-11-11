@@ -266,3 +266,19 @@ snapshot. The ordinary exporter does not infer scientific case-study membership.
 Keep the cohort manifest and presentation derivation alongside the snapshot.
 The four-case opening/memory view uses the original identities in
 `experiments/opening-memory-native-case-audit-20261111.json`.
+
+## Preparation replay path projection
+
+`tools/export-preparation-replay.py` preserves the exact compressed event stream
+by default. For a public candidate, pass `--redact-local-paths` to replace
+standalone absolute Windows drive and UNC path values with their final basename.
+Nested payloads are included. Worksheet names, relative package parts, timestamps,
+sequence numbers and numeric measurements remain unchanged. The source recording
+is never rewritten. The exported manifest records separate source and projected
+event checksums and identifies the projection policy.
+
+This option leaves embedded paths inside diagnostic prose untouched. It also
+retains corpus filenames and worksheet labels. Publication therefore still
+requires review of the decompressed events and metadata. The manifest continues
+to say `review_required`. Full preparation history still loads into browser
+memory, so static playback alone does not establish bounded long-run memory.
