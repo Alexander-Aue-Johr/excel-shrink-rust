@@ -49,8 +49,15 @@ active Rayon workers. The anonymous evidence and raw status distinctions are
 in `../visual-validation/experiments/full-corpus-distribution-20261111.json`.
 The UI's Data.gov aggregate `failed` status includes the unsupported skips.
 It must not replace the distinct preparation outcomes in scientific reporting.
-Static replay publication remains open. Resume the earlier staged-report and
-evaluation priorities while the laptop prepares the distribution figures.
+Standalone replay export now uses the shared preparation Observatory UI.
+All three complete recordings have checksummed static directories under
+`G:/deltasieve-work/corpus-distributions-20261111/static-replays-v3`.
+Browser checks exercised standalone Destatis and Enron playback and Data.gov
+loading under a relative subdirectory. Enron's 30,301-workbook geometry exposed
+an argument-limit error, now corrected. Job pagination and backward seeks passed.
+The complete history still loads into browser memory. Public hosting, privacy
+review and long-run browser cost acceptance remain open. Resume the earlier
+staged-report and evaluation priorities while the laptop prepares figures.
 
 ### Highest priority. Staged multi-tool reports
 
