@@ -47,6 +47,33 @@ fit within the per-site one-GB Pages limit. Three corpus grids and one native
 detail with a working difference mask were checked over public HTTPS. See
 `docs/visual-validation/experiments/static-atlas-shared-images-20261111.json`.
 
+### Latest native and publication checkpoint on 2026-11-11
+
+QT/RR B is terminal with limitations after 70,196.957 seconds, 180,224
+individual images and 1,408 differing region observations. Its first inspected
+Original/Inquire pair shows removal of a continuous horizontal border. The
+remaining observations require their own causal review. No completed full-grid
+baseline or measured methodology speedup is available for this case.
+
+The returned 79-pair package was fully hash-verified locally. A derived snapshot
+contains 500 observations from 50 sources. Its 460 detail payloads and 23,337
+source image paths passed exact-data and lossless-image verification. The public
+export now writes compact report JSON and loads it adjacent to its HTML page,
+without duplicating the complete report inside that page. The exporter refreshes
+viewer assets so frozen older source packages cannot supply an incompatible
+viewer. All 47 targeted Rust report tests passed, and the large QT/RR detail was
+visibly checked in the browser. Publication is pending Pages deployment.
+
+Seven additional Enron/Inquire resource retries completed with limitations.
+Four Destatis/Inquire retries failed: one unresolved workbook-opening timeout
+and three unresolved GENESIS-Online full-grid requirements. These eleven newer
+observations are not included in the 500-observation snapshot. Retain their
+separate attempt identities and earlier resource failures. See the Enron and
+Destatis resource-recovery experiment ledgers. The offline first pass and later
+versioned retries continue under their existing ownership exclusions.
+
+Earlier checkpoints below are historical and do not supersede this checkpoint.
+
 ### Submission-scope correction on 2026-11-11
 
 The native-recovery refresh is now published with 420 observations, 47 source
