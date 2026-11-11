@@ -8,7 +8,7 @@ use crate::regression::{
 };
 use anyhow::{ensure, Context, Result};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::File,
     io::{Read, Seek},
     path::Path,
@@ -68,6 +68,18 @@ pub(super) fn read(path: &Path) -> Result<Workbook> {
 }
 
 pub(super) fn read_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<Workbook> {
+    read_archive_selected(archive, None)
+}
+
+pub(super) fn read_selected(path: &Path, selected: &BTreeSet<Address>) -> Result<Workbook> {
+    let mut archive = ZipArchive::new(File::open(path)?)?;
+    read_archive_selected(&mut archive, Some(selected))
+}
+
+fn read_archive_selected<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    selected: Option<&BTreeSet<Address>>,
+) -> Result<Workbook> {
     let mut budget = Budget::default();
     let strings = read_strings(archive, &mut budget)?;
     let mut result = Workbook::new();
@@ -78,6 +90,7 @@ pub(super) fn read_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Resul
             &strings,
             &mut result,
             &mut budget,
+            selected,
         )?;
     }
     Ok(result)
@@ -145,6 +158,7 @@ fn read_sheet(
     strings: &[String],
     result: &mut Workbook,
     budget: &mut Budget,
+    selected: Option<&BTreeSet<Address>>,
 ) -> Result<()> {
     let mut in_data = false;
     let mut current: Option<Pending> = None;
@@ -197,6 +211,7 @@ fn read_sheet(
                         &mut shared,
                         result,
                         budget,
+                        selected,
                     )?;
                     field = None;
                 }
@@ -226,15 +241,21 @@ fn finish(
     anchors: &mut BTreeMap<u32, (Address, String)>,
     result: &mut Workbook,
     budget: &mut Budget,
+    selected: Option<&BTreeSet<Address>>,
 ) -> Result<()> {
     if !pending.has_formula && pending.value.is_empty() && pending.inline.is_empty() {
+        return Ok(());
+    }
+    let address = pending.address.context("Diagnostic address missing")?;
+    // Constant dependency leaves cannot lead to volatile formulas. Keep explicit
+    // target cells so their changed values still receive an unresolved diagnosis.
+    if selected.is_some_and(|targets| !pending.has_formula && !targets.contains(&address)) {
         return Ok(());
     }
     ensure!(
         result.len() < MAX_CELLS,
         "Formula diagnostic cell budget exceeded; visual result remains unchanged"
     );
-    let address = pending.address.context("Diagnostic address missing")?;
     let mut cell = Cell {
         kind: pending.kind,
         ..Default::default()

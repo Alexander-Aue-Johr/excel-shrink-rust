@@ -234,3 +234,44 @@ fn retained_native_cluster_values_have_supported_random_dependencies() -> Result
     serde_json::to_writer_pretty(&mut file,&diagnosis)?;
     Ok(())
 }
+
+
+#[test]
+fn sparse_audit_index_keeps_targets_and_shared_dependencies_past_constant_cell_budget() -> Result<()> {
+    let mut sheet = String::from("<worksheet><sheetData>");
+    sheet.push_str(r#"<row r="1"><c r="A1"><v>0</v></c><c r="B1"><f t="shared" si="0" ref="B1:B2">NOW()</f><v>10</v></c><c r="C1"><f>B2</f><v>10</v></c></row>"#);
+    sheet.push_str(r#"<row r="2"><c r="A2"><v>0</v></c><c r="B2"><f t="shared" si="0"/><v>10</v></c></row>"#);
+    for row in 3..=100_002 {
+        sheet.push_str(&format!(r#"<row r="{row}"><c r="A{row}"><v>0</v></c></row>"#));
+    }
+    sheet.push_str("</sheetData></worksheet>");
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for (part, xml) in [
+        ("xl/workbook.xml", r#"<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="S" r:id="one"/></sheets></workbook>"#),
+        ("xl/_rels/workbook.xml.rels", r#"<Relationships><Relationship Id="one" Target="worksheets/sheet1.xml"/></Relationships>"#),
+        ("xl/worksheets/sheet1.xml", sheet.as_str()),
+    ] {
+        zip.start_file(part, zip::write::FileOptions::default())?;
+        zip.write_all(xml.as_bytes())?;
+    }
+    let bytes = zip.finish()?.into_inner();
+    let mut archive = zip::ZipArchive::new(Cursor::new(&bytes))?;
+    let error = workbook::read_archive(&mut archive).unwrap_err();
+    assert!(error.to_string().contains("Formula diagnostic cell budget exceeded"));
+    let path = std::env::temp_dir().join(format!("formula-audit-{}.xlsx", uuid::Uuid::new_v4()));
+    std::fs::write(&path, &bytes)?;
+    let result = read_for_cells(&path, &[("S".into(), "A1".into()), ("S".into(), "C1".into())]);
+    std::fs::remove_file(path)?;
+    let left = result?;
+    assert_eq!(left.0.len(), 4);
+    assert!(!left.0.contains_key(&Address::parse("S", "A2")?));
+    assert_eq!(left.0[&Address::parse("S", "B2")?].shared_anchor.as_deref(), Some("B1"));
+    assert!(find_path(&left.0, &Address::parse("S", "C1")?, &mut 100)?.is_some());
+    let mut right = Workbook(left.0.clone());
+    right.0.get_mut(&Address::parse("S", "A1")?).unwrap().value = Some("1".into());
+    let diagnosis = compare(&left, &right, "S", "A1")?;
+    assert_eq!(diagnosis["changed_value_cells"], 1);
+    assert_eq!(diagnosis["volatile_paths"], 0);
+    assert_eq!(diagnosis["examples"][0]["status"], "no_supported_path");
+    Ok(())
+}

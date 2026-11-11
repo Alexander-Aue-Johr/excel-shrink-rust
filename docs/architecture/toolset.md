@@ -135,3 +135,13 @@ is temporarily absent or Windows reports a sharing/lock violation (32/33). It
 retries on its next observation cycle. Malformed JSON and other I/O failures
 remain errors. A native four-case probe covered a held exclusive file lock,
 a successful read after releasing it, a missing path and malformed JSON.
+
+
+Saved-content formula diagnostics index all formulas and the sampled changed
+cells. Unrelated constant leaves remain covered by the full strict comparator
+and do not occupy the optional dependency index. Hidden and shared formulas
+remain indexed. The ordinary capture diagnostic reader retains its existing
+full-cell behavior. Existing cell/text/search budgets still apply, and budget
+exhaustion stays explicit. Four previously unavailable native diagnostics now
+produce samples with exactly unchanged raw comparisons. One payout-model range
+search remains unresolved. See the sparse formula-audit experiment ledger.

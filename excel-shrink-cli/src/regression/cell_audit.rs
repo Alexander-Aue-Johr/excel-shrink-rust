@@ -117,13 +117,24 @@ fn inspect(pair: &Pair) -> Result<Value> {
 }
 
 fn explain(pair: &Pair, report: &xlsx_value_compare::WorkbookComparisonReport) -> Result<Value> {
-    let left = formula_trace::read(&pair.left)?;
-    let right = formula_trace::read(&pair.right)?;
     let mut archive = zip::ZipArchive::new(File::open(&pair.left)?)?;
     let names: BTreeMap<_, _> = office_plan::formula_worksheet_parts(&mut archive)?
         .into_iter()
         .map(|(name, part)| (part, name))
         .collect();
+    let targets = report
+        .differences
+        .iter()
+        .take(32)
+        .map(|difference| {
+            let sheet = names
+                .get(&difference.sheet_file)
+                .context("Unknown worksheet identity")?;
+            Ok((sheet.clone(), difference.cell_ref.clone()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let left = formula_trace::read_for_cells(&pair.left, &targets)?;
+    let right = formula_trace::read_for_cells(&pair.right, &targets)?;
     let mut examples = Vec::new();
     for difference in report.differences.iter().take(32) {
         let sheet = names

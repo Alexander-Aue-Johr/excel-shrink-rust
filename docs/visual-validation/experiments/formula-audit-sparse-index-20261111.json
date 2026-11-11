@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "index_policy": "All formula cells plus up to32 sampled changed-cell targets. Unrelated constant leaves are omitted only from the optional dependency index. The full strict cell comparator is unchanged.",
+  "comparison_bytes_preserved": true,
+  "audit_binary_sha256": "f27344c3f97c570a4968bb3c6dd1e3e0bbbbcf8a276fea25e2a7b895438ad3cb",
+  "cases": [
+    {
+      "label": "enron/local/case-000488",
+      "difference_records": 2,
+      "raw_comparison_unchanged": true,
+      "old_status": "unavailable",
+      "new_status": "diagnostic_samples",
+      "new_reason": null,
+      "sample_paths": {
+        "path_found:random_time": 2
+      },
+      "workbook": "03fcd31fdf9f7d9256a216e1a99925b85cde0f2681296230e51772a18aec5585.xlsx"
+    },
+    {
+      "label": "enron/local/case-001322",
+      "difference_records": 309,
+      "raw_comparison_unchanged": true,
+      "old_status": "unavailable",
+      "new_status": "diagnostic_samples",
+      "new_reason": null,
+      "sample_paths": {
+        "path_found:random_time": 31,
+        "not_resolved:": 1
+      },
+      "workbook": "0af6d3e572f482b7f5ba9a32a1c35cf8ac31ca3df1a16eecd649723987e1e403.xlsx"
+    },
+    {
+      "label": "enron/local/case-001661",
+      "difference_records": 1,
+      "raw_comparison_unchanged": true,
+      "old_status": "unavailable",
+      "new_status": "diagnostic_samples",
+      "new_reason": null,
+      "sample_paths": {
+        "path_found:random_time": 1
+      },
+      "workbook": "0dc5e4a95458e3bdb0d0a3e29990739f7815151f5c3b7d921b0d6cbf45b282a8.xlsx"
+    },
+    {
+      "label": "enron/local/case-002328",
+      "difference_records": 1,
+      "raw_comparison_unchanged": true,
+      "old_status": "unavailable",
+      "new_status": "diagnostic_samples",
+      "new_reason": null,
+      "sample_paths": {
+        "path_found:random_time": 1
+      },
+      "workbook": "13949a286bf26328d165e5b7f5a4beca390a963f74b749209e6563add19b0fa9.xlsx"
+    }
+  ],
+  "remaining_unresolved": {
+    "sheet": "payout model",
+    "cell": "AA5",
+    "reason": "Formula range search budget exceeded"
+  },
+  "scope": "Four formerly budget-unavailable pair diagnostics. Dependency paths remain explanations and do not establish exclusive causation."
+}

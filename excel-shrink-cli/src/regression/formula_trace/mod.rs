@@ -20,6 +20,16 @@ pub(crate) fn read(path: &Path) -> Result<Workbook> {
     Ok(Workbook(workbook::read(path)?))
 }
 
+/// Index formulas and explicit audit targets while leaving unrelated constants
+/// to the full cell comparator. This only controls optional dependency evidence.
+pub(crate) fn read_for_cells(path: &Path, targets: &[(String, String)]) -> Result<Workbook> {
+    let selected = targets
+        .iter()
+        .map(|(sheet, cell)| Address::parse(sheet, cell))
+        .collect::<Result<BTreeSet<_>>>()?;
+    Ok(Workbook(workbook::read_selected(path, &selected)?))
+}
+
 /// Explain changed saved values in a selected capture; missing/unsupported
 /// evidence remains explicit. Counts refer to cells, not changed pixels.
 pub(crate) fn compare(
