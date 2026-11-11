@@ -1,0 +1,969 @@
+{
+  "schema": 1,
+  "selection": {
+    "population": 30301,
+    "frame_manifest_sha256": "e11713d99c841245a566c3c45e26556125f918bda313e66d034078cd021b2f61",
+    "seed": "deltasieve-prepared-enron-reference-20261111-v1",
+    "strata": [
+      {
+        "quartile": 1,
+        "population": 7575,
+        "selected": 1,
+        "smallest_bytes": 8192,
+        "largest_bytes": 14551
+      },
+      {
+        "quartile": 2,
+        "population": 7575,
+        "selected": 1,
+        "smallest_bytes": 14552,
+        "largest_bytes": 26547
+      },
+      {
+        "quartile": 3,
+        "population": 7575,
+        "selected": 1,
+        "smallest_bytes": 26548,
+        "largest_bytes": 77314
+      },
+      {
+        "quartile": 4,
+        "population": 7576,
+        "selected": 1,
+        "smallest_bytes": 77317,
+        "largest_bytes": 42710945
+      }
+    ],
+    "selected": [
+      {
+        "archive_index": 23460,
+        "member_name": "7810b1d498b7e9018b25794b3fc63d49277e0e5ae9f75974bf8a0232520ab39b.xlsx",
+        "bytes": 14058,
+        "xlsx_sha256": "a0d474dde648eb80cbea838fbf331cce9b200115389eba525df1d76d3fbbf288",
+        "source_sha256": "7810b1d498b7e9018b25794b3fc63d49277e0e5ae9f75974bf8a0232520ab39b",
+        "identity": "e11713d99c841245a566c3c45e26556125f918bda313e66d034078cd021b2f61:23460:7810b1d498b7e9018b25794b3fc63d49277e0e5ae9f75974bf8a0232520ab39b.xlsx",
+        "quartile": 1,
+        "group_id": "247556ae2d4ed18694fc",
+        "selection_priority": "0012c56f14fb771912e24c31803d7e736595499fd0005e6ccdd4302626592c7b"
+      },
+      {
+        "archive_index": 18829,
+        "member_name": "49a1d1b72ebc1e06029d0921ce9eb8eb10a9a0f375e7610bea505d26dc174bc1.xlsx",
+        "bytes": 19122,
+        "xlsx_sha256": "c65e2f683072b028184c266f53248924a4a46d85c722606ea55601017bfb1394",
+        "source_sha256": "49a1d1b72ebc1e06029d0921ce9eb8eb10a9a0f375e7610bea505d26dc174bc1",
+        "identity": "e11713d99c841245a566c3c45e26556125f918bda313e66d034078cd021b2f61:18829:49a1d1b72ebc1e06029d0921ce9eb8eb10a9a0f375e7610bea505d26dc174bc1.xlsx",
+        "quartile": 2,
+        "group_id": "1abcc369d0c913dc0596",
+        "selection_priority": "0001127d7eb943bca6f6d9600528adf312d0d1bd5183e49a951879c32b53b213"
+      },
+      {
+        "archive_index": 11496,
+        "member_name": "b7af3fcdc28297fe3bab69604facd0da59f85dfd85d0a0c367241f52d431fc20.xlsx",
+        "bytes": 40143,
+        "xlsx_sha256": "54b45bfe6eb4ae9386bce668f155e41ffcc6e83d440e18b7eb8bf604e00edabd",
+        "source_sha256": "b7af3fcdc28297fe3bab69604facd0da59f85dfd85d0a0c367241f52d431fc20",
+        "identity": "e11713d99c841245a566c3c45e26556125f918bda313e66d034078cd021b2f61:11496:b7af3fcdc28297fe3bab69604facd0da59f85dfd85d0a0c367241f52d431fc20.xlsx",
+        "quartile": 3,
+        "group_id": "f9af78738b2e50b32a20",
+        "selection_priority": "0000ad9fd1f85cdae1b068cb3872d53534ecb9e8d72e09cfe1e8cd19cde26c86"
+      },
+      {
+        "archive_index": 6158,
+        "member_name": "6ff86375c8a4fb8ef59f9297a69d7b09814c704f84f83d450b2a8286ba3cacec.xlsx",
+        "bytes": 90970,
+        "xlsx_sha256": "fe4ade9bd12413f5d21e3cce01d4ea30c993354c13ee562c2a1005ac216687e1",
+        "source_sha256": "6ff86375c8a4fb8ef59f9297a69d7b09814c704f84f83d450b2a8286ba3cacec",
+        "identity": "e11713d99c841245a566c3c45e26556125f918bda313e66d034078cd021b2f61:6158:6ff86375c8a4fb8ef59f9297a69d7b09814c704f84f83d450b2a8286ba3cacec.xlsx",
+        "quartile": 4,
+        "group_id": "5ec82b2a455d941e4b35",
+        "selection_priority": "00051698aae08c14bf4b0eba48c85ab9da262a3d21812e436cb7507d283a8467"
+      }
+    ],
+    "scope": "Prepared Enron XLSX input frame. Selection uses source metadata only. Prior development exposure remains unclassified."
+  },
+  "selection_sha256": "7f150d22f42ec2012684d96c44292d8c57924163aa607bf60170e41a326f0bfa",
+  "frame_gzip_sha256": "8bbd525e6bcb3efc8b131ca8978eff97b69c890234076704451285f068a25a41",
+  "max_operation_seconds": 60,
+  "max_case_seconds": 90,
+  "native_object_qualification": true,
+  "results": [
+    {
+      "identity": "7810b1d498b7e9018b25794b3fc63d49277e0e5ae9f75974bf8a0232520ab39b",
+      "quartile": 1,
+      "original_sha256": "a0d474dde648eb80cbea838fbf331cce9b200115389eba525df1d76d3fbbf288",
+      "candidate_sha256": "b026134da67549c853579dd373665d2d06851eab1b2e5c53071b58a6f21e2b43",
+      "status": "completed",
+      "regions": 1,
+      "reference_seconds": 14.2725608,
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "reference_sha256": "2b914d72cb5eb16865ead5455d53bd9f5180e278f9129aff413c2ca88e7ed47b",
+      "plan_sha256": "c2ade21cc2f0c4223f9afbdd8b86a49bbb6f9de6231c4302f84ca9f076ca5556",
+      "tiles": [
+        {
+          "sheet": "1023",
+          "range": "A1:K59",
+          "dimensions": [
+            [
+              1203,
+              1132
+            ],
+            [
+              1203,
+              1132
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "e5c4579c553dcfb42be6233f25a7fdb673614ed52d8c6079ebbd1961ec3adfbb",
+            "e5c4579c553dcfb42be6233f25a7fdb673614ed52d8c6079ebbd1961ec3adfbb"
+          ]
+        }
+      ]
+    },
+    {
+      "identity": "49a1d1b72ebc1e06029d0921ce9eb8eb10a9a0f375e7610bea505d26dc174bc1",
+      "quartile": 2,
+      "original_sha256": "c65e2f683072b028184c266f53248924a4a46d85c722606ea55601017bfb1394",
+      "candidate_sha256": "c65e2f683072b028184c266f53248924a4a46d85c722606ea55601017bfb1394",
+      "status": "completed",
+      "regions": 2,
+      "reference_seconds": 14.9150371,
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "reference_sha256": "37f07ab783cd3113a23495463fc58cceb4aac304e22f0024656791e030582427",
+      "plan_sha256": "5dccdf5d4869a72ed4f04596f827fe78c8d7250562ac9c9ed270fc87764fd09e",
+      "tiles": [
+        {
+          "sheet": "source",
+          "range": "A1:A256",
+          "dimensions": [
+            [
+              65,
+              5121
+            ],
+            [
+              65,
+              5121
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "5f62afc443d88f3cbd082c293332d66cb1f3ae286feff1504a0cded0ea536f2e",
+            "5f62afc443d88f3cbd082c293332d66cb1f3ae286feff1504a0cded0ea536f2e"
+          ]
+        },
+        {
+          "sheet": "source",
+          "range": "A257:A473",
+          "dimensions": [
+            [
+              65,
+              4341
+            ],
+            [
+              65,
+              4341
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "8ec94d82aef2e2f8ab7403fd32fc4cf041b9feed83cb1d5de9629b850505fc40",
+            "8ec94d82aef2e2f8ab7403fd32fc4cf041b9feed83cb1d5de9629b850505fc40"
+          ]
+        }
+      ]
+    },
+    {
+      "identity": "b7af3fcdc28297fe3bab69604facd0da59f85dfd85d0a0c367241f52d431fc20",
+      "quartile": 3,
+      "original_sha256": "54b45bfe6eb4ae9386bce668f155e41ffcc6e83d440e18b7eb8bf604e00edabd",
+      "candidate_sha256": "05699ce5e8cfdf1fe0da8d577412c8b03fbbe2fb9b49cb0555f4bc39885a84a2",
+      "status": "completed",
+      "regions": 5,
+      "reference_seconds": 21.5786355,
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "reference_sha256": "9ca2d497b5cb37406f4846b6a98eaa6ea15cb6261d96a2b16c08e099915dbc06",
+      "plan_sha256": "d6c05a3d033aea5cd86aa94f749e9ca39381fd25e46038f56483dcbf662db6df",
+      "tiles": [
+        {
+          "sheet": "Credit",
+          "range": "A1:H20",
+          "dimensions": [
+            [
+              909,
+              448
+            ],
+            [
+              909,
+              448
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "0a2a85cffd0861710976106a790882eb73ce6ab956785cc1f7f74225052512fb",
+            "0a2a85cffd0861710976106a790882eb73ce6ab956785cc1f7f74225052512fb"
+          ]
+        },
+        {
+          "sheet": "Legal",
+          "range": "A1:HZ12",
+          "dimensions": [
+            [
+              15439,
+              532
+            ],
+            [
+              15439,
+              532
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "cd9a69f3e7ae7303d8c9c7d6967fec5efdd8fa3f829f1e2671faf3a9f62f6c83",
+            "cd9a69f3e7ae7303d8c9c7d6967fec5efdd8fa3f829f1e2671faf3a9f62f6c83"
+          ]
+        },
+        {
+          "sheet": "Contract",
+          "range": "A1:HZ12",
+          "dimensions": [
+            [
+              15451,
+              532
+            ],
+            [
+              15451,
+              532
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "2aab6753a638440254bbebdfb248229b51ac3441fe036d3c45a99386a0fdf23d",
+            "2aab6753a638440254bbebdfb248229b51ac3441fe036d3c45a99386a0fdf23d"
+          ]
+        },
+        {
+          "sheet": "Product Groups",
+          "range": "A1:C256",
+          "dimensions": [
+            [
+              534,
+              6427
+            ],
+            [
+              534,
+              6427
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "117dea6cfbd3b5323535722c2d96dc7c9f0cb596f147c52b733fe0656717f63d",
+            "117dea6cfbd3b5323535722c2d96dc7c9f0cb596f147c52b733fe0656717f63d"
+          ]
+        },
+        {
+          "sheet": "Product Groups",
+          "range": "A257:C268",
+          "dimensions": [
+            [
+              534,
+              205
+            ],
+            [
+              534,
+              205
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "c439a41ebd2fa1f0f1ba1d76becbd61a89cd434b4b02879287e7d8ba545df1a3",
+            "c439a41ebd2fa1f0f1ba1d76becbd61a89cd434b4b02879287e7d8ba545df1a3"
+          ]
+        }
+      ]
+    },
+    {
+      "identity": "6ff86375c8a4fb8ef59f9297a69d7b09814c704f84f83d450b2a8286ba3cacec",
+      "quartile": 4,
+      "original_sha256": "fe4ade9bd12413f5d21e3cce01d4ea30c993354c13ee562c2a1005ac216687e1",
+      "candidate_sha256": "9757553599e8ade2baf57866293cdb4a4da097cdc3aa860bbdbee95b5bfb4c4d",
+      "status": "completed",
+      "regions": 33,
+      "reference_seconds": 33.5887299,
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "reference_sha256": "2bb83f5b16c1610b2fcc8f2566e558f20e68e643b958254352a4e99ef665c470",
+      "plan_sha256": "ad53c7114d0f3ab2f3d23353c941deeda28a630011729a84a11321762ce709c9",
+      "tiles": [
+        {
+          "sheet": "Credit",
+          "range": "A1:O256",
+          "dimensions": [
+            [
+              1290,
+              4513
+            ],
+            [
+              1290,
+              4513
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "65fc69d30bdaf7e57d66fc4a4a89abaf45976ec00a65a48edbdb728eff0f3d6d",
+            "65fc69d30bdaf7e57d66fc4a4a89abaf45976ec00a65a48edbdb728eff0f3d6d"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A257:O512",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "c1c8ff1c756d249b789a6d0d67ad3048358500d412bc3d749ab5a992d0f343e7",
+            "c1c8ff1c756d249b789a6d0d67ad3048358500d412bc3d749ab5a992d0f343e7"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A513:O768",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "c1c8ff1c756d249b789a6d0d67ad3048358500d412bc3d749ab5a992d0f343e7",
+            "c1c8ff1c756d249b789a6d0d67ad3048358500d412bc3d749ab5a992d0f343e7"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A769:O1024",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "c1c8ff1c756d249b789a6d0d67ad3048358500d412bc3d749ab5a992d0f343e7",
+            "c1c8ff1c756d249b789a6d0d67ad3048358500d412bc3d749ab5a992d0f343e7"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A1025:O1280",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "d1a9300d15c08ace0ee6946dea573b5f630b4a390800d36fb95bb3fc79b1348b",
+            "d1a9300d15c08ace0ee6946dea573b5f630b4a390800d36fb95bb3fc79b1348b"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A1281:O1536",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A1537:O1792",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A1793:O2048",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A2049:O2304",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A2305:O2560",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A2561:O2816",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A2817:O3072",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A3073:O3328",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A3329:O3584",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A3585:O3840",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A3841:O4096",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A4097:O4352",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A4353:O4608",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A4609:O4864",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A4865:O5120",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A5121:O5376",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A5377:O5632",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A5633:O5888",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A5889:O6144",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A6145:O6400",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A6401:O6656",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A6657:O6912",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A6913:O7168",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A7169:O7424",
+          "dimensions": [
+            [
+              1290,
+              4353
+            ],
+            [
+              1290,
+              4353
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db",
+            "ff24ac3f35592323e0bee8d5f296d2d1915c0d174f47219a2983fd29e84eb6db"
+          ]
+        },
+        {
+          "sheet": "Credit",
+          "range": "A7425:O7440",
+          "dimensions": [
+            [
+              1290,
+              273
+            ],
+            [
+              1290,
+              273
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "2f19207976aed6d861c1b2c64a98e944838398a49bd79cd60a37ad89350829f0",
+            "2f19207976aed6d861c1b2c64a98e944838398a49bd79cd60a37ad89350829f0"
+          ]
+        },
+        {
+          "sheet": "Legal",
+          "range": "A1:P165",
+          "dimensions": [
+            [
+              1481,
+              2892
+            ],
+            [
+              1481,
+              2892
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "fe13f62ba3679d46b0a7aa5bd1e6da7933adb6dbc3b79d314d68e9fa9df5ad79",
+            "fe13f62ba3679d46b0a7aa5bd1e6da7933adb6dbc3b79d314d68e9fa9df5ad79"
+          ]
+        },
+        {
+          "sheet": "Contracts",
+          "range": "A1:R165",
+          "dimensions": [
+            [
+              1552,
+              2892
+            ],
+            [
+              1552,
+              2892
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "d9de5a3a8d2003e99aee0c520122a486b0fe399cd11efb5fed8781f99c72987f",
+            "d9de5a3a8d2003e99aee0c520122a486b0fe399cd11efb5fed8781f99c72987f"
+          ]
+        },
+        {
+          "sheet": "Contracts2",
+          "range": "A1:R165",
+          "dimensions": [
+            [
+              1552,
+              2892
+            ],
+            [
+              1552,
+              2892
+            ]
+          ],
+          "changed_common_rgba_pixels": 0,
+          "exterior_pixels": 0,
+          "png_sha256": [
+            "d9de5a3a8d2003e99aee0c520122a486b0fe399cd11efb5fed8781f99c72987f",
+            "d9de5a3a8d2003e99aee0c520122a486b0fe399cd11efb5fed8781f99c72987f"
+          ]
+        }
+      ]
+    }
+  ],
+  "limits": "Four source-size-stratified prepared Enron XLSX inputs. Prior exposure unclassified. Reference scope is the declared stored-dimension envelope with native object qualification. No selector recall or whole-workbook equivalence claim."
+}

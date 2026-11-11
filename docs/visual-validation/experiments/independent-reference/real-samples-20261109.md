@@ -92,3 +92,35 @@ Destatis sample's `destatis-native-a69fa2ddf6a9a3204409` directory. Fifteen Java
 tests, seven sampler/preparer tests and the focused Rust qualifier test passed.
 These tests establish the extension's bounded native path and rejection behavior.
 They do not establish a full-corpus detection rate.
+
+## Prepared Enron XML-derived sample on 2026-11-11
+
+A separate four-input sample uses the prepared Enron XLSX population of 30,301
+inputs. The source frame is `inputs-manifest.json` from
+`G:/deltasieve-work/enron-sheetshrink-20261110`. Each frame entry contributes its
+list index, input basename, byte size, source SHA-256 and XLSX SHA-256. The
+existing `sample.select` function uses seed
+`deltasieve-prepared-enron-reference-20261111-v1` and one input per size quartile.
+The manifest SHA-256 supplies its corpus identity. Selection precedes inspection
+of the selected outputs and is retained without replacement.
+
+The [frozen selection and observations](enron-prepared-sample-20261111.json)
+record the manifest identity, quartile populations, all four inputs, native
+producer, plans and per-image hashes. Candidate files are the matching
+`optimized-release` outputs indexed by `ranking-absolute.csv`. Their selection
+does not use reduction rank. Prior development exposure remains unclassified.
+
+`prepare.make_plan(original, candidate, True, 256)` supplies continuous
+stored-dimension envelopes with a 64-region limit. All four inputs qualified.
+Each reference used `run-reference-comparison.ps1 -VerifyObjects` with a
+60-second operation limit and 90-second total limit, one extra pair at a time.
+Native reference durations were 14.273, 14.915, 21.579 and 33.589 seconds.
+The 41 retained image pairs have matching dimensions and zero changed RGBA
+pixels. Independent decoding verified all 82 PNG hashes and pixel comparisons.
+The two production QT/RR comparisons continued during these tests.
+
+The local raw evidence is retained in
+`G:/deltasieve-work/enron-prepared-reference-20261111`, including the frozen
+frame, selection, preparation, source copies, native receipts and images.
+These four observations concern the supplied envelopes of prepared workbooks.
+They supply no whole-workbook or population recall estimate.
