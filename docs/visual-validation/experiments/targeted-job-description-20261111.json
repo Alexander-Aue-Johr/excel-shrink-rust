@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "source_revision": "3d32f5f0",
+  "binary_sha256": "861e526dc0626887a99e29a744c303572b66007cfba65c129b84b6c95da0885b",
+  "native_status": "completed_with_limitations",
+  "candidate_count": 1,
+  "report_sha256": "aafef53d145b14233c3aff899fa780949bd467d5af07d5e57fc0446502d942ab",
+  "lanes": [
+    {
+      "lane": "O",
+      "metrics_sha256": "7d2b09ca7d298103d5be97cd6925f4eb07eb1ac951cf5956d29652fda387a42a",
+      "completed_job_descriptions": [
+        {
+          "id": "targeted-1",
+          "kind": "diagnosis",
+          "locations": [],
+          "operation_kind": "save",
+          "range_count": 0,
+          "sheet_count": 0,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-2",
+          "kind": "diagnosis",
+          "locations": [],
+          "operation_kind": "recalculate",
+          "range_count": 0,
+          "sheet_count": 0,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-3",
+          "kind": "diagnosis",
+          "locations": [],
+          "operation_kind": "charts",
+          "range_count": 0,
+          "sheet_count": 0,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-4",
+          "kind": "diagnosis",
+          "locations": [
+            {
+              "range": "A1:D3",
+              "sheet_name": "Data"
+            }
+          ],
+          "operation_kind": "measure_batch",
+          "range_count": 1,
+          "sheet_count": 1,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-5",
+          "kind": "diagnosis",
+          "locations": [
+            {
+              "range": "A1:D3",
+              "sheet_name": "Data"
+            }
+          ],
+          "operation_kind": "capture_many",
+          "range_count": 1,
+          "sheet_count": 1,
+          "tile_count": 1
+        }
+      ]
+    },
+    {
+      "lane": "SD",
+      "metrics_sha256": "17ccdc8ec2cbedddaf6bd54404c769264fb606f860df113b978713e03b18e303",
+      "completed_job_descriptions": [
+        {
+          "id": "targeted-1",
+          "kind": "diagnosis",
+          "locations": [],
+          "operation_kind": "save",
+          "range_count": 0,
+          "sheet_count": 0,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-2",
+          "kind": "diagnosis",
+          "locations": [],
+          "operation_kind": "recalculate",
+          "range_count": 0,
+          "sheet_count": 0,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-3",
+          "kind": "diagnosis",
+          "locations": [],
+          "operation_kind": "charts",
+          "range_count": 0,
+          "sheet_count": 0,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-4",
+          "kind": "diagnosis",
+          "locations": [
+            {
+              "range": "A1:D3",
+              "sheet_name": "Data"
+            }
+          ],
+          "operation_kind": "measure_batch",
+          "range_count": 1,
+          "sheet_count": 1,
+          "tile_count": 0
+        },
+        {
+          "id": "targeted-5",
+          "kind": "diagnosis",
+          "locations": [
+            {
+              "range": "A1:D3",
+              "sheet_name": "Data"
+            }
+          ],
+          "operation_kind": "capture_many",
+          "range_count": 1,
+          "sheet_count": 1,
+          "tile_count": 1
+        }
+      ]
+    }
+  ],
+  "scope": "Native private-desktop targeted wrapping fixture; completed monitor events expose actual geometry and capture requests. UI rendering separately covered by existing worker-monitor tests."
+}
