@@ -314,6 +314,15 @@ original bytes. The public-export regression checks compact output, retained
 comparison values and images, projected private paths and source immutability.
 Oversized-report errors identify the path and byte length.
 
+Public comparison pages load their adjacent `report.json` on demand. The loader
+accepts exactly that relative filename, rejects redirects and reports HTTP errors
+in the viewer. This avoids duplicating scientific JSON inside each HTML page.
+The 500-observation export previously contained 260,832,074 bytes of index HTML
+across its two Atlas stages; the report site exceeded its one-GB budget.
+Scientific JSON and image qualification remain separate from this presentation
+transport. Native portable comparison pages carry their data inline for local
+file viewing. Public pages link back to the Atlas and expose the scientific JSON.
+
 ## Preparation replay path projection
 
 `tools/export-preparation-replay.py` preserves the exact compressed event stream

@@ -397,6 +397,10 @@ fn public_atlas_preserves_images_and_findings_without_exporting_run_configuratio
     assert!(!target.join("run.json").exists());
     assert!(!target.join("pairs/one/bundle.json").exists());
     assert!(!target.join(".incomplete").exists());
+    let public_page = fs::read_to_string(target.join("pairs/one/index.html"))?;
+    assert!(public_page.contains(r#""report_url":"report.json""#));
+    assert!(public_page.contains(r#""back":"../../index.html""#));
+    assert!(!public_page.contains(r#""comparisons":"#));
     let projected = read_json_file(&target.join("pairs/one/report.json"))?;
     assert_eq!(
         fs::read(target.join("pairs/one/report.json"))?,

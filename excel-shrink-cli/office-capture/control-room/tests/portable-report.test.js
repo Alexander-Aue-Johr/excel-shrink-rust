@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
 import { atelierRegions } from '../atelier-model.js';
-import { portableImageUrl, portablePageUrl, reportRowMatches } from '../report.js';
+import { portableImageUrl, portablePageUrl, reportRowMatches, loadComparisonReport } from '../report.js';
 import { pixelSummary } from '../pixel-summary.js';
 import { retainedFormulaDiagnosis } from '../formula-inspector.js';
 
 const first = `evidence/${'a'.repeat(64)}.png`;
 const second = `evidence/${'b'.repeat(64)}.jpg`;
+
+const inlineReport = { comparisons: [] };
+assert.equal(await loadComparisonReport({ report: inlineReport }, () => {
+  throw new Error('Inline reports must not fetch');
+}), inlineReport);
+assert.equal(await loadComparisonReport({ report_url: 'report.json' }, async (url, options) => {
+  assert.equal(url, 'report.json');
+  assert.deepEqual(options, { credentials: 'omit', redirect: 'error' });
+  return { ok: true, json: async () => inlineReport };
+}), inlineReport);
+await assert.rejects(loadComparisonReport({ report_url: '../private.json' }), /Unsupported/);
+await assert.rejects(loadComparisonReport({ report_url: 'report.json' }, async () => ({
+  ok: false, status: 404,
+})), /404/);
 
 assert.equal(portableImageUrl(first), first);
 assert.equal(portableImageUrl(second), second);

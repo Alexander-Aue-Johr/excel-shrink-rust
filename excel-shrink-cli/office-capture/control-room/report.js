@@ -49,7 +49,16 @@ function reportDetails(label, content) {
   return details;
 }
 
-function startReportPage() {
+/** Public pages share their adjacent JSON; native portable pages carry it inline. */
+export async function loadComparisonReport(data, fetchReport = fetch) {
+  if (data.report) return data.report;
+  if (data.report_url !== 'report.json') throw new Error('Unsupported comparison report location');
+  const response = await fetchReport('report.json', { credentials: 'omit', redirect: 'error' });
+  if (!response.ok) throw new Error(`Report request failed (${response.status})`);
+  return response.json();
+}
+
+async function startReportPage() {
   const content = document.getElementById('report-content');
   const links = document.getElementById('report-links');
   try {
@@ -64,8 +73,12 @@ function startReportPage() {
       if (typeof data.back === 'string' && /^(\.\.\/)+index\.html$/.test(data.back)) {
         links.append(reportLink(data.back, 'All workbooks'));
       }
-      links.append(reportLink('report.json', 'Scientific report'), reportLink('bundle.json', 'Integrity manifest'));
-      showComparisonReport(content, data.report);
+      links.append(reportLink('report.json', 'Scientific report'));
+      if (data.report) links.append(reportLink('bundle.json', 'Integrity manifest'));
+      content.append(reportElement('p', 'report-note', 'Loading retained comparison…'));
+      const report = await loadComparisonReport(data);
+      content.replaceChildren();
+      showComparisonReport(content, report);
     } else {
       throw new Error('Unknown report page type');
     }

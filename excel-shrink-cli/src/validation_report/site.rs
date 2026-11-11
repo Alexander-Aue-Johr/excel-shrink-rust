@@ -114,6 +114,30 @@ fn write_pair_page_contents(root: &Path, report_relative: &str, label: &str) -> 
     Ok(page)
 }
 
+/// Public HTTPS pages load their adjacent immutable report instead of embedding
+/// a second copy. Native portable pages retain their self-contained data script.
+pub(super) fn write_public_pair_page(
+    root: &Path,
+    report_relative: &str,
+    label: &str,
+) -> Result<PathBuf> {
+    let report_path = evidence::confined_file(root, report_relative)?;
+    let relative = evidence::relative_path(report_relative)?;
+    let parent = relative.parent().context("Missing comparison directory")?;
+    ensure!(
+        !parent.as_os_str().is_empty() && relative.file_name().is_some_and(|name| name == "report.json"),
+        "A public comparison page requires a nested report.json"
+    );
+    let prefix = "../".repeat(parent.components().count());
+    let data = json!({
+        "kind":"comparison", "title":label, "back":format!("{prefix}index.html"),
+        "report_url":"report.json"
+    });
+    let page = report_path.with_file_name("index.html");
+    write_derived(root, &page, render_page(label, &prefix, &data)?.as_bytes())?;
+    Ok(page)
+}
+
 /// Export run metadata and verified packages with a publication-review inventory.
 /// Original reports stay read-only. Processing outputs, scratch workbooks,
 /// Raw telemetry histories and executable programs are deliberately not exported.
@@ -477,8 +501,10 @@ mod tests {
         assert!(script.contains("function createPixelInspector("));
         assert!(script.contains("function atelierRegions("));
         assert!(script.contains("function createRetainedFormulaInspector("));
-        // Replay is the sole fetch entry point in the otherwise self-contained viewer.
+        // Replay fetches its channel directly. Public comparison pages use the
+        // separately tested adjacent-report loader; native pages remain inline.
         assert_eq!(script.matches("fetch(").count(), 1);
+        assert!(script.contains("async function loadComparisonReport("));
         assert!(script.contains("class ReplayReader"));
         assert!(script.contains("redirect: 'error'"));
         Ok(())

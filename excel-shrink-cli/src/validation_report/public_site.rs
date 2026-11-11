@@ -141,7 +141,7 @@ pub(crate) fn export(source: &Path, destination: &Path) -> Result<()> {
                 // previously readable package over the report-size bound.
                 &serde_json::to_vec(&detail["report"])?,
             )?;
-            site::write_pair_page(&destination, &report_relative, &book_name)?;
+            site::write_public_pair_page(&destination, &report_relative, &book_name)?;
             provenance.push(json!({"detail":relative,"source_report_sha256":source_sha,"metadata_omissions":omitted}));
         }
     }
