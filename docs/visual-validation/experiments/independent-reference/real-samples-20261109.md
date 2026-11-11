@@ -168,3 +168,26 @@ two and 46 regions respectively. These results do not estimate corpus recall.
 `datagov-sample-20261111.json` retains all four selected identities, outcomes,
 native receipt identities, rendered image hashes and targeted observations.
 
+## Supplementary Data.gov partitions
+
+The original native geometry receipts explain the preflight failures. Quartile
+three has a 10,467.75-point-wide reference, making even a 64-row tile exceed
+the conservative two-pixels-per-point, 32-million-pixel admission budget.
+A second independent partition used 32-row tiles. Its fourteen areas completed
+in 19.251 seconds with equal dimensions and pixels. The intermediate failed
+64-row attempt remains retained too.
+
+Quartile four's independent 64-row partition produced 163 areas in 71.885
+seconds. Native object qualification succeeded and all 326 images were paired
+and decoded without a difference. Both supplementary plans retain the same
+stored-dimension union as the failed initial plans. They use a separately
+declared maximum of 256 areas. They were chosen after geometric preflight
+failures without inspecting targeted coverage or pixel outcomes. Original
+failed attempts remain in the attempt denominator.
+
+All four selected Data.gov inputs now have a successful reference attempt,
+totaling 188 areas. Their v15 targeted plans contain zero, eight, zero and three
+paired areas, all equal. Every successful reference and targeted image hash
+was independently checked. This all-equal sample cannot estimate changed-case
+sensitivity. `datagov-supplementary-20261111.json` preserves the additional
+plans, image identities, native receipts, scope and targeted observations.

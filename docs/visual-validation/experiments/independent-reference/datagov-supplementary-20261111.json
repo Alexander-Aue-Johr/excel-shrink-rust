@@ -1,0 +1,4543 @@
+{
+  "schema": 1,
+  "frozen_sample_receipt": "datagov-sample-20261111.json",
+  "frozen_sample_receipt_sha256": "0f314fd47deb80740421f3764fa3d8213f60b094d7bab0206f90844825690e77",
+  "selection_unchanged": true,
+  "supplementary_after_native_size_preflight": true,
+  "limits": {
+    "reason": "Native geometry of frozen 256-row reference exceeded image limits",
+    "original_failed_attempts_retained": true,
+    "selection_unchanged": true,
+    "tile_rows": 64,
+    "max_regions": 256,
+    "total_timeout_seconds_per_attempt": 180,
+    "input_quartiles": [
+      3,
+      4
+    ],
+    "coverage": "Same union of stored dimensions, partitioned independently of targeted selection",
+    "native_object_qualification_required": true
+  },
+  "additional_failed_quartile3_64_row_attempt": {
+    "status": "failed",
+    "reason": "Reference area exceeds image limits; split its frozen plan independently",
+    "receipt_sha256": "0a6e313d27c92acc0879b43d5a3021ed6bde5a53ff244a3bdf4b6debd25662e9"
+  },
+  "outcomes": [
+    {
+      "schema": 1,
+      "quartile": 3,
+      "status": "completed",
+      "original_failed_plan_retained": true,
+      "tile_rows": 32,
+      "max_regions": 256,
+      "elapsed_seconds": 19.250945,
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "receipt_sha256": "7b89acff825b8ee6e4e2a72ce60e5e5087ccf706b3029213a55d3060080917d9",
+      "regions": [
+        {
+          "sheet": "2024_Q3",
+          "range": "A1:EP32",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 676927,
+              "file": "reference-0-O.png",
+              "sha256": "230464cfb8a60dee5ce725e1a086fa41c575ff2d07a09f47cad0cee20cfabe3c"
+            },
+            {
+              "bytes": 676927,
+              "file": "reference-0-SD.png",
+              "sha256": "230464cfb8a60dee5ce725e1a086fa41c575ff2d07a09f47cad0cee20cfabe3c"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A33:EP64",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 636153,
+              "file": "reference-1-O.png",
+              "sha256": "e73a528938eeb7ee99363daee143a9aa2e4fe03daefa538abd01125ea46549ed"
+            },
+            {
+              "bytes": 636153,
+              "file": "reference-1-SD.png",
+              "sha256": "e73a528938eeb7ee99363daee143a9aa2e4fe03daefa538abd01125ea46549ed"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A65:EP96",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 626346,
+              "file": "reference-2-O.png",
+              "sha256": "83f2047aeaa98070a2345426a0e492800f0723a68f33ca492e06fcf8a56f0e27"
+            },
+            {
+              "bytes": 626346,
+              "file": "reference-2-SD.png",
+              "sha256": "83f2047aeaa98070a2345426a0e492800f0723a68f33ca492e06fcf8a56f0e27"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A97:EP128",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 676499,
+              "file": "reference-3-O.png",
+              "sha256": "9c0c924b01ec5df3c795f7c341f9e307f59be115d8bd3351f6cceef6da0fc0f1"
+            },
+            {
+              "bytes": 676499,
+              "file": "reference-3-SD.png",
+              "sha256": "9c0c924b01ec5df3c795f7c341f9e307f59be115d8bd3351f6cceef6da0fc0f1"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A129:EP160",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 667770,
+              "file": "reference-4-O.png",
+              "sha256": "944ac62573d3f66bf38a34392298a52b3bd3762349073a4c15a04ebbffd67870"
+            },
+            {
+              "bytes": 667770,
+              "file": "reference-4-SD.png",
+              "sha256": "944ac62573d3f66bf38a34392298a52b3bd3762349073a4c15a04ebbffd67870"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A161:EP192",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 642393,
+              "file": "reference-5-O.png",
+              "sha256": "e16d7e515ed5653545f2187f06c2a81940ab46800e5005c80c5c258998c1d0c4"
+            },
+            {
+              "bytes": 642393,
+              "file": "reference-5-SD.png",
+              "sha256": "e16d7e515ed5653545f2187f06c2a81940ab46800e5005c80c5c258998c1d0c4"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A193:EP224",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 636041,
+              "file": "reference-6-O.png",
+              "sha256": "fa18be92c7f1a5e1b62129fffdc1e413f6c8771c98828078a61a9632dc15ee93"
+            },
+            {
+              "bytes": 636041,
+              "file": "reference-6-SD.png",
+              "sha256": "fa18be92c7f1a5e1b62129fffdc1e413f6c8771c98828078a61a9632dc15ee93"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A225:EP256",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 689623,
+              "file": "reference-7-O.png",
+              "sha256": "58e08a6a7797337c4bfa64d4e62a4f21f03a1051ca1b232480891bce96032fa7"
+            },
+            {
+              "bytes": 689623,
+              "file": "reference-7-SD.png",
+              "sha256": "58e08a6a7797337c4bfa64d4e62a4f21f03a1051ca1b232480891bce96032fa7"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A257:EP288",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 640028,
+              "file": "reference-8-O.png",
+              "sha256": "60aa580c68c60ab1217b83d91a21bd4b9446f2e1c4403a5fee71f6add2f75735"
+            },
+            {
+              "bytes": 640028,
+              "file": "reference-8-SD.png",
+              "sha256": "60aa580c68c60ab1217b83d91a21bd4b9446f2e1c4403a5fee71f6add2f75735"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A289:EP320",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 683639,
+              "file": "reference-9-O.png",
+              "sha256": "26d25b0019e8d80a4dd17d56e699bd7a17ff5c89273d93f96a78bf9d78d954c9"
+            },
+            {
+              "bytes": 683639,
+              "file": "reference-9-SD.png",
+              "sha256": "26d25b0019e8d80a4dd17d56e699bd7a17ff5c89273d93f96a78bf9d78d954c9"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A321:EP352",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 659631,
+              "file": "reference-10-O.png",
+              "sha256": "1c3a9c799e58da46f9cdc8fb2934944ad412e7453ab34be26ae6fb4d4a265c0d"
+            },
+            {
+              "bytes": 659631,
+              "file": "reference-10-SD.png",
+              "sha256": "1c3a9c799e58da46f9cdc8fb2934944ad412e7453ab34be26ae6fb4d4a265c0d"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A353:EP384",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 658360,
+              "file": "reference-11-O.png",
+              "sha256": "58bd2b5bd032b2003b34b57c1b26db019326fe20a8023d39f75e37717c10fab1"
+            },
+            {
+              "bytes": 658360,
+              "file": "reference-11-SD.png",
+              "sha256": "58bd2b5bd032b2003b34b57c1b26db019326fe20a8023d39f75e37717c10fab1"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A385:EP416",
+          "dimensions": [
+            13958,
+            641
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 636502,
+              "file": "reference-12-O.png",
+              "sha256": "dc0fae9ae7db6c350bb84d1998c39f984c1458bc96204e55a4916bae635580a8"
+            },
+            {
+              "bytes": 636502,
+              "file": "reference-12-SD.png",
+              "sha256": "dc0fae9ae7db6c350bb84d1998c39f984c1458bc96204e55a4916bae635580a8"
+            }
+          ]
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A417:EP434",
+          "dimensions": [
+            13958,
+            361
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 394393,
+              "file": "reference-13-O.png",
+              "sha256": "083159cfd9b2c146be42568c4fcf4925d25c6f85d0339578edbe55a1d06b3202"
+            },
+            {
+              "bytes": 394393,
+              "file": "reference-13-SD.png",
+              "sha256": "083159cfd9b2c146be42568c4fcf4925d25c6f85d0339578edbe55a1d06b3202"
+            }
+          ]
+        }
+      ],
+      "plan": [
+        {
+          "sheet": "2024_Q3",
+          "range": "A1:EP32"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A33:EP64"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A65:EP96"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A97:EP128"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A129:EP160"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A161:EP192"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A193:EP224"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A225:EP256"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A257:EP288"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A289:EP320"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A321:EP352"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A353:EP384"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A385:EP416"
+        },
+        {
+          "sheet": "2024_Q3",
+          "range": "A417:EP434"
+        }
+      ],
+      "plan_sha256": "222771605e4b68d1d0f337a868b3e9d59284d335dec096b29714d181cda20e35",
+      "targeted": {
+        "status": "completed_with_limitations",
+        "candidate_count": 0,
+        "observations": [],
+        "receipt_sha256": "21b51587e257f2f0a1f1a59a2bb3f5d17fe62fce0b211371eac67ec6e56e11c4"
+      }
+    },
+    {
+      "schema": 1,
+      "quartile": 4,
+      "status": "completed",
+      "original_failed_plan_retained": true,
+      "tile_rows": 64,
+      "max_regions": 256,
+      "elapsed_seconds": 71.8849118,
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "receipt_sha256": "09d48dab7fbb08bae79a063277e45177872abd2830bc8f54124162b5dd624259",
+      "regions": [
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1:AU64",
+          "dimensions": [
+            3832,
+            1222
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 512757,
+              "file": "reference-0-O.png",
+              "sha256": "094a45eda343439878afc4874af330ced1abebeef4fc971b3d9845674ed93a22"
+            },
+            {
+              "bytes": 512757,
+              "file": "reference-0-SD.png",
+              "sha256": "094a45eda343439878afc4874af330ced1abebeef4fc971b3d9845674ed93a22"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A65:AU128",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 511293,
+              "file": "reference-1-O.png",
+              "sha256": "03256bb5c873a352bf1c287d06a4c932d15b76fca2ed19ff3f4bdd6c00bfd5da"
+            },
+            {
+              "bytes": 511293,
+              "file": "reference-1-SD.png",
+              "sha256": "03256bb5c873a352bf1c287d06a4c932d15b76fca2ed19ff3f4bdd6c00bfd5da"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A129:AU192",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 503187,
+              "file": "reference-2-O.png",
+              "sha256": "2e2af13c4f15aa9ada533bbe36f24bbdf35baba1ee6b6f5fad245f5a4167e368"
+            },
+            {
+              "bytes": 503187,
+              "file": "reference-2-SD.png",
+              "sha256": "2e2af13c4f15aa9ada533bbe36f24bbdf35baba1ee6b6f5fad245f5a4167e368"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A193:AU256",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 514782,
+              "file": "reference-3-O.png",
+              "sha256": "55b2889920b5db1c59db549fce8b4448a903534f56b24d2e4ac8c4cd07d22780"
+            },
+            {
+              "bytes": 514782,
+              "file": "reference-3-SD.png",
+              "sha256": "55b2889920b5db1c59db549fce8b4448a903534f56b24d2e4ac8c4cd07d22780"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A257:AU320",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 504068,
+              "file": "reference-4-O.png",
+              "sha256": "519c7941fe14b6160eb917cc33d496903c9e4cb451e0a403f92d7412b7749330"
+            },
+            {
+              "bytes": 504068,
+              "file": "reference-4-SD.png",
+              "sha256": "519c7941fe14b6160eb917cc33d496903c9e4cb451e0a403f92d7412b7749330"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A321:AU384",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 515390,
+              "file": "reference-5-O.png",
+              "sha256": "daab625ee8afbd3753324e87541b4cabe544986a9b8c9056e42d930a795f9d8c"
+            },
+            {
+              "bytes": 515390,
+              "file": "reference-5-SD.png",
+              "sha256": "daab625ee8afbd3753324e87541b4cabe544986a9b8c9056e42d930a795f9d8c"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A385:AU448",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 527169,
+              "file": "reference-6-O.png",
+              "sha256": "0b7afd6a4f674203c424b8f8453318b47acbd1d9ac21f383b9d6212d2d13d14c"
+            },
+            {
+              "bytes": 527169,
+              "file": "reference-6-SD.png",
+              "sha256": "0b7afd6a4f674203c424b8f8453318b47acbd1d9ac21f383b9d6212d2d13d14c"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A449:AU512",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 515879,
+              "file": "reference-7-O.png",
+              "sha256": "aef9ee35c2fdd7dd3861a28f2a0675a5e6151b697babd1e4abb84ba51e9298f5"
+            },
+            {
+              "bytes": 515879,
+              "file": "reference-7-SD.png",
+              "sha256": "aef9ee35c2fdd7dd3861a28f2a0675a5e6151b697babd1e4abb84ba51e9298f5"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A513:AU576",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 514911,
+              "file": "reference-8-O.png",
+              "sha256": "1cf5c69771b8287ae911a13051832477ffe3781a107728e7f6f26b05af83a8f6"
+            },
+            {
+              "bytes": 514911,
+              "file": "reference-8-SD.png",
+              "sha256": "1cf5c69771b8287ae911a13051832477ffe3781a107728e7f6f26b05af83a8f6"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A577:AU640",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 507159,
+              "file": "reference-9-O.png",
+              "sha256": "44d233507cbe3f5bcba5f9cba9e17c9f7275ea01cc97c1742a23c58f1fc8080f"
+            },
+            {
+              "bytes": 507159,
+              "file": "reference-9-SD.png",
+              "sha256": "44d233507cbe3f5bcba5f9cba9e17c9f7275ea01cc97c1742a23c58f1fc8080f"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A641:AU704",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 518292,
+              "file": "reference-10-O.png",
+              "sha256": "28222322ef03326e3743c4879e7b18cf69e7cac1cc67b5cca1bd5bac9fe374f8"
+            },
+            {
+              "bytes": 518292,
+              "file": "reference-10-SD.png",
+              "sha256": "28222322ef03326e3743c4879e7b18cf69e7cac1cc67b5cca1bd5bac9fe374f8"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A705:AU768",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 521233,
+              "file": "reference-11-O.png",
+              "sha256": "d6c07e0e261b6848dc9bbfacc69856a634a2e3c50a75c4f352cba9dd885fe59b"
+            },
+            {
+              "bytes": 521233,
+              "file": "reference-11-SD.png",
+              "sha256": "d6c07e0e261b6848dc9bbfacc69856a634a2e3c50a75c4f352cba9dd885fe59b"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A769:AU832",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 530308,
+              "file": "reference-12-O.png",
+              "sha256": "df9f7c069e621ee320ecb4c1f7a7e1e14ce6a11f565c9c5e4d4149ed6f045931"
+            },
+            {
+              "bytes": 530308,
+              "file": "reference-12-SD.png",
+              "sha256": "df9f7c069e621ee320ecb4c1f7a7e1e14ce6a11f565c9c5e4d4149ed6f045931"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A833:AU896",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 525198,
+              "file": "reference-13-O.png",
+              "sha256": "309694c46198aac11a9ef075cb9c3736b356a70cd60553a746b9687671a377ae"
+            },
+            {
+              "bytes": 525198,
+              "file": "reference-13-SD.png",
+              "sha256": "309694c46198aac11a9ef075cb9c3736b356a70cd60553a746b9687671a377ae"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A897:AU960",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 529159,
+              "file": "reference-14-O.png",
+              "sha256": "88576f68ead209d4acbd32ab13532f68ca17267113ddf931d787d7a7af1d2a01"
+            },
+            {
+              "bytes": 529159,
+              "file": "reference-14-SD.png",
+              "sha256": "88576f68ead209d4acbd32ab13532f68ca17267113ddf931d787d7a7af1d2a01"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A961:AU1024",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 512292,
+              "file": "reference-15-O.png",
+              "sha256": "7d2601cc5cf50269da8285152bfce4c79cbf21d2faa91e7c8e3eaac6b07eb077"
+            },
+            {
+              "bytes": 512292,
+              "file": "reference-15-SD.png",
+              "sha256": "7d2601cc5cf50269da8285152bfce4c79cbf21d2faa91e7c8e3eaac6b07eb077"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1025:AU1088",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 510729,
+              "file": "reference-16-O.png",
+              "sha256": "ee19e71cc89426008d87fa6150b0ff1b0eabedfc4e907e4bc4047e112f4216d5"
+            },
+            {
+              "bytes": 510729,
+              "file": "reference-16-SD.png",
+              "sha256": "ee19e71cc89426008d87fa6150b0ff1b0eabedfc4e907e4bc4047e112f4216d5"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1089:AU1152",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 509605,
+              "file": "reference-17-O.png",
+              "sha256": "8ca2a0f6a5f4c25d136a0ef87fad6545285af10dad678ab5504f1a1610b86762"
+            },
+            {
+              "bytes": 509605,
+              "file": "reference-17-SD.png",
+              "sha256": "8ca2a0f6a5f4c25d136a0ef87fad6545285af10dad678ab5504f1a1610b86762"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1153:AU1216",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 512151,
+              "file": "reference-18-O.png",
+              "sha256": "f6b2b1ca126e679d6abd4af9a501a74605687f5bcc534398650cd07b5fcf6c9d"
+            },
+            {
+              "bytes": 512151,
+              "file": "reference-18-SD.png",
+              "sha256": "f6b2b1ca126e679d6abd4af9a501a74605687f5bcc534398650cd07b5fcf6c9d"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1217:AU1280",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 506567,
+              "file": "reference-19-O.png",
+              "sha256": "4d644f7d1a696b71ee56544195ebd282d2b5e6f3b9e49c521bfc75d70a90b4d7"
+            },
+            {
+              "bytes": 506567,
+              "file": "reference-19-SD.png",
+              "sha256": "4d644f7d1a696b71ee56544195ebd282d2b5e6f3b9e49c521bfc75d70a90b4d7"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1281:AU1344",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 511763,
+              "file": "reference-20-O.png",
+              "sha256": "0fb19ebe9900c1c971475e2b9224a0c761ae7dab6f02abbea5f326ceac33a830"
+            },
+            {
+              "bytes": 511763,
+              "file": "reference-20-SD.png",
+              "sha256": "0fb19ebe9900c1c971475e2b9224a0c761ae7dab6f02abbea5f326ceac33a830"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1345:AU1408",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 507076,
+              "file": "reference-21-O.png",
+              "sha256": "dba28e1a85b13ad4abc50091f3c8fafb6cf1a694a696bdb862ba28700947808f"
+            },
+            {
+              "bytes": 507076,
+              "file": "reference-21-SD.png",
+              "sha256": "dba28e1a85b13ad4abc50091f3c8fafb6cf1a694a696bdb862ba28700947808f"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1409:AU1472",
+          "dimensions": [
+            3832,
+            1136
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 515118,
+              "file": "reference-22-O.png",
+              "sha256": "43bb2a6c430044594bbfc01ce1bf4c3587cbbb99dca8a5ad56eea844c7e4b991"
+            },
+            {
+              "bytes": 515118,
+              "file": "reference-22-SD.png",
+              "sha256": "43bb2a6c430044594bbfc01ce1bf4c3587cbbb99dca8a5ad56eea844c7e4b991"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1473:AU1536",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 526217,
+              "file": "reference-23-O.png",
+              "sha256": "006992a38e94b5546918b20c753de96e1e1941df092a3fc356e72847626a7c69"
+            },
+            {
+              "bytes": 526217,
+              "file": "reference-23-SD.png",
+              "sha256": "006992a38e94b5546918b20c753de96e1e1941df092a3fc356e72847626a7c69"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1537:AU1600",
+          "dimensions": [
+            3832,
+            1153
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 538227,
+              "file": "reference-24-O.png",
+              "sha256": "15bc471cec8eb5c8380fb28c12795df21834b73f3319e4508d13852a7b04ac25"
+            },
+            {
+              "bytes": 538227,
+              "file": "reference-24-SD.png",
+              "sha256": "15bc471cec8eb5c8380fb28c12795df21834b73f3319e4508d13852a7b04ac25"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1601:AU1627",
+          "dimensions": [
+            3832,
+            487
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 216979,
+              "file": "reference-25-O.png",
+              "sha256": "756628bd90b1dd4522206b8b07759f353015f948682bb799452067c245536536"
+            },
+            {
+              "bytes": 216979,
+              "file": "reference-25-SD.png",
+              "sha256": "756628bd90b1dd4522206b8b07759f353015f948682bb799452067c245536536"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 3",
+          "range": "A1:AJ64",
+          "dimensions": [
+            2305,
+            1200
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 345430,
+              "file": "reference-26-O.png",
+              "sha256": "895eaea19766f01d25e9edc272c3dd34cdf566ed1fd361a0279f982eecbea39f"
+            },
+            {
+              "bytes": 345430,
+              "file": "reference-26-SD.png",
+              "sha256": "895eaea19766f01d25e9edc272c3dd34cdf566ed1fd361a0279f982eecbea39f"
+            }
+          ]
+        },
+        {
+          "sheet": "ECOTOX_case study 3",
+          "range": "A65:AJ123",
+          "dimensions": [
+            2305,
+            1063
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 315348,
+              "file": "reference-27-O.png",
+              "sha256": "fcf84e3c3db8a8bcffd4092b2fe8ed5b998de09d18efb9110725ac1a2d3adc38"
+            },
+            {
+              "bytes": 315348,
+              "file": "reference-27-SD.png",
+              "sha256": "fcf84e3c3db8a8bcffd4092b2fe8ed5b998de09d18efb9110725ac1a2d3adc38"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A1:Z64",
+          "dimensions": [
+            1665,
+            1358
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 345026,
+              "file": "reference-28-O.png",
+              "sha256": "eccc13636e93a90b19aa13d909c16a598b1253a5e17fc8df3bfb19568d78bdc6"
+            },
+            {
+              "bytes": 345026,
+              "file": "reference-28-SD.png",
+              "sha256": "eccc13636e93a90b19aa13d909c16a598b1253a5e17fc8df3bfb19568d78bdc6"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A65:Z128",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 206544,
+              "file": "reference-29-O.png",
+              "sha256": "405fa0a007cde391a73f965f1b1361bfe72386282f479b300939f690ef9cd642"
+            },
+            {
+              "bytes": 206544,
+              "file": "reference-29-SD.png",
+              "sha256": "405fa0a007cde391a73f965f1b1361bfe72386282f479b300939f690ef9cd642"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A129:Z192",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 206891,
+              "file": "reference-30-O.png",
+              "sha256": "14728d06b81d1f1fe55b5b02d1e78d37dd3b127437f52a97cf2270605b0a3678"
+            },
+            {
+              "bytes": 206891,
+              "file": "reference-30-SD.png",
+              "sha256": "14728d06b81d1f1fe55b5b02d1e78d37dd3b127437f52a97cf2270605b0a3678"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A193:Z256",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 212709,
+              "file": "reference-31-O.png",
+              "sha256": "b850b3fbca616787168238518238e16bd952799cc8b43b64a477a11567ece654"
+            },
+            {
+              "bytes": 212709,
+              "file": "reference-31-SD.png",
+              "sha256": "b850b3fbca616787168238518238e16bd952799cc8b43b64a477a11567ece654"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A257:Z320",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 212159,
+              "file": "reference-32-O.png",
+              "sha256": "4dae5539298ae84b97d2d5e2cf91b4eb2dfe85803cb356b8e16569b6a4cf73cf"
+            },
+            {
+              "bytes": 212159,
+              "file": "reference-32-SD.png",
+              "sha256": "4dae5539298ae84b97d2d5e2cf91b4eb2dfe85803cb356b8e16569b6a4cf73cf"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A321:Z384",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 209301,
+              "file": "reference-33-O.png",
+              "sha256": "efde0ca02f2352b582ff03f2a20aa7db8fbd5e045c11a7730a38d87d3967e29a"
+            },
+            {
+              "bytes": 209301,
+              "file": "reference-33-SD.png",
+              "sha256": "efde0ca02f2352b582ff03f2a20aa7db8fbd5e045c11a7730a38d87d3967e29a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A385:Z448",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 207566,
+              "file": "reference-34-O.png",
+              "sha256": "7a78a695014481fa731ca6a044ff9dda9c69a80c600959072b9ddf064cbba13d"
+            },
+            {
+              "bytes": 207566,
+              "file": "reference-34-SD.png",
+              "sha256": "7a78a695014481fa731ca6a044ff9dda9c69a80c600959072b9ddf064cbba13d"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A449:Z512",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 206076,
+              "file": "reference-35-O.png",
+              "sha256": "52b1facfe2448619c0ab05061d15b004febe128af18021f96429e3b74425ee5e"
+            },
+            {
+              "bytes": 206076,
+              "file": "reference-35-SD.png",
+              "sha256": "52b1facfe2448619c0ab05061d15b004febe128af18021f96429e3b74425ee5e"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A513:Z576",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 208312,
+              "file": "reference-36-O.png",
+              "sha256": "85a623a0f5fda132ac9808afed77e147b813e03f0e51094a2def9a40222a270c"
+            },
+            {
+              "bytes": 208312,
+              "file": "reference-36-SD.png",
+              "sha256": "85a623a0f5fda132ac9808afed77e147b813e03f0e51094a2def9a40222a270c"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A577:Z640",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 206095,
+              "file": "reference-37-O.png",
+              "sha256": "4e62ce417c34afab5bd8b62f8e23bcc1f78121c907de1b5b8d36305c844d9661"
+            },
+            {
+              "bytes": 206095,
+              "file": "reference-37-SD.png",
+              "sha256": "4e62ce417c34afab5bd8b62f8e23bcc1f78121c907de1b5b8d36305c844d9661"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A641:Z704",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 203063,
+              "file": "reference-38-O.png",
+              "sha256": "70df7807503e36dc3d37733f78354dc9550f7d48cf873b12d649c3d410fac0cc"
+            },
+            {
+              "bytes": 203063,
+              "file": "reference-38-SD.png",
+              "sha256": "70df7807503e36dc3d37733f78354dc9550f7d48cf873b12d649c3d410fac0cc"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A705:Z727",
+          "dimensions": [
+            1665,
+            461
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 73167,
+              "file": "reference-39-O.png",
+              "sha256": "bc3bd07474573a3b2d26297973aa6f13e35e66e9c43fb8a292fb4100f403056c"
+            },
+            {
+              "bytes": 73167,
+              "file": "reference-39-SD.png",
+              "sha256": "bc3bd07474573a3b2d26297973aa6f13e35e66e9c43fb8a292fb4100f403056c"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A1:N64",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 169096,
+              "file": "reference-40-O.png",
+              "sha256": "eb1ae2f9ef0bb160c8962acf22e450c45a904d173f1efbbe2799b06877414860"
+            },
+            {
+              "bytes": 169096,
+              "file": "reference-40-SD.png",
+              "sha256": "eb1ae2f9ef0bb160c8962acf22e450c45a904d173f1efbbe2799b06877414860"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A65:N128",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 172237,
+              "file": "reference-41-O.png",
+              "sha256": "7433a517570532b6b6589eae63a155ab9fb595adf3dab453e6641438ffaa45f3"
+            },
+            {
+              "bytes": 172237,
+              "file": "reference-41-SD.png",
+              "sha256": "7433a517570532b6b6589eae63a155ab9fb595adf3dab453e6641438ffaa45f3"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A129:N192",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 174025,
+              "file": "reference-42-O.png",
+              "sha256": "f8e166b0c96eecbc07ae998bcb8f091d4e16a8ba4c571722b78d3462a2f7bb7a"
+            },
+            {
+              "bytes": 174025,
+              "file": "reference-42-SD.png",
+              "sha256": "f8e166b0c96eecbc07ae998bcb8f091d4e16a8ba4c571722b78d3462a2f7bb7a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A193:N256",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 179049,
+              "file": "reference-43-O.png",
+              "sha256": "b0148ee2eadc3fb8d2873fe9795e2489ebfafb35f676fe77ee40c8c3d7b9878f"
+            },
+            {
+              "bytes": 179049,
+              "file": "reference-43-SD.png",
+              "sha256": "b0148ee2eadc3fb8d2873fe9795e2489ebfafb35f676fe77ee40c8c3d7b9878f"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A257:N320",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 176534,
+              "file": "reference-44-O.png",
+              "sha256": "a6ca18ef2c1ee7e6bbfa934a445a509cb58a1261e9fd7b12cd215f57b0827689"
+            },
+            {
+              "bytes": 176534,
+              "file": "reference-44-SD.png",
+              "sha256": "a6ca18ef2c1ee7e6bbfa934a445a509cb58a1261e9fd7b12cd215f57b0827689"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A321:N384",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 174276,
+              "file": "reference-45-O.png",
+              "sha256": "0c7f48e509ee64c3b78d62d79b6e5406670a33f0db1254cc3f320502d56ee591"
+            },
+            {
+              "bytes": 174276,
+              "file": "reference-45-SD.png",
+              "sha256": "0c7f48e509ee64c3b78d62d79b6e5406670a33f0db1254cc3f320502d56ee591"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A385:N448",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 173789,
+              "file": "reference-46-O.png",
+              "sha256": "ddc013d63b674eab76659c70ced34c3d3f64843858c23133215e10cf0d9a2767"
+            },
+            {
+              "bytes": 173789,
+              "file": "reference-46-SD.png",
+              "sha256": "ddc013d63b674eab76659c70ced34c3d3f64843858c23133215e10cf0d9a2767"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A449:N512",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 173828,
+              "file": "reference-47-O.png",
+              "sha256": "be0f28a73d7f2948851523476ed7e400e960a7c9601cdff5f6a0e519f5bc2ba3"
+            },
+            {
+              "bytes": 173828,
+              "file": "reference-47-SD.png",
+              "sha256": "be0f28a73d7f2948851523476ed7e400e960a7c9601cdff5f6a0e519f5bc2ba3"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A513:N576",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 172481,
+              "file": "reference-48-O.png",
+              "sha256": "7f6abd055cb7d6e18314a8e41a42df7094fa09a38b97b5a3fabb753c4f35dc57"
+            },
+            {
+              "bytes": 172481,
+              "file": "reference-48-SD.png",
+              "sha256": "7f6abd055cb7d6e18314a8e41a42df7094fa09a38b97b5a3fabb753c4f35dc57"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A577:N640",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 172771,
+              "file": "reference-49-O.png",
+              "sha256": "ff3d89b889745810864c84d3dc8257fa9227d0add6a696626e32e848138f66b8"
+            },
+            {
+              "bytes": 172771,
+              "file": "reference-49-SD.png",
+              "sha256": "ff3d89b889745810864c84d3dc8257fa9227d0add6a696626e32e848138f66b8"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A641:N704",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 170779,
+              "file": "reference-50-O.png",
+              "sha256": "cfcb3b9e988e30d4f1fd5bc04a9143628fd2ca272bdbca23776bf84d10f0af59"
+            },
+            {
+              "bytes": 170779,
+              "file": "reference-50-SD.png",
+              "sha256": "cfcb3b9e988e30d4f1fd5bc04a9143628fd2ca272bdbca23776bf84d10f0af59"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A705:N742",
+          "dimensions": [
+            897,
+            761
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 102516,
+              "file": "reference-51-O.png",
+              "sha256": "eb62cd471a151fc2a8ddc0737ada441e1412e67fd10f33966afa0337022e8bfc"
+            },
+            {
+              "bytes": 102516,
+              "file": "reference-51-SD.png",
+              "sha256": "eb62cd471a151fc2a8ddc0737ada441e1412e67fd10f33966afa0337022e8bfc"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A1:O64",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 184664,
+              "file": "reference-52-O.png",
+              "sha256": "b873db2679d7e464e52a85df4697b6848a75a6c27358cb8f818509a909dc5f53"
+            },
+            {
+              "bytes": 184664,
+              "file": "reference-52-SD.png",
+              "sha256": "b873db2679d7e464e52a85df4697b6848a75a6c27358cb8f818509a909dc5f53"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A65:O128",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 186187,
+              "file": "reference-53-O.png",
+              "sha256": "32fbcbc74a024e0004c4bc7f8574332a951527abe9e4a1d7c1eee40c1a4df98d"
+            },
+            {
+              "bytes": 186187,
+              "file": "reference-53-SD.png",
+              "sha256": "32fbcbc74a024e0004c4bc7f8574332a951527abe9e4a1d7c1eee40c1a4df98d"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A129:O192",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 189382,
+              "file": "reference-54-O.png",
+              "sha256": "255c7fd465f57cf1d90e833046ba86ae19db57307b8bf663470fb9d3e11f31b9"
+            },
+            {
+              "bytes": 189382,
+              "file": "reference-54-SD.png",
+              "sha256": "255c7fd465f57cf1d90e833046ba86ae19db57307b8bf663470fb9d3e11f31b9"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A193:O256",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 191153,
+              "file": "reference-55-O.png",
+              "sha256": "1795f1c0f34f6e7f1052cf2ad0b6023834786eee93a9bed20eea1badb8db2986"
+            },
+            {
+              "bytes": 191153,
+              "file": "reference-55-SD.png",
+              "sha256": "1795f1c0f34f6e7f1052cf2ad0b6023834786eee93a9bed20eea1badb8db2986"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A257:O320",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 189666,
+              "file": "reference-56-O.png",
+              "sha256": "cd3f038cb265d58d141d98318d4531c49736e018deaa06232e0664dd17fc3abb"
+            },
+            {
+              "bytes": 189666,
+              "file": "reference-56-SD.png",
+              "sha256": "cd3f038cb265d58d141d98318d4531c49736e018deaa06232e0664dd17fc3abb"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A321:O384",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 189118,
+              "file": "reference-57-O.png",
+              "sha256": "58183109ace02e269286435d48f21281c5fbf9a0f9d61bee6ca6cebaa92beb87"
+            },
+            {
+              "bytes": 189118,
+              "file": "reference-57-SD.png",
+              "sha256": "58183109ace02e269286435d48f21281c5fbf9a0f9d61bee6ca6cebaa92beb87"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A385:O448",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 187896,
+              "file": "reference-58-O.png",
+              "sha256": "be999bb235381e6d06813f319aad91c38e4c958a722eaae7fa377b9edde4eca3"
+            },
+            {
+              "bytes": 187896,
+              "file": "reference-58-SD.png",
+              "sha256": "be999bb235381e6d06813f319aad91c38e4c958a722eaae7fa377b9edde4eca3"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A449:O512",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 186969,
+              "file": "reference-59-O.png",
+              "sha256": "3f9c66328e9eb688a42b3fb78bb6a091503883fc88673b0802e7f6881346c68b"
+            },
+            {
+              "bytes": 186969,
+              "file": "reference-59-SD.png",
+              "sha256": "3f9c66328e9eb688a42b3fb78bb6a091503883fc88673b0802e7f6881346c68b"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A513:O576",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 186900,
+              "file": "reference-60-O.png",
+              "sha256": "e697d2c793e0c120832ba60fcf7e14d0e298afd992f52d8f8247d38b983d579a"
+            },
+            {
+              "bytes": 186900,
+              "file": "reference-60-SD.png",
+              "sha256": "e697d2c793e0c120832ba60fcf7e14d0e298afd992f52d8f8247d38b983d579a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A577:O640",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 189107,
+              "file": "reference-61-O.png",
+              "sha256": "35f50fb74c0f3e2da5dc80017e2a3927231c1a9b0fedca1f91092b6afc6d37b1"
+            },
+            {
+              "bytes": 189107,
+              "file": "reference-61-SD.png",
+              "sha256": "35f50fb74c0f3e2da5dc80017e2a3927231c1a9b0fedca1f91092b6afc6d37b1"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A641:O696",
+          "dimensions": [
+            961,
+            1121
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 163510,
+              "file": "reference-62-O.png",
+              "sha256": "07b50c0cfea350f971d624c4cad80700de0c1d0a78a48154c705926c49569cf5"
+            },
+            {
+              "bytes": 163510,
+              "file": "reference-62-SD.png",
+              "sha256": "07b50c0cfea350f971d624c4cad80700de0c1d0a78a48154c705926c49569cf5"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L3",
+          "range": "A1:AI12",
+          "dimensions": [
+            2244,
+            261
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 46570,
+              "file": "reference-63-O.png",
+              "sha256": "6ccdfc6a4284d05d110028825e08c918df7a6b436224ae2e32b59d8daa05dc6e"
+            },
+            {
+              "bytes": 46570,
+              "file": "reference-63-SD.png",
+              "sha256": "6ccdfc6a4284d05d110028825e08c918df7a6b436224ae2e32b59d8daa05dc6e"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A1:Z64",
+          "dimensions": [
+            1665,
+            1463
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 397333,
+              "file": "reference-64-O.png",
+              "sha256": "fb5d10000314a3f8bfc7be7366459d1757204bbf33c6b4930315d71a652d0b1d"
+            },
+            {
+              "bytes": 397333,
+              "file": "reference-64-SD.png",
+              "sha256": "fb5d10000314a3f8bfc7be7366459d1757204bbf33c6b4930315d71a652d0b1d"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A65:Z128",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 207393,
+              "file": "reference-65-O.png",
+              "sha256": "237e5bbcb30ac217a56268e036cd84b97c41494bf42bcd1825bcee9e916b2acb"
+            },
+            {
+              "bytes": 207393,
+              "file": "reference-65-SD.png",
+              "sha256": "237e5bbcb30ac217a56268e036cd84b97c41494bf42bcd1825bcee9e916b2acb"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A129:Z192",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 210839,
+              "file": "reference-66-O.png",
+              "sha256": "03ca175ab905584f4828f1f0169e49e57c904e812eaf8ee431f57e0e45303529"
+            },
+            {
+              "bytes": 210839,
+              "file": "reference-66-SD.png",
+              "sha256": "03ca175ab905584f4828f1f0169e49e57c904e812eaf8ee431f57e0e45303529"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A193:Z256",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 206799,
+              "file": "reference-67-O.png",
+              "sha256": "798d52fdcfa505f0a1a27bc3d4d4c527444a97971f5866500b14921ae8a90535"
+            },
+            {
+              "bytes": 206799,
+              "file": "reference-67-SD.png",
+              "sha256": "798d52fdcfa505f0a1a27bc3d4d4c527444a97971f5866500b14921ae8a90535"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A257:Z320",
+          "dimensions": [
+            1665,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 205768,
+              "file": "reference-68-O.png",
+              "sha256": "2c422d9c703c26d5cc7d840b489d2cdae4a74f799dc4acc8765c6c49a8ce73d6"
+            },
+            {
+              "bytes": 205768,
+              "file": "reference-68-SD.png",
+              "sha256": "2c422d9c703c26d5cc7d840b489d2cdae4a74f799dc4acc8765c6c49a8ce73d6"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A321:Z373",
+          "dimensions": [
+            1665,
+            1061
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 170669,
+              "file": "reference-69-O.png",
+              "sha256": "85034f023a9f044aa8b318fc3e7f0a333d2132d46153d11f9eeee9dea7a27412"
+            },
+            {
+              "bytes": 170669,
+              "file": "reference-69-SD.png",
+              "sha256": "85034f023a9f044aa8b318fc3e7f0a333d2132d46153d11f9eeee9dea7a27412"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L1",
+          "range": "A1:N51",
+          "dimensions": [
+            897,
+            1021
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 131307,
+              "file": "reference-70-O.png",
+              "sha256": "24872c374a70afe110e57709507e61d6f91e98498c1de4dbef3d172323cd5339"
+            },
+            {
+              "bytes": 131307,
+              "file": "reference-70-SD.png",
+              "sha256": "24872c374a70afe110e57709507e61d6f91e98498c1de4dbef3d172323cd5339"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1:O64",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 197366,
+              "file": "reference-71-O.png",
+              "sha256": "04baf84ff1b6cab95a3c86126940dd583c8b5042c4de9f817c86cdf6dca5e07f"
+            },
+            {
+              "bytes": 197366,
+              "file": "reference-71-SD.png",
+              "sha256": "04baf84ff1b6cab95a3c86126940dd583c8b5042c4de9f817c86cdf6dca5e07f"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A65:O128",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 191616,
+              "file": "reference-72-O.png",
+              "sha256": "343e405c225bdb27fec98efe23acc46eff61c60a5f968a0287041d8073727d9b"
+            },
+            {
+              "bytes": 191616,
+              "file": "reference-72-SD.png",
+              "sha256": "343e405c225bdb27fec98efe23acc46eff61c60a5f968a0287041d8073727d9b"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A129:O192",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 193527,
+              "file": "reference-73-O.png",
+              "sha256": "59d3bcbb2b3338eca6d698006648a808687855c105b93e04a21ca74d40a108c4"
+            },
+            {
+              "bytes": 193527,
+              "file": "reference-73-SD.png",
+              "sha256": "59d3bcbb2b3338eca6d698006648a808687855c105b93e04a21ca74d40a108c4"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A193:O256",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 192184,
+              "file": "reference-74-O.png",
+              "sha256": "5ae11294a682b0de7ea9c21a2774e114ce78aefd1c2780c4f23f9c6b103747b1"
+            },
+            {
+              "bytes": 192184,
+              "file": "reference-74-SD.png",
+              "sha256": "5ae11294a682b0de7ea9c21a2774e114ce78aefd1c2780c4f23f9c6b103747b1"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A257:O320",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 192992,
+              "file": "reference-75-O.png",
+              "sha256": "bca8175219826969aee019832d3837db381fd050c61e8e6714f155aac43162c6"
+            },
+            {
+              "bytes": 192992,
+              "file": "reference-75-SD.png",
+              "sha256": "bca8175219826969aee019832d3837db381fd050c61e8e6714f155aac43162c6"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A321:O384",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 193042,
+              "file": "reference-76-O.png",
+              "sha256": "3fe38f501e8c279edf125b92b6c582513d729872036bf39b2177c511e0f68189"
+            },
+            {
+              "bytes": 193042,
+              "file": "reference-76-SD.png",
+              "sha256": "3fe38f501e8c279edf125b92b6c582513d729872036bf39b2177c511e0f68189"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A385:O448",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194213,
+              "file": "reference-77-O.png",
+              "sha256": "bca7874b13b27f0973d74da7d45abe17f1923542437238fccad0db00fb12362d"
+            },
+            {
+              "bytes": 194213,
+              "file": "reference-77-SD.png",
+              "sha256": "bca7874b13b27f0973d74da7d45abe17f1923542437238fccad0db00fb12362d"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A449:O512",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196316,
+              "file": "reference-78-O.png",
+              "sha256": "a03c14db961cf4a619bae2a1a554fd3b64d218f7562757e7fd99faff2f5273fd"
+            },
+            {
+              "bytes": 196316,
+              "file": "reference-78-SD.png",
+              "sha256": "a03c14db961cf4a619bae2a1a554fd3b64d218f7562757e7fd99faff2f5273fd"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A513:O576",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194889,
+              "file": "reference-79-O.png",
+              "sha256": "7cd56d97767af8416444081152fd699f675a06dd4494b7155df8ef24978ab688"
+            },
+            {
+              "bytes": 194889,
+              "file": "reference-79-SD.png",
+              "sha256": "7cd56d97767af8416444081152fd699f675a06dd4494b7155df8ef24978ab688"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A577:O640",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196373,
+              "file": "reference-80-O.png",
+              "sha256": "846c146c8cbf0d18f71d78ce39264a92aff1171b65c718e0f0c392c7b5b97ccc"
+            },
+            {
+              "bytes": 196373,
+              "file": "reference-80-SD.png",
+              "sha256": "846c146c8cbf0d18f71d78ce39264a92aff1171b65c718e0f0c392c7b5b97ccc"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A641:O704",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195125,
+              "file": "reference-81-O.png",
+              "sha256": "0d0503dcb36bde00a8644de15ac597557000270521846aeffec4232c0aaee456"
+            },
+            {
+              "bytes": 195125,
+              "file": "reference-81-SD.png",
+              "sha256": "0d0503dcb36bde00a8644de15ac597557000270521846aeffec4232c0aaee456"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A705:O768",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 197698,
+              "file": "reference-82-O.png",
+              "sha256": "c72ce5196a396d91913ffff15937923a5cc23050bf02165fc5eb2c52a2381925"
+            },
+            {
+              "bytes": 197698,
+              "file": "reference-82-SD.png",
+              "sha256": "c72ce5196a396d91913ffff15937923a5cc23050bf02165fc5eb2c52a2381925"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A769:O832",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195641,
+              "file": "reference-83-O.png",
+              "sha256": "5800f8b7176fe06cc014c872e05266ffb254c07280848e88e0012a47ba1b376f"
+            },
+            {
+              "bytes": 195641,
+              "file": "reference-83-SD.png",
+              "sha256": "5800f8b7176fe06cc014c872e05266ffb254c07280848e88e0012a47ba1b376f"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A833:O896",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196757,
+              "file": "reference-84-O.png",
+              "sha256": "c6230ba78c47d7e5cc53ab0e30224ecd7033295ffb30b3f28822e49861bb3efb"
+            },
+            {
+              "bytes": 196757,
+              "file": "reference-84-SD.png",
+              "sha256": "c6230ba78c47d7e5cc53ab0e30224ecd7033295ffb30b3f28822e49861bb3efb"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A897:O960",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 198485,
+              "file": "reference-85-O.png",
+              "sha256": "2ec1a4210f8f2d5033a35bba47ba255d24ae54801644a12090aded1da6ee328f"
+            },
+            {
+              "bytes": 198485,
+              "file": "reference-85-SD.png",
+              "sha256": "2ec1a4210f8f2d5033a35bba47ba255d24ae54801644a12090aded1da6ee328f"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A961:O1024",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 198929,
+              "file": "reference-86-O.png",
+              "sha256": "cf5c261cd1f25ddf3051057b1b597a3ecefe265462af777225a10bed279a93f2"
+            },
+            {
+              "bytes": 198929,
+              "file": "reference-86-SD.png",
+              "sha256": "cf5c261cd1f25ddf3051057b1b597a3ecefe265462af777225a10bed279a93f2"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1025:O1088",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 198974,
+              "file": "reference-87-O.png",
+              "sha256": "d04115fd0a49d0c7b4ed82342a1d4f5b736fa952478402db5083ac70661f9b93"
+            },
+            {
+              "bytes": 198974,
+              "file": "reference-87-SD.png",
+              "sha256": "d04115fd0a49d0c7b4ed82342a1d4f5b736fa952478402db5083ac70661f9b93"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1089:O1152",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 198390,
+              "file": "reference-88-O.png",
+              "sha256": "f910d602055418fc33b4953239dc445b6918614caab60548f98deec9ae8d92dd"
+            },
+            {
+              "bytes": 198390,
+              "file": "reference-88-SD.png",
+              "sha256": "f910d602055418fc33b4953239dc445b6918614caab60548f98deec9ae8d92dd"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1153:O1216",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 199877,
+              "file": "reference-89-O.png",
+              "sha256": "eb8a4a2c8f15241b41babaee4d4afe6d800734080d100baa66426690e9987a14"
+            },
+            {
+              "bytes": 199877,
+              "file": "reference-89-SD.png",
+              "sha256": "eb8a4a2c8f15241b41babaee4d4afe6d800734080d100baa66426690e9987a14"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1217:O1280",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 198618,
+              "file": "reference-90-O.png",
+              "sha256": "56211f636ccbed7812b36738828442035b4d1fecbd6af732e021022b94e809a1"
+            },
+            {
+              "bytes": 198618,
+              "file": "reference-90-SD.png",
+              "sha256": "56211f636ccbed7812b36738828442035b4d1fecbd6af732e021022b94e809a1"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1281:O1344",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196321,
+              "file": "reference-91-O.png",
+              "sha256": "bcd72ec3ffb75a721371be536efa3fe5bb831d2938155320b3eb14dd4dee2834"
+            },
+            {
+              "bytes": 196321,
+              "file": "reference-91-SD.png",
+              "sha256": "bcd72ec3ffb75a721371be536efa3fe5bb831d2938155320b3eb14dd4dee2834"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1345:O1408",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196162,
+              "file": "reference-92-O.png",
+              "sha256": "861156bd2bd7702fecb66a7906bd9b78d04ffe7ef665646784758fdb31e43431"
+            },
+            {
+              "bytes": 196162,
+              "file": "reference-92-SD.png",
+              "sha256": "861156bd2bd7702fecb66a7906bd9b78d04ffe7ef665646784758fdb31e43431"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1409:O1472",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 197980,
+              "file": "reference-93-O.png",
+              "sha256": "513fea455bdc9cf84f3a8a0fa16c2652de81dee281871aa442b53c990a3b4aee"
+            },
+            {
+              "bytes": 197980,
+              "file": "reference-93-SD.png",
+              "sha256": "513fea455bdc9cf84f3a8a0fa16c2652de81dee281871aa442b53c990a3b4aee"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1473:O1536",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196197,
+              "file": "reference-94-O.png",
+              "sha256": "1343614cd94ec3497685718aded683351134bed3653c7bc6970441cef40db2fd"
+            },
+            {
+              "bytes": 196197,
+              "file": "reference-94-SD.png",
+              "sha256": "1343614cd94ec3497685718aded683351134bed3653c7bc6970441cef40db2fd"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1537:O1600",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195472,
+              "file": "reference-95-O.png",
+              "sha256": "3e0920f233366b743d7f02ea677becdbf71e941add2f01f4caf27ca983869955"
+            },
+            {
+              "bytes": 195472,
+              "file": "reference-95-SD.png",
+              "sha256": "3e0920f233366b743d7f02ea677becdbf71e941add2f01f4caf27ca983869955"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1601:O1664",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 192783,
+              "file": "reference-96-O.png",
+              "sha256": "e1df0672442544b7c06fae832abe996a5329fc4cfa874cfea68f1586e093d882"
+            },
+            {
+              "bytes": 192783,
+              "file": "reference-96-SD.png",
+              "sha256": "e1df0672442544b7c06fae832abe996a5329fc4cfa874cfea68f1586e093d882"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1665:O1728",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 197207,
+              "file": "reference-97-O.png",
+              "sha256": "4a4a63872a8b396d4a8191504b7112639aed6a00aaa11bc1549b076e7df00ae5"
+            },
+            {
+              "bytes": 197207,
+              "file": "reference-97-SD.png",
+              "sha256": "4a4a63872a8b396d4a8191504b7112639aed6a00aaa11bc1549b076e7df00ae5"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1729:O1792",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194520,
+              "file": "reference-98-O.png",
+              "sha256": "00e34dc1ef567ef8d08aae5a03ceffd3f6fe342d22adc2298de7f10be404866a"
+            },
+            {
+              "bytes": 194520,
+              "file": "reference-98-SD.png",
+              "sha256": "00e34dc1ef567ef8d08aae5a03ceffd3f6fe342d22adc2298de7f10be404866a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1793:O1856",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 193791,
+              "file": "reference-99-O.png",
+              "sha256": "228a6ddba5f11ac5687fbe5c439074eb5b5f420d36a86f716904823fee9e8456"
+            },
+            {
+              "bytes": 193791,
+              "file": "reference-99-SD.png",
+              "sha256": "228a6ddba5f11ac5687fbe5c439074eb5b5f420d36a86f716904823fee9e8456"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1857:O1920",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194884,
+              "file": "reference-100-O.png",
+              "sha256": "758fecd342c64b8ba4c767b90f9e2e0a092e8d3bef39767693e5fcefd5bdd1e9"
+            },
+            {
+              "bytes": 194884,
+              "file": "reference-100-SD.png",
+              "sha256": "758fecd342c64b8ba4c767b90f9e2e0a092e8d3bef39767693e5fcefd5bdd1e9"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1921:O1984",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196708,
+              "file": "reference-101-O.png",
+              "sha256": "286b4c6d4b876ebb79b90958ff1331f0178ff4a3e696af35bee5f41da6db5acb"
+            },
+            {
+              "bytes": 196708,
+              "file": "reference-101-SD.png",
+              "sha256": "286b4c6d4b876ebb79b90958ff1331f0178ff4a3e696af35bee5f41da6db5acb"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1985:O2048",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194550,
+              "file": "reference-102-O.png",
+              "sha256": "d2a41b9cbb00ccb1099f048a21032020032406d4475e8383d2a7e4c1fba60187"
+            },
+            {
+              "bytes": 194550,
+              "file": "reference-102-SD.png",
+              "sha256": "d2a41b9cbb00ccb1099f048a21032020032406d4475e8383d2a7e4c1fba60187"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2049:O2112",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194649,
+              "file": "reference-103-O.png",
+              "sha256": "b0d2ad098489bded7d8f33dfbd1ff1c04db31d253ef85c95828a1e8434e6552d"
+            },
+            {
+              "bytes": 194649,
+              "file": "reference-103-SD.png",
+              "sha256": "b0d2ad098489bded7d8f33dfbd1ff1c04db31d253ef85c95828a1e8434e6552d"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2113:O2176",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194191,
+              "file": "reference-104-O.png",
+              "sha256": "ca02b843310beb4e1dd3d2992208e02fee62fe2e89085439ebcb61fa720d8066"
+            },
+            {
+              "bytes": 194191,
+              "file": "reference-104-SD.png",
+              "sha256": "ca02b843310beb4e1dd3d2992208e02fee62fe2e89085439ebcb61fa720d8066"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2177:O2240",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195580,
+              "file": "reference-105-O.png",
+              "sha256": "6ae487b1560dce0d291a6e234293b14a35ada33a406bb6540513c2d6b018824d"
+            },
+            {
+              "bytes": 195580,
+              "file": "reference-105-SD.png",
+              "sha256": "6ae487b1560dce0d291a6e234293b14a35ada33a406bb6540513c2d6b018824d"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2241:O2304",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194440,
+              "file": "reference-106-O.png",
+              "sha256": "759d82900ca0f7a5fea68b371808316caac7180f46d7374ce07858ec85074460"
+            },
+            {
+              "bytes": 194440,
+              "file": "reference-106-SD.png",
+              "sha256": "759d82900ca0f7a5fea68b371808316caac7180f46d7374ce07858ec85074460"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2305:O2368",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 192248,
+              "file": "reference-107-O.png",
+              "sha256": "cee35310616f85f66bbc6d4c8319efb9d32c93fd1e25fa2170f3064add1db68f"
+            },
+            {
+              "bytes": 192248,
+              "file": "reference-107-SD.png",
+              "sha256": "cee35310616f85f66bbc6d4c8319efb9d32c93fd1e25fa2170f3064add1db68f"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2369:O2432",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 193742,
+              "file": "reference-108-O.png",
+              "sha256": "04d1be74ab3c2a24e76aad62f84dd990a2d85ed5fd12feaf674df67edf19ac36"
+            },
+            {
+              "bytes": 193742,
+              "file": "reference-108-SD.png",
+              "sha256": "04d1be74ab3c2a24e76aad62f84dd990a2d85ed5fd12feaf674df67edf19ac36"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2433:O2496",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194317,
+              "file": "reference-109-O.png",
+              "sha256": "d922f78cd623c41a1e1e541c0815eb2dfbf1ca0ed5393c14881d137bd5f9a136"
+            },
+            {
+              "bytes": 194317,
+              "file": "reference-109-SD.png",
+              "sha256": "d922f78cd623c41a1e1e541c0815eb2dfbf1ca0ed5393c14881d137bd5f9a136"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2497:O2560",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 197328,
+              "file": "reference-110-O.png",
+              "sha256": "4561d22f5cef2fc51c6080b7fba4788578ecaff78ae434edc8ad7ed29a453019"
+            },
+            {
+              "bytes": 197328,
+              "file": "reference-110-SD.png",
+              "sha256": "4561d22f5cef2fc51c6080b7fba4788578ecaff78ae434edc8ad7ed29a453019"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2561:O2624",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194551,
+              "file": "reference-111-O.png",
+              "sha256": "712725739a1ca31c1c9a1b3e56cf13c0f59b39ed231f6b97d1a71eae8b2306bd"
+            },
+            {
+              "bytes": 194551,
+              "file": "reference-111-SD.png",
+              "sha256": "712725739a1ca31c1c9a1b3e56cf13c0f59b39ed231f6b97d1a71eae8b2306bd"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2625:O2688",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195364,
+              "file": "reference-112-O.png",
+              "sha256": "3a78dadd67f4ee15e8b54cdf43a86fd7c454e24235b3b679baa6051ddf9843de"
+            },
+            {
+              "bytes": 195364,
+              "file": "reference-112-SD.png",
+              "sha256": "3a78dadd67f4ee15e8b54cdf43a86fd7c454e24235b3b679baa6051ddf9843de"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2689:O2752",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196049,
+              "file": "reference-113-O.png",
+              "sha256": "ee9f07013d9e08880f24b04b4a6c34a9c90b0c6413df57c676d10934a0c5b7f3"
+            },
+            {
+              "bytes": 196049,
+              "file": "reference-113-SD.png",
+              "sha256": "ee9f07013d9e08880f24b04b4a6c34a9c90b0c6413df57c676d10934a0c5b7f3"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2753:O2816",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 193664,
+              "file": "reference-114-O.png",
+              "sha256": "9a9590430e0d82fd58a9f330b9c12c7c9545610d5366ddd0ed847cd4ffdf1852"
+            },
+            {
+              "bytes": 193664,
+              "file": "reference-114-SD.png",
+              "sha256": "9a9590430e0d82fd58a9f330b9c12c7c9545610d5366ddd0ed847cd4ffdf1852"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2817:O2880",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195128,
+              "file": "reference-115-O.png",
+              "sha256": "24e3450e3c9fba844b31732d89eccd7cc00f0edf49a5997166c978b5fdf471ca"
+            },
+            {
+              "bytes": 195128,
+              "file": "reference-115-SD.png",
+              "sha256": "24e3450e3c9fba844b31732d89eccd7cc00f0edf49a5997166c978b5fdf471ca"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2881:O2944",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194946,
+              "file": "reference-116-O.png",
+              "sha256": "2966f3c00d4483a4b453518ba7ba7310cabaf66a95cf2bf3ca651fe26535f724"
+            },
+            {
+              "bytes": 194946,
+              "file": "reference-116-SD.png",
+              "sha256": "2966f3c00d4483a4b453518ba7ba7310cabaf66a95cf2bf3ca651fe26535f724"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2945:O3008",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195338,
+              "file": "reference-117-O.png",
+              "sha256": "2d23b34d84f26fb15797f8e1ee7d2349767dc3ef7380d4f2b694aa281b0b1c08"
+            },
+            {
+              "bytes": 195338,
+              "file": "reference-117-SD.png",
+              "sha256": "2d23b34d84f26fb15797f8e1ee7d2349767dc3ef7380d4f2b694aa281b0b1c08"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3009:O3072",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 193727,
+              "file": "reference-118-O.png",
+              "sha256": "8a4e7cd5b1385c4af78977b5579a975e4c975aca2798d590149d9cc6bcd6b3ff"
+            },
+            {
+              "bytes": 193727,
+              "file": "reference-118-SD.png",
+              "sha256": "8a4e7cd5b1385c4af78977b5579a975e4c975aca2798d590149d9cc6bcd6b3ff"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3073:O3136",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 192167,
+              "file": "reference-119-O.png",
+              "sha256": "642e56bf87bef83b1ad1049297799be065525e293b4da1cb1f65cc4316c9d173"
+            },
+            {
+              "bytes": 192167,
+              "file": "reference-119-SD.png",
+              "sha256": "642e56bf87bef83b1ad1049297799be065525e293b4da1cb1f65cc4316c9d173"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3137:O3200",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196087,
+              "file": "reference-120-O.png",
+              "sha256": "f3785d327e68a689e4f172ca8af4a77f5259b94954ec3cdd3fb9e106326baeff"
+            },
+            {
+              "bytes": 196087,
+              "file": "reference-120-SD.png",
+              "sha256": "f3785d327e68a689e4f172ca8af4a77f5259b94954ec3cdd3fb9e106326baeff"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3201:O3264",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194712,
+              "file": "reference-121-O.png",
+              "sha256": "7db99a524ad7dff99b6a454bd4945225acb417ecbacad08676d483ab52c6f24b"
+            },
+            {
+              "bytes": 194712,
+              "file": "reference-121-SD.png",
+              "sha256": "7db99a524ad7dff99b6a454bd4945225acb417ecbacad08676d483ab52c6f24b"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3265:O3328",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195656,
+              "file": "reference-122-O.png",
+              "sha256": "5d594f1addab506c27349239b8329a3ea3980c18bc0fff7d9539d2b2650aa7c5"
+            },
+            {
+              "bytes": 195656,
+              "file": "reference-122-SD.png",
+              "sha256": "5d594f1addab506c27349239b8329a3ea3980c18bc0fff7d9539d2b2650aa7c5"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3329:O3392",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195256,
+              "file": "reference-123-O.png",
+              "sha256": "cc508f52a3e38b05eca2f170c263094534f789cce9c074ebe4cb1b16fec39838"
+            },
+            {
+              "bytes": 195256,
+              "file": "reference-123-SD.png",
+              "sha256": "cc508f52a3e38b05eca2f170c263094534f789cce9c074ebe4cb1b16fec39838"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3393:O3456",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194077,
+              "file": "reference-124-O.png",
+              "sha256": "d9c811a01be32d0b8baabf857951ebc3f74a7e17684f65844bd9df386a7d13d6"
+            },
+            {
+              "bytes": 194077,
+              "file": "reference-124-SD.png",
+              "sha256": "d9c811a01be32d0b8baabf857951ebc3f74a7e17684f65844bd9df386a7d13d6"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3457:O3520",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194968,
+              "file": "reference-125-O.png",
+              "sha256": "5567d247c1177f1945476bff85ce2bb58718207dd1aebc249aefe85a2b4eb4b9"
+            },
+            {
+              "bytes": 194968,
+              "file": "reference-125-SD.png",
+              "sha256": "5567d247c1177f1945476bff85ce2bb58718207dd1aebc249aefe85a2b4eb4b9"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3521:O3584",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194272,
+              "file": "reference-126-O.png",
+              "sha256": "e03d10ea9b33e48273640af248c68d9a66e2b77aa16f7a472171cd6781f38fc6"
+            },
+            {
+              "bytes": 194272,
+              "file": "reference-126-SD.png",
+              "sha256": "e03d10ea9b33e48273640af248c68d9a66e2b77aa16f7a472171cd6781f38fc6"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3585:O3648",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 192526,
+              "file": "reference-127-O.png",
+              "sha256": "eb65f34df2a727ee9fa06b36188c4a19fb602151655a47420d07775662184bc2"
+            },
+            {
+              "bytes": 192526,
+              "file": "reference-127-SD.png",
+              "sha256": "eb65f34df2a727ee9fa06b36188c4a19fb602151655a47420d07775662184bc2"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3649:O3712",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 190332,
+              "file": "reference-128-O.png",
+              "sha256": "447316a3088fea7abc3c0611619633d86146ed36504d28d2f3e2446e15f08835"
+            },
+            {
+              "bytes": 190332,
+              "file": "reference-128-SD.png",
+              "sha256": "447316a3088fea7abc3c0611619633d86146ed36504d28d2f3e2446e15f08835"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3713:O3776",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195240,
+              "file": "reference-129-O.png",
+              "sha256": "0f9f2e1eec589f3b773da4fcd9a2b0ca066db047ec31963c63ca8de5256e3c8e"
+            },
+            {
+              "bytes": 195240,
+              "file": "reference-129-SD.png",
+              "sha256": "0f9f2e1eec589f3b773da4fcd9a2b0ca066db047ec31963c63ca8de5256e3c8e"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3777:O3840",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 198463,
+              "file": "reference-130-O.png",
+              "sha256": "c028e5ec0a2ea5daee97625b90150029b4603bde66c522b59d029846afc28569"
+            },
+            {
+              "bytes": 198463,
+              "file": "reference-130-SD.png",
+              "sha256": "c028e5ec0a2ea5daee97625b90150029b4603bde66c522b59d029846afc28569"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3841:O3904",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 197589,
+              "file": "reference-131-O.png",
+              "sha256": "75656d3452135c86cb3bcff30f84ba1294f32f436826724e3c8ceb413041fb84"
+            },
+            {
+              "bytes": 197589,
+              "file": "reference-131-SD.png",
+              "sha256": "75656d3452135c86cb3bcff30f84ba1294f32f436826724e3c8ceb413041fb84"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3905:O3968",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195443,
+              "file": "reference-132-O.png",
+              "sha256": "0484d444f56c50921c4a141cde807dd342220458adb2e51991851e3f59870b50"
+            },
+            {
+              "bytes": 195443,
+              "file": "reference-132-SD.png",
+              "sha256": "0484d444f56c50921c4a141cde807dd342220458adb2e51991851e3f59870b50"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3969:O4032",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 197521,
+              "file": "reference-133-O.png",
+              "sha256": "8302418c438510a937c62e35594e221f29314e89db8266e041738b1fb6301df1"
+            },
+            {
+              "bytes": 197521,
+              "file": "reference-133-SD.png",
+              "sha256": "8302418c438510a937c62e35594e221f29314e89db8266e041738b1fb6301df1"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4033:O4096",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 195807,
+              "file": "reference-134-O.png",
+              "sha256": "c8520b567ee248db42aa8ddcdca09ee022068efa9a53dfd1928500caba2d9a2b"
+            },
+            {
+              "bytes": 195807,
+              "file": "reference-134-SD.png",
+              "sha256": "c8520b567ee248db42aa8ddcdca09ee022068efa9a53dfd1928500caba2d9a2b"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4097:O4160",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 194244,
+              "file": "reference-135-O.png",
+              "sha256": "82f190dcf03788f3d9bdde4a79fc0cd3cc25cf0395278f30b0267f34873e8d91"
+            },
+            {
+              "bytes": 194244,
+              "file": "reference-135-SD.png",
+              "sha256": "82f190dcf03788f3d9bdde4a79fc0cd3cc25cf0395278f30b0267f34873e8d91"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4161:O4224",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 196716,
+              "file": "reference-136-O.png",
+              "sha256": "737c2fe21d5712fa24bc51ed6d5a6ca8c7fc6b82053ecfd5aa521a7f498b0279"
+            },
+            {
+              "bytes": 196716,
+              "file": "reference-136-SD.png",
+              "sha256": "737c2fe21d5712fa24bc51ed6d5a6ca8c7fc6b82053ecfd5aa521a7f498b0279"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4225:O4288",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 193654,
+              "file": "reference-137-O.png",
+              "sha256": "c7bf005ca250aa2b200daf18d1e61764bff6fe7c92c31f89128a2a09fac62c5f"
+            },
+            {
+              "bytes": 193654,
+              "file": "reference-137-SD.png",
+              "sha256": "c7bf005ca250aa2b200daf18d1e61764bff6fe7c92c31f89128a2a09fac62c5f"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4289:O4352",
+          "dimensions": [
+            961,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 192254,
+              "file": "reference-138-O.png",
+              "sha256": "80a5b4d0a98f7cae81ee236ce437062fcb27dbd8aadea703e58f0a7155e97cbe"
+            },
+            {
+              "bytes": 192254,
+              "file": "reference-138-SD.png",
+              "sha256": "80a5b4d0a98f7cae81ee236ce437062fcb27dbd8aadea703e58f0a7155e97cbe"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4353:O4385",
+          "dimensions": [
+            961,
+            661
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 98792,
+              "file": "reference-139-O.png",
+              "sha256": "75d41e8d8bbed05ad7c8e2b29df77d6d92c438269f425e4296edb4af7accf832"
+            },
+            {
+              "bytes": 98792,
+              "file": "reference-139-SD.png",
+              "sha256": "75d41e8d8bbed05ad7c8e2b29df77d6d92c438269f425e4296edb4af7accf832"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1:N64",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 180957,
+              "file": "reference-140-O.png",
+              "sha256": "1920675955178ca1c55162cb3945490b6848e457a5bc925925fed92a996914ba"
+            },
+            {
+              "bytes": 180957,
+              "file": "reference-140-SD.png",
+              "sha256": "1920675955178ca1c55162cb3945490b6848e457a5bc925925fed92a996914ba"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A65:N128",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 178791,
+              "file": "reference-141-O.png",
+              "sha256": "5030f01ff33ef84904e7492822236dccbf74fa5d4fbb6d08ba9f9351c6f2843a"
+            },
+            {
+              "bytes": 178791,
+              "file": "reference-141-SD.png",
+              "sha256": "5030f01ff33ef84904e7492822236dccbf74fa5d4fbb6d08ba9f9351c6f2843a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A129:N192",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 178330,
+              "file": "reference-142-O.png",
+              "sha256": "92ea0a131b0fdcd89f189fc2132815d8d587beedf6ac3b94f3a456b28b07a61a"
+            },
+            {
+              "bytes": 178330,
+              "file": "reference-142-SD.png",
+              "sha256": "92ea0a131b0fdcd89f189fc2132815d8d587beedf6ac3b94f3a456b28b07a61a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A193:N256",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 175020,
+              "file": "reference-143-O.png",
+              "sha256": "d390eeed1b22118c5ab4008a24c505515883d92f80c36d3ec92a190bc180d54b"
+            },
+            {
+              "bytes": 175020,
+              "file": "reference-143-SD.png",
+              "sha256": "d390eeed1b22118c5ab4008a24c505515883d92f80c36d3ec92a190bc180d54b"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A257:N320",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 176264,
+              "file": "reference-144-O.png",
+              "sha256": "81ca9324a9ede9de4f11b4da8ec8f7a316bb8c9296724a45bdb496eb6b628907"
+            },
+            {
+              "bytes": 176264,
+              "file": "reference-144-SD.png",
+              "sha256": "81ca9324a9ede9de4f11b4da8ec8f7a316bb8c9296724a45bdb496eb6b628907"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A321:N384",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 174533,
+              "file": "reference-145-O.png",
+              "sha256": "0c4a39fbeadd426a46c89c8a1fce6978f09f3125bffab304805fbe12e5edd599"
+            },
+            {
+              "bytes": 174533,
+              "file": "reference-145-SD.png",
+              "sha256": "0c4a39fbeadd426a46c89c8a1fce6978f09f3125bffab304805fbe12e5edd599"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A385:N448",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 174370,
+              "file": "reference-146-O.png",
+              "sha256": "c82c15724b7be239ef548f57df14551bc549bd6e936f3afd4e0baf705962167f"
+            },
+            {
+              "bytes": 174370,
+              "file": "reference-146-SD.png",
+              "sha256": "c82c15724b7be239ef548f57df14551bc549bd6e936f3afd4e0baf705962167f"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A449:N512",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 176532,
+              "file": "reference-147-O.png",
+              "sha256": "164a362befc6a6b4c0317b7f15796673c000cbc0e6c5de87b07f29e91ed3c2ce"
+            },
+            {
+              "bytes": 176532,
+              "file": "reference-147-SD.png",
+              "sha256": "164a362befc6a6b4c0317b7f15796673c000cbc0e6c5de87b07f29e91ed3c2ce"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A513:N576",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 178168,
+              "file": "reference-148-O.png",
+              "sha256": "e9e2da7f767219ac5d5838e85953e373b2443d66c900b3bb51cb2a2da4d10cf7"
+            },
+            {
+              "bytes": 178168,
+              "file": "reference-148-SD.png",
+              "sha256": "e9e2da7f767219ac5d5838e85953e373b2443d66c900b3bb51cb2a2da4d10cf7"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A577:N640",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 175456,
+              "file": "reference-149-O.png",
+              "sha256": "5d7a04335ecf90f06602c3e39b86c274d1085ffd543059e612b4809d42d1b971"
+            },
+            {
+              "bytes": 175456,
+              "file": "reference-149-SD.png",
+              "sha256": "5d7a04335ecf90f06602c3e39b86c274d1085ffd543059e612b4809d42d1b971"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A641:N704",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 173340,
+              "file": "reference-150-O.png",
+              "sha256": "6d20df49ac715d15c29ab0b02166dd1284293c948ce0837bc8aad6b9b14a07c3"
+            },
+            {
+              "bytes": 173340,
+              "file": "reference-150-SD.png",
+              "sha256": "6d20df49ac715d15c29ab0b02166dd1284293c948ce0837bc8aad6b9b14a07c3"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A705:N768",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 175454,
+              "file": "reference-151-O.png",
+              "sha256": "0cf880dbe82723ca72c49023a872a3dd011b8792fe23a5b1f4f7b9e9703b37d1"
+            },
+            {
+              "bytes": 175454,
+              "file": "reference-151-SD.png",
+              "sha256": "0cf880dbe82723ca72c49023a872a3dd011b8792fe23a5b1f4f7b9e9703b37d1"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A769:N832",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 174191,
+              "file": "reference-152-O.png",
+              "sha256": "daba70f97698bc909b1b51da232a17dc9f144931a9bc6732814906a00a8fa63a"
+            },
+            {
+              "bytes": 174191,
+              "file": "reference-152-SD.png",
+              "sha256": "daba70f97698bc909b1b51da232a17dc9f144931a9bc6732814906a00a8fa63a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A833:N896",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 177150,
+              "file": "reference-153-O.png",
+              "sha256": "7116aaf1e2465ce4b94f321a3cec73054ab5b279624523cf83b831dc7e782cdd"
+            },
+            {
+              "bytes": 177150,
+              "file": "reference-153-SD.png",
+              "sha256": "7116aaf1e2465ce4b94f321a3cec73054ab5b279624523cf83b831dc7e782cdd"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A897:N960",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 177484,
+              "file": "reference-154-O.png",
+              "sha256": "908e784d814c5b2d810739ded384c57bbca26fc14799a66a0acf78f158dc0716"
+            },
+            {
+              "bytes": 177484,
+              "file": "reference-154-SD.png",
+              "sha256": "908e784d814c5b2d810739ded384c57bbca26fc14799a66a0acf78f158dc0716"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A961:N1024",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 175488,
+              "file": "reference-155-O.png",
+              "sha256": "63ca99a7b5ed6cb242f30801a46004e11a3bbe7311ac09a8e4b06a37a3d9a0b1"
+            },
+            {
+              "bytes": 175488,
+              "file": "reference-155-SD.png",
+              "sha256": "63ca99a7b5ed6cb242f30801a46004e11a3bbe7311ac09a8e4b06a37a3d9a0b1"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1025:N1088",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 175973,
+              "file": "reference-156-O.png",
+              "sha256": "c78ea0efac5803b36ba7c7b535b5e9d745fb2c799f4d54dfebad18a241a2098d"
+            },
+            {
+              "bytes": 175973,
+              "file": "reference-156-SD.png",
+              "sha256": "c78ea0efac5803b36ba7c7b535b5e9d745fb2c799f4d54dfebad18a241a2098d"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1089:N1152",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 175899,
+              "file": "reference-157-O.png",
+              "sha256": "bb68de1f98c1d60887b1a0017217407b6fef77896f3bf8906cdcfdbee5b27d16"
+            },
+            {
+              "bytes": 175899,
+              "file": "reference-157-SD.png",
+              "sha256": "bb68de1f98c1d60887b1a0017217407b6fef77896f3bf8906cdcfdbee5b27d16"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1153:N1216",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 176379,
+              "file": "reference-158-O.png",
+              "sha256": "417543b420eb79fe5b47f9c6ea29e5ca357441c1cd5f868300860d8844efb400"
+            },
+            {
+              "bytes": 176379,
+              "file": "reference-158-SD.png",
+              "sha256": "417543b420eb79fe5b47f9c6ea29e5ca357441c1cd5f868300860d8844efb400"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1217:N1280",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 176471,
+              "file": "reference-159-O.png",
+              "sha256": "8112f952cdb130a628708136a846795ba85b1f805b8d4468d801a161d0e1086a"
+            },
+            {
+              "bytes": 176471,
+              "file": "reference-159-SD.png",
+              "sha256": "8112f952cdb130a628708136a846795ba85b1f805b8d4468d801a161d0e1086a"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1281:N1344",
+          "dimensions": [
+            897,
+            1281
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 176658,
+              "file": "reference-160-O.png",
+              "sha256": "c9aeca6d0679df5c827c6480b0c1d577933a58ac9631d9c45353beb4b7f2cc68"
+            },
+            {
+              "bytes": 176658,
+              "file": "reference-160-SD.png",
+              "sha256": "c9aeca6d0679df5c827c6480b0c1d577933a58ac9631d9c45353beb4b7f2cc68"
+            }
+          ]
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1345:N1397",
+          "dimensions": [
+            897,
+            1061
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 145630,
+              "file": "reference-161-O.png",
+              "sha256": "28774bc4a9b767defdd8b93f4b4fd43591ba6745216b14d8b472c599edef2398"
+            },
+            {
+              "bytes": 145630,
+              "file": "reference-161-SD.png",
+              "sha256": "28774bc4a9b767defdd8b93f4b4fd43591ba6745216b14d8b472c599edef2398"
+            }
+          ]
+        },
+        {
+          "sheet": "Supplementary data_chem potency",
+          "range": "A1:I61",
+          "dimensions": [
+            818,
+            1418
+          ],
+          "pixels_equal": true,
+          "images": [
+            {
+              "bytes": 177913,
+              "file": "reference-162-O.png",
+              "sha256": "0458ade1f188abc06257630169988cdc6c1cf932f67eb89b22ecbd349d47f03c"
+            },
+            {
+              "bytes": 177913,
+              "file": "reference-162-SD.png",
+              "sha256": "0458ade1f188abc06257630169988cdc6c1cf932f67eb89b22ecbd349d47f03c"
+            }
+          ]
+        }
+      ],
+      "plan": [
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1:AU64"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A65:AU128"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A129:AU192"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A193:AU256"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A257:AU320"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A321:AU384"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A385:AU448"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A449:AU512"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A513:AU576"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A577:AU640"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A641:AU704"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A705:AU768"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A769:AU832"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A833:AU896"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A897:AU960"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A961:AU1024"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1025:AU1088"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1089:AU1152"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1153:AU1216"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1217:AU1280"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1281:AU1344"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1345:AU1408"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1409:AU1472"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1473:AU1536"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1537:AU1600"
+        },
+        {
+          "sheet": "ECOTOX_case study 2",
+          "range": "A1601:AU1627"
+        },
+        {
+          "sheet": "ECOTOX_case study 3",
+          "range": "A1:AJ64"
+        },
+        {
+          "sheet": "ECOTOX_case study 3",
+          "range": "A65:AJ123"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A1:Z64"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A65:Z128"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A129:Z192"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A193:Z256"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A257:Z320"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A321:Z384"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A385:Z448"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A449:Z512"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A513:Z576"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A577:Z640"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A641:Z704"
+        },
+        {
+          "sheet": "SeqAPASS_EcR Dmagna L1",
+          "range": "A705:Z727"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A1:N64"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A65:N128"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A129:N192"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A193:N256"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A257:N320"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A321:N384"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A385:N448"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A449:N512"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A513:N576"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A577:N640"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A641:N704"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L1",
+          "range": "A705:N742"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A1:O64"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A65:O128"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A129:O192"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A193:O256"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A257:O320"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A321:O384"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A385:O448"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A449:O512"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A513:O576"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A577:O640"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L2",
+          "range": "A641:O696"
+        },
+        {
+          "sheet": "SeqAPASS_EcR_budworm L3",
+          "range": "A1:AI12"
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A1:Z64"
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A65:Z128"
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A129:Z192"
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A193:Z256"
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A257:Z320"
+        },
+        {
+          "sheet": "SeqAPASS_GABAR_taurus L1",
+          "range": "A321:Z373"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L1",
+          "range": "A1:N51"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1:O64"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A65:O128"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A129:O192"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A193:O256"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A257:O320"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A321:O384"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A385:O448"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A449:O512"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A513:O576"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A577:O640"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A641:O704"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A705:O768"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A769:O832"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A833:O896"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A897:O960"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A961:O1024"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1025:O1088"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1089:O1152"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1153:O1216"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1217:O1280"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1281:O1344"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1345:O1408"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1409:O1472"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1473:O1536"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1537:O1600"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1601:O1664"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1665:O1728"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1729:O1792"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1793:O1856"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1857:O1920"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1921:O1984"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A1985:O2048"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2049:O2112"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2113:O2176"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2177:O2240"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2241:O2304"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2305:O2368"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2369:O2432"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2433:O2496"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2497:O2560"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2561:O2624"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2625:O2688"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2689:O2752"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2753:O2816"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2817:O2880"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2881:O2944"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A2945:O3008"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3009:O3072"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3073:O3136"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3137:O3200"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3201:O3264"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3265:O3328"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3329:O3392"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3393:O3456"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3457:O3520"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3521:O3584"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3585:O3648"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3649:O3712"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3713:O3776"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3777:O3840"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3841:O3904"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3905:O3968"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A3969:O4032"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4033:O4096"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4097:O4160"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4161:O4224"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4225:O4288"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4289:O4352"
+        },
+        {
+          "sheet": "SeqAPASS_5HTT_human L2",
+          "range": "A4353:O4385"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1:N64"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A65:N128"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A129:N192"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A193:N256"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A257:N320"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A321:N384"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A385:N448"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A449:N512"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A513:N576"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A577:N640"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A641:N704"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A705:N768"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A769:N832"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A833:N896"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A897:N960"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A961:N1024"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1025:N1088"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1089:N1152"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1153:N1216"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1217:N1280"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1281:N1344"
+        },
+        {
+          "sheet": "SeqAPASS_Nav1_rat L1",
+          "range": "A1345:N1397"
+        },
+        {
+          "sheet": "Supplementary data_chem potency",
+          "range": "A1:I61"
+        }
+      ],
+      "plan_sha256": "601311976c30719f1f93accaa1d3c503aa38b3c6a6da853e002a7786ce3b03e3",
+      "targeted": {
+        "status": "completed_with_limitations",
+        "candidate_count": 3,
+        "observations": [
+          {
+            "sheet": "ECOTOX_case study 2",
+            "range": "A1:AF128",
+            "dimensions": [
+              2761,
+              2374
+            ],
+            "pixels_equal": true,
+            "image_sha256": [
+              "3ed5c86424544f6a3a4e3c4a7272cfab1a8f02a5fe98f99e855d5d8309cfa0f1",
+              "3ed5c86424544f6a3a4e3c4a7272cfab1a8f02a5fe98f99e855d5d8309cfa0f1"
+            ]
+          },
+          {
+            "sheet": "SeqAPASS_EcR_budworm L3",
+            "range": "A1:AF12",
+            "dimensions": [
+              2052,
+              261
+            ],
+            "pixels_equal": true,
+            "image_sha256": [
+              "43401697fdc71f1050c18c2877f64a9679abdbc44a4d528fdb6007c3e2fa2b42",
+              "43401697fdc71f1050c18c2877f64a9679abdbc44a4d528fdb6007c3e2fa2b42"
+            ]
+          },
+          {
+            "sheet": "Supplementary data_chem potency",
+            "range": "A1:G56",
+            "dimensions": [
+              690,
+              1318
+            ],
+            "pixels_equal": true,
+            "image_sha256": [
+              "68624626fbc4636af2f07bb814c8ad8a60d97934cb617036fd79f09b90fa358d",
+              "68624626fbc4636af2f07bb814c8ad8a60d97934cb617036fd79f09b90fa358d"
+            ]
+          }
+        ],
+        "receipt_sha256": "e8e8615b88ee49f6186bea8183968c81a13713cde4cfae7b507b5c639dd89d1c"
+      }
+    }
+  ],
+  "limitations": [
+    "Original failed 256-row reference observations remain retained separately.",
+    "Supplementary partition chosen after geometric image-limit failures, independently of targeted selection and pixel outcomes.",
+    "No changed native pixels in the successful reference areas, so no corpus recall or changed-case sensitivity estimate.",
+    "Prior development exposure unclassified. Native object qualification concerns reported bounds, excluding unsupported decorative ink."
+  ]
+}
