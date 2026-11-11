@@ -122,3 +122,10 @@ inputs and a cached-formula fixture. All four completed, with rebuild phases
 between0.048 and0.175seconds. The fixture's stale cached values were recalculated
 to14 and15. Earlier manual-mode probes reached their60-second guard with
 `xlPending`; those observations remain separate from successful results.
+
+A returned rebuild call that continuously reports `xlPending` for30seconds is
+an explicit failed attempt. This bounds otherwise idle workers without treating
+pending results as successful. Active `xlCalculating` periods retain the outer
+stall guard. User-defined functions can occur in affected inputs, but their
+presence alone is not recorded as a proven cause. Failed copies and diagnostic
+receipts remain available for fresh-session investigation.

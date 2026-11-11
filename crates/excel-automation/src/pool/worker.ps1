@@ -166,7 +166,16 @@ try {
                     stage='full_rebuild_returned';state=$calculationState
                     updated_utc=[DateTime]::UtcNow.ToString('o')
                 }
+                $pendingClock = $null
                 while ($calculationState -ne 0) {
+                    if ($calculationState -eq 2) {
+                        if ($null -eq $pendingClock) { $pendingClock = [Diagnostics.Stopwatch]::StartNew() }
+                        if ($pendingClock.Elapsed.TotalSeconds -ge 30) {
+                            throw 'Full rebuild returned but Excel remained xlPending for 30 seconds; calculation completion could not be verified.'
+                        }
+                    } else {
+                        $pendingClock = $null
+                    }
                     Start-Sleep -Milliseconds 100
                     $nextState = $excel.CalculationState
                     if ($nextState -ne $calculationState) {

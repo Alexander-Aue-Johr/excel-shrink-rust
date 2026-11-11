@@ -857,6 +857,7 @@ mod tests {
         assert!(script.contains("stage='full_rebuild_returned'"));
         assert!(script.contains("$excel.Calculation = -4105"));
         assert!(script.contains("automatic_full_rebuild_then_manual_save"));
+        assert!(script.contains("Excel remained xlPending for 30 seconds"));
     }
 
     #[test]
