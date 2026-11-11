@@ -73,7 +73,30 @@ pass. Browser checks exercised the four-workbook/161-sheet case-study view,
 the ordinary nine-workbook Destatis view and source-corpus labels on book detail.
 Publication commit `f7cb008` retains all 125 detail payloads byte-identically.
 The normalized Migration baseline is not substituted for the raw-original case.
-The bounded 4/24 GiB library follow-up and native QT/RR comparisons continue.
+The bounded 4/24 GiB follow-up completed all sixty trials. All thirty fresh
+SheetShrink-plus-library endpoints completed. Nine Original endpoints completed
+at 24 GiB, with twenty-one Original memory-limit stops across both limits.
+Completed Original/pipeline median ratios at 24 GiB are 2.97 for Migration/readxl,
+16.46 for Finance/openpyxl and 24.28 for QT/RR/openpyxl. Failed pandas endpoints
+retain censoring and receive no completed-runtime ratios. Both physical RAM and
+commit minima remained above the declared 8 GiB system reserve.
+
+Paper commit `655e2872` publishes the protocol, sixty path-free trial receipts,
+frozen measured-code bytes, phase and aggregate resource summaries, representative
+native candidate identity controls, manuscript interpretation and both rebuilt
+PDFs. Eight committed source files match the recorded byte hashes. The two pure
+reserve tests pass. All three separately regenerated controls match their native
+candidate's full member manifest, with Migration's normalized baseline and
+QT/RR's zero-capture scope explicit. Per-trial full member inventories remain
+unavailable. The timed outputs retain their archive hashes. A source-code snapshot
+preserves the measured Windows RAM/commit guard implementation for reproduction.
+The existing title-graphic height warning remains outside this evaluation change.
+
+Native QT/RR comparisons continue. Two older Check Performance resource outputs
+have distinct member identities from the stage-nine outputs, documented in
+`../visual-validation/experiments/opening-memory-resource-output-identity-20261111.json`.
+Their exact retained Finance native reports have been requested through the
+private handover before attempting a resource/native observation merge.
 
 ### Urgent complete-corpus distributions on 2026-11-11
 
