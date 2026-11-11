@@ -129,7 +129,7 @@
     "The Original first-sheet prefix contains an inherited thin bottom row border. The sampled Inquire prefix has no row-style attributes. This prefix sample does not prove all rows or all cells are equivalent or different.",
     "A whole-width inherited border can remain visible far beyond value cells. A safe reduction needs a proof for repeated tail formatting and retained finite transitions, together with layout dependencies. Merely clipping to populated cells would omit potential changes."
   ],
-  "visual_verdict": "pending ongoing native comparison",
+  "visual_verdict": "Native comparison completed with limitations; outer report publication remains pending",
   "xml_selection_diagnostic": {
     "source_commit": "66824174",
     "diagnostic_sha256": "3a9a0fc7bc682f785ee77b43199d87fb2a3ee035aa120dd4f8958a27f877e618",
@@ -334,5 +334,49 @@
       ]
     },
     "interpretation": "The current read-only selector reports eleven content-bearing sheets selected by changed defaults and unmodeled layout metadata. Header differences exist in twelve worksheet parts, including a sheet without selected visible content. This diagnostic is separate from the frozen ongoing native attempt."
+  },
+  "native_followup": {
+    "status": "completed_with_limitations",
+    "native_report_sha256": "c09c065c626c5e13b054b2927609b3b9cdb7ea62f51f64dc698ae5cb08d9579d",
+    "elapsed_seconds": 70196.957,
+    "measured_regions": 90112,
+    "individual_images": 180224,
+    "pixel_differences": 1408,
+    "geometry_differences": 0,
+    "rendering_presence_differences": 0,
+    "changed_observations_per_sheet": {
+      "SHR1 DE": 128,
+      "SHR10 Air": 128,
+      "SHR11 Air": 128,
+      "SHR2 DE": 128,
+      "SHR3 DE": 128,
+      "SHR4 DE": 128,
+      "SHR5 DE": 128,
+      "SHR6 DE": 128,
+      "SHR7 Air": 128,
+      "SHR8 Air": 128,
+      "SHR9 Air": 128
+    },
+    "timings_ms": {
+      "capture_selection_and_transport": 69733099,
+      "image_comparisons": 267546
+    },
+    "image_comparison_statistics": {
+      "comparisons": 90112,
+      "files_read": 180224,
+      "decoded_images": 718,
+      "encoded_images_reused": 179506,
+      "encoded_bytes_read": 34310245346
+    },
+    "inspected_example": {
+      "range": "A1:DX100",
+      "observation": "The Original image contains a horizontal border extending far right of the values. The Inquire image lacks that line. This inspected pair supports a visible border-removal finding. Other observations retain individual review requirements.",
+      "sheet": "SHR1 DE",
+      "geometry_points": {
+        "width": 6144,
+        "height": 1275
+      }
+    },
+    "interpretation": "The 90112-region selected plan completed; this is finite-height, whole-width coverage, not a complete 1048576-row grid. Pixel differences are region observations and are not independent defects. No accelerated replacement trial exists for this case, so no method speedup is claimed. Outer report publication and Atlas integration remain pending."
   }
 }
