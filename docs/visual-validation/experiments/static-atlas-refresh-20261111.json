@@ -29,5 +29,26 @@
     "Browser opened ScienceHub table S4, A1000517:I1001062, Original versus NXPowerLite, and rendered the grey-band versus white image detail"
   ],
   "local_correction": "The initial derived catalog was generated before the copied cohort and labels were re-read. It was rebuilt and a separate corrected public export was checked before deployment. The initial unclassified presentation was not published.",
-  "remaining": "The two QT/RR native comparisons and offline first-pass/retry work remain incomplete. This snapshot does not establish completion of every selected comparison or classify every observed difference."
+  "remaining": "The two QT/RR native comparisons and offline first-pass/retry work remain incomplete. This snapshot does not establish completion of every selected comparison or classify every observed difference.",
+  "subsequent_refresh": {
+    "paper_pages_commit": "a2b039c6e4f30854261f69f7d708fb7b79f19cf2",
+    "image_pages_commit": "70546e4145c7e7b6215300768f1efc8b052048e4",
+    "merged_sources": 45,
+    "merged_observations": 418,
+    "exact_detail_payloads": 408,
+    "verified_source_png_paths": 19251,
+    "unique_presentation_assets": 15549,
+    "published_site_bytes": {
+      "images_including_retained_older_assets": 946125576,
+      "paper": 893993361
+    },
+    "pages_workflows": {
+      "conclusion": "success",
+      "images": 43078174685,
+      "paper": 43078213411
+    },
+    "https_image_sha256": "1e07adeacd97401142d2369333c4a9007a24f90c9e0aa633b3e70adaf1bec6fc",
+    "https_verification": "Fresh HTTPS retrieval with deployment-specific query matched SHA-256. Initial unversioned request returned a cached404 during publication propagation.",
+    "remaining": "Latest isolated Low-Temperature and CyanoPhyto recoveries are excluded from this published snapshot. QT/RR B and offline first-pass/retry work continue. Earlier failures remain retained."
+  }
 }
