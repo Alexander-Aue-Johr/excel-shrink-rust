@@ -1132,6 +1132,14 @@ pass. Startup documentation identifies the current VS Code task and separates
 the legacy PowerShell configuration path. This verifies argument handoff only.
 Full ordinary-startup and relocated native resume acceptance remains open.
 
+A follow-up HTTP check exercised this starter with a frozen real release
+executable. The session returned the supplied partition and independent worker
+settings, remained idle and created no study output. Three accepted local
+hostnames returned 200, an unlisted hostname returned 403, and an occupied-port
+start failed while the first listener stayed available. Details and test scope
+are in `../visual-validation/experiments/ordinary-start-prefill-20261111.md`.
+Native start/resume and browser rendering remain separate acceptance work.
+
 ## 05 Add stable local service names
 
 - [ ] Expose understandable local addresses using the DeltaSieve name.
