@@ -26,6 +26,17 @@ throughput gain or causes resource pressure. Keep memory guards active and
 retain trial settings, timing windows and observed work counts. Existing
 in-flight comparisons and their evidence remain intact.
 
+The later twelve-range operator trial supplied an unsupported 384-MP package
+budget to a runtime capped at 256 MP. That comparison failed after retaining
+111,648 individual images. A separate complete retry uses byte-identical inputs,
+eight ranges and 256 MP. The existing runtime cannot resume individual capture
+checkpoints, so those retained images are historical evidence rather than reused
+captures in the retry. Completion remains pending. Preserve this failed operator
+experiment and its recovery separately from successful throughput measurements.
+Before direct control-file writes, validate every value against the exact
+runtime's bounds. Prefer its validated API where available. See
+`docs/visual-validation/experiments/rejected-capture-budget-20261111.json`.
+
 ### Submission-scope correction on 2026-11-11
 
 The author is shortening both manuscripts and now prioritizes verification of

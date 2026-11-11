@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-11-11T13:33:24Z",
+  "case": "Data.gov QT_RR data_dobutamine challenge test_Hazari_Dec 2015_84eb838fbc46.xlsx, Original versus Inquire",
+  "runtime_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "capture_policy": "targeted-content-grid-v15",
+  "baseline_controls": {
+    "capture_batch_ranges": 8,
+    "capture_batch_megapixels": 256
+  },
+  "baseline_successful_images_per_second": 3.198347520447626,
+  "attempted_controls": {
+    "capture_batch_ranges": 12,
+    "capture_batch_megapixels": 384
+  },
+  "outcome": "operator-induced failure",
+  "error": "Batch size must be 1..=256",
+  "cause": "The operator wrote controls directly without first checking the running version's 256-MP maximum. The native reader rejected the unsupported budget and ended the comparison.",
+  "trial_throughput_result": null,
+  "retained_capture_counts": {
+    "OR": 55824,
+    "SDR": 55824
+  },
+  "failed_partial_report_sha256": "53515d50503847c67c311498568dd13c463b0414689e75b748f6f6788352b547",
+  "rollback": "Previous 8-range, 256-MP controls restored. Raw images, resident responses, XML controls and failed report preserved.",
+  "recovery": {
+    "kind": "separate complete attempt",
+    "accepted": true,
+    "original_sha256": "84eb838fbc4627fb2ca1dd8461e8a05493a0b31ade8e27c66b437a22d932a577",
+    "inquire_sha256": "236ef931ee0123022701729b4ba95087c3bd303fb7682ce8729268c2f8578bea",
+    "partial_capture_checkpoint_reused": false,
+    "controls": {
+      "capture_batch_ranges": 8,
+      "capture_batch_megapixels": 256
+    },
+    "system_reserve_gib": 8,
+    "completion": "pending"
+  },
+  "operational_rule": "Use the version's validated control API when available. Before any direct control-file update, validate all fields against that exact runtime's supported bounds. Increasing range count does not authorize increasing the independent pixel budget beyond its maximum.",
+  "scientific_interpretation": "This attempt provides no twelve-range throughput result and no complete visual equality verdict. Preserve it as a failed operator experiment, independently of the successful earlier eight-range measurements."
+}
