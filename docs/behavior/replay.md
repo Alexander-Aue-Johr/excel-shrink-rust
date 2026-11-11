@@ -75,6 +75,14 @@ the number of published chunks. The writer avoids rewriting the growing
 manifest for each chunk. Recording errors are surfaced through the run's
 existing progress/publication failure path.
 
+A fresh debug-process test on 2026-11-11 recorded and verified 100,000 synthetic
+checkpoints in 3,125 chunks. Windows lifetime counters reported a 14.88-MiB peak
+working set and 9.81-MiB peak committed memory for the entire test process.
+The experiment and its scope are recorded in
+`../visual-validation/experiments/replay-cost-20261108.md` and the adjacent
+`replay-cost-20261111.json`. Detailed recording channels and browser memory need
+separate measurements.
+
 ## Static export validation
 
 The ordinary static exporter verifies complete replay channels before copying

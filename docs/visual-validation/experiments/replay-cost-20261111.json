@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "exit_code": 0,
+  "wall_seconds": 19.463979399999516,
+  "binary_sha256": "c1aa88af82cd7ed05cbfacb64526c6581c46be01c5fc4ce46e6be479fb962638",
+  "resources": {
+    "peak_working_set_bytes": 15597568,
+    "peak_committed_bytes": 10285056,
+    "private_at_exit_bytes": 77824
+  },
+  "scope": "Fresh debug test process lifetime, including recording and verification; Windows GetProcessMemoryInfo peak counters queried through retained process handle after exit. Concurrent production captures remain active.",
+  "recording": {
+    "chunks": 3125,
+    "compressed_chunk_bytes": 1777877,
+    "events": 100000,
+    "journal_bytes": 658326,
+    "limitations": "serialized-byte bounds do not measure allocator or process peak memory",
+    "manifest_bytes": 865134,
+    "maximum_decoded_chunk_bytes": 6625,
+    "maximum_pending_serialized_bytes": 6386,
+    "recording_seconds": 17.9375559,
+    "synthetic": true
+  },
+  "test": "validation::replay::tests::corpus_sized_recording_retains_bounded_chunks",
+  "test_result": {
+    "passed": 1,
+    "failed": 0,
+    "filtered_out": 1059
+  }
+}
