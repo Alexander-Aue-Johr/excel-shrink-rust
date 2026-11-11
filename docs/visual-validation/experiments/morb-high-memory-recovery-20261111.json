@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-11-11T15:15:17.1117230Z",
+  "case": "Data.gov MORB_Data_b2b3bf4db76f.xlsx, Original versus NXPowerLite cell formatting",
+  "runtime_sha256": "5ab5c6140788a96e6a99e5fa604220adb213337369a73490da134736d42da50a",
+  "assignment_sha256": "24357aac7296dc966a4e943f257f3cdee6de1d76bc7abce49fce82f51481f0e9",
+  "report_sha256": "31078d35e026dc6f427cb9418b705e07535e8ef354098d7ec52016117735cb3a",
+  "status": "completed_with_limitations",
+  "candidate_count": 513,
+  "capture_counts": {
+    "OR": 513,
+    "OR:charts": 1,
+    "SDR": 513,
+    "SDR:charts": 1
+  },
+  "image_comparison_statistics": {
+    "comparisons": 514,
+    "decoded_images": 514,
+    "encoded_bytes_read": 604728938,
+    "encoded_images_reused": 514,
+    "files_read": 1028
+  },
+  "reported_different_regions": 0,
+  "system_reserve_bytes": 8589934592,
+  "aggregate_job_limit_bytes": 34359738368,
+  "aggregate_job_peak_committed_bytes": 15612366848,
+  "largest_process_peak_committed_bytes": 13404176384,
+  "guard_interventions": 0,
+  "content_coverage": [
+    {
+      "background_tail_sampling": false,
+      "cf_blank_tail_excluded": false,
+      "clipped_to_content": 237730,
+      "content_envelope_with_one_cell_margin": {
+        "bottom": 118865,
+        "left": 1,
+        "right": 30,
+        "top": 1
+      },
+      "reason": "outside-content-envelope",
+      "requested_candidates": 237730,
+      "selected_capture_regions": 257,
+      "selected_grid_tiles": 930,
+      "sheet": "s3",
+      "skipped_outside_content": 0
+    },
+    {
+      "background_tail_sampling": false,
+      "cf_blank_tail_excluded": false,
+      "clipped_to_content": 237728,
+      "content_envelope_with_one_cell_margin": {
+        "bottom": 118865,
+        "left": 1,
+        "right": 30,
+        "top": 1
+      },
+      "reason": "outside-content-envelope",
+      "requested_candidates": 237728,
+      "selected_capture_regions": 256,
+      "selected_grid_tiles": 929,
+      "sheet": "s4",
+      "skipped_outside_content": 0
+    }
+  ],
+  "limitations": [
+    "Gridlines are disabled consistently. Policy v10 compares only common pixels when measured capture/content origins match and content cores are contained. capture_extent_ignored records omitted right/bottom extent and retains both raw images and geometries. Changed overlapping pixels remain differences. Shifted origins, missing measurements and charts retain conservative verdicts. blank_margin_ignored records the stronger exact white-margin proof.",
+    "Row-height checks cover rows above and within the unpadded union of content envelopes, including potentially visible fill/border/conditional-formatting extents. Policy v12 excludes context rows below the union content boundary from both height dependencies and cell capture rectangles; upper and side context remain. Charts retain independent full-chart observations.",
+    "Strategy paired-inplace-rebuild-v1 compares rebuilt Original against rebuilt Default and optional rebuilt Check Performance. Each reuses its existing Excel process. Pre-rebuild captures are omitted for throughput; XML save/optimization/rebuild controls are retained. Volatility and exclusive causal attribution require follow-up.",
+    "Cell capture regions are intersected with the union of content-bearing cells and potentially visible fill/border/conditional-formatting extents in the compared rebuilt states, plus one row above and one column on either side. Opening/save XML controls retain separate provenance. Exterior regions outside that envelope are intentionally skipped, not visually confirmed identical; content_coverage records selection counts and bounds. Chart exports are independent of this policy.",
+    "Capture partition visible-geometry-v2 merges adjacent internal grid tiles without changing their union. It measures every live state and splits only for image budgets (30,000 pixels per edge, 32 million pixels total), estimating conservatively at two pixels per point plus a rounding margin. Actual exports are checked too. Zero-area ranges retain geometry and explicit non-rendering observations without images or pixel equality claims. Later states can repartition and backfill earlier retained workbooks.",
+    "CF decisions concern rule contributions within the recorded union of comparison extents. Literal cellIs exclusions require identical cell-XML fingerprints and visual context. Formula inputs remain captures; unknown or changed rules retain region captures. This is not a proof of whole-workbook visual equality.",
+    "Chart mode deterministic excludes only embedded charts with complete unchanged package, XML/cache, source-cell/style/layout/CF and live-geometry dependencies. Exclusions are not pixel comparisons. Unknown references, external or unsupported parts, ambiguous names and chart sheets retain full-chart exports. Mode conservative exports every chart. Other drawings and all worksheet geometry effects are not exhaustively discovered.",
+    "Charts with measured zero width or height retain geometry and an explicit zero-area-chart observation without a pixel verdict. A transition between visible and zero-area states is a rendering/geometry difference.",
+    "Disposable targeted copies are staged with calcMode=manual, fullCalcOnLoad=0, forceFullCalc=0 and calcOnSave=0 before Excel opens them. Cached formula values are retained until each resident workbook is explicitly rebuilt. Excel may still autonomously refresh content; observed save/rebuild transitions remain audited. Original inputs and prepared bundles are unchanged. This suppresses unintended open/save recalculation and changes the opening baseline relative to capture policy v4.",
+    "Opening/saving and the in-place SD rebuild are retained as separate XML controls. Exact content/context matches identify overlaps conservatively; absence of a match does not establish exclusive causality.",
+    "Worksheet cells are streamed into temporary fixed-size fingerprints without worksheet-byte or cell-count limits. Exterior empty-cell changes are counted before candidate allocation. Layout metadata and retained change evidence still require memory.",
+    "When content coverage marks background_tail_sampling, supported borderless solid-fill bands with known sheet-wide gridline settings are represented through their finite transitions and tail samples. Pixels beyond that envelope are not captured; this is not exhaustive whole-grid pixel coverage."
+  ],
+  "interpretation": "An isolated retry completed on the larger-memory host after an earlier resource abort. No differing regions were reported under the recorded selected-region method. This does not establish whole-workbook pixel equality. Job peak counters cover the shared recovery group and are sampled after the first case completed. Original failed-attempt evidence remains separate."
+}
