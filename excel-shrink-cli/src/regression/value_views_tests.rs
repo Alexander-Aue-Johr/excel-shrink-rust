@@ -387,3 +387,15 @@ fn cell_content_audit_excludes_width_validation_without_weakening_capture_checks
     assert!(compare_workbook_preservation(&left, &right, MissingCellPolicy::strict(), None).is_err());
     Ok(())
 }
+
+#[test]
+fn cell_content_audit_distinguishes_explicit_empty_text_from_a_missing_cell() -> Result<()> {
+    let fixture = Fixture::new();
+    let left = fixture.0.join("empty-text.xlsx");
+    let right = fixture.0.join("missing.xlsx");
+    workbook(&left, &sheet("<c r=\"A1\" t=\"inlineStr\"><is><t></t></is></c>"), None)?;
+    workbook(&right, &sheet(""), None)?;
+    assert_eq!(compare_workbook_cell_contents(&left, &right)?.difference_count, 1);
+    assert_eq!(compare_workbook_preservation(&left, &right, MissingCellPolicy::strict(), None)?.difference_count, 1);
+    Ok(())
+}
