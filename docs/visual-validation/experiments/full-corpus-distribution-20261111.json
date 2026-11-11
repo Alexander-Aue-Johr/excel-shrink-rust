@@ -69,7 +69,18 @@
     "archive_sha256": "0855989e010ae6a0a44698ea6b92c1db22dcc84a59e287edd218ed2cdefc9e8e",
     "archive_bytes": 5921705,
     "remote_verified_files": 6,
-    "source_profile_sha256": "b9fb2c8eb085f1a7f7b1108c3b848065db262f6195b264f71deeb30e398a828d"
+    "source_profile_sha256": "b9fb2c8eb085f1a7f7b1108c3b848065db262f6195b264f71deeb30e398a828d",
+    "whole_package_uncompressed": {
+      "rows": 1182,
+      "processed": 1182,
+      "errors": 0,
+      "duplicate_names": 0,
+      "original_uncompressed_bytes": 19941995832,
+      "output_uncompressed_bytes": 15912027127,
+      "sha256": "ce8f0411f53eebee8c604bdf8d6b4a7c73e3c1c9f43097fccaf9f530299e4062",
+      "bytes": 378240,
+      "measurement": "Sum of central-directory file_size for every ZIP member of each processed input/output pair. Unsupported rows retain empty totals and their original status. No extraction or recompression."
+    }
   },
   "limitations": [
     "Normal cleanup with analysis and detailed events under concurrent native validation load; no isolated throughput claim.",
@@ -123,7 +134,18 @@
     "archive_sha256": "12d07e1e04a04c26459858962633544b6cb60e92e366dbbf95c448bd8ff6b18b",
     "archive_bytes": 11810040,
     "remote_verified_files": 6,
-    "source_profile_sha256": "eaecb402c0c06db982e53ef5d978e558c351560947dddb10521aab3a285ef084"
+    "source_profile_sha256": "eaecb402c0c06db982e53ef5d978e558c351560947dddb10521aab3a285ef084",
+    "whole_package_uncompressed": {
+      "rows": 9117,
+      "processed": 8623,
+      "errors": 0,
+      "duplicate_names": 0,
+      "original_uncompressed_bytes": 161571161200,
+      "output_uncompressed_bytes": 148816066722,
+      "sha256": "2bdb022b7447e77e50d96bd5f5194febe1b599613f245142d59ca1bedad85522",
+      "bytes": 2527857,
+      "measurement": "Sum of central-directory file_size for every ZIP member of each processed input/output pair. Unsupported rows retain empty totals and their original status. No extraction or recompression."
+    }
   },
   "enron": {
     "summary": {
@@ -171,6 +193,17 @@
     "archive_bytes": 32590035,
     "remote_verified_files": 6,
     "source_frame_sha256": "e11713d99c841245a566c3c45e26556125f918bda313e66d034078cd021b2f61",
-    "population": "Prepared XLSX baselines; unavailable raw candidates outside this frame"
+    "population": "Prepared XLSX baselines; unavailable raw candidates outside this frame",
+    "whole_package_uncompressed": {
+      "rows": 30301,
+      "processed": 30301,
+      "errors": 0,
+      "duplicate_names": 0,
+      "original_uncompressed_bytes": 22862872587,
+      "output_uncompressed_bytes": 17952132208,
+      "sha256": "c6a7c83a30b445346f37b6f9ceffb1a29213c6d530c0ea9e64f520700f7d4913",
+      "bytes": 8798395,
+      "measurement": "Sum of central-directory file_size for every ZIP member of each processed input/output pair. Unsupported rows retain empty totals and their original status. No extraction or recompression."
+    }
   }
 }
