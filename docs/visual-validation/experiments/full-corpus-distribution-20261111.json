@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "Destatis complete; Data.gov running; Enron queued",
+  "status": "All three supplied-XLSX runs terminal, distribution handovers remotely verified; static replay publication pending",
   "code_revision": "e7b91538",
   "producer_sha256": "85dc6c215006bfe8cdecc3885e3d9646ab743473d2be12e6f30d3e409231e658",
   "build_profile": "release",
@@ -33,11 +33,14 @@
       "skipped": 0,
       "failed": 0
     },
-    "source_profile_sha256": "b9fb2c8eb085f1a7f7b1108c3b848065db262f6195b264f71deeb30e398a828d",
-    "original_bytes": 2364066555,
+    "all_input_bytes": 2364066555,
+    "processed_input_bytes": 2364066555,
     "output_bytes": 1998084298,
+    "processed_reduction_ratio": 0.15481047106137835,
     "elapsed_ms": 119746,
-    "verified_source_and_output_hash_rows": 1182,
+    "verified_source_hash_rows": 1182,
+    "verified_output_hash_rows": 1182,
+    "byte_identical_processed_outputs": 30,
     "replay": {
       "schema": 1,
       "corpus": "destatis",
@@ -64,12 +67,110 @@
     "workbook_csv_sha256": "1c8c50510f5d065164fecebf0c5f8767141653dcfa87fb813ed67b6d89d9bfad",
     "analysis_gzip_sha256": "011c4489741618881d5646201d7df4c77e1723f68b28e657652c7b59606aa002",
     "archive_sha256": "0855989e010ae6a0a44698ea6b92c1db22dcc84a59e287edd218ed2cdefc9e8e",
-    "remote_verified_files": 6
+    "archive_bytes": 5921705,
+    "remote_verified_files": 6,
+    "source_profile_sha256": "b9fb2c8eb085f1a7f7b1108c3b848065db262f6195b264f71deeb30e398a828d"
   },
   "limitations": [
     "Normal cleanup with analysis and detailed events under concurrent native validation load; no isolated throughput claim.",
     "Stopped debug pilot and preliminary handover excluded from the release series.",
     "Full status accounting is per XLSX input; unavailable raw Enron preparations are a separate population.",
     "Saved events and native Observatory playback do not complete static GitHub Pages replay publication."
-  ]
+  ],
+  "datagov": {
+    "summary": {
+      "total": 9117,
+      "processed": 8623,
+      "preserved": 0,
+      "skipped": 494,
+      "failed": 0
+    },
+    "all_input_bytes": 25272597742,
+    "processed_input_bytes": 24236837934,
+    "output_bytes": 22960029840,
+    "processed_reduction_ratio": 0.05268047331408954,
+    "elapsed_ms": 1134471,
+    "verified_source_hash_rows": 9117,
+    "verified_output_hash_rows": 8623,
+    "byte_identical_processed_outputs": 3522,
+    "replay": {
+      "schema": 1,
+      "corpus": "datagov",
+      "events": 228685,
+      "counts": {
+        "run.started": 1,
+        "job.started": 9117,
+        "workbook.metadata": 9117,
+        "work.started": 100666,
+        "work.finished": 100666,
+        "job.completed": 8623,
+        "job.failed": 494,
+        "run.failed": 1
+      },
+      "monotonic_microseconds": true,
+      "contiguous_sequences": true,
+      "unclosed_workbooks": 0,
+      "unclosed_tasks": 0,
+      "maximum_active_workbooks": 16,
+      "maximum_active_rayon_workers": 16,
+      "terminal_elapsed_ms": 1135528,
+      "terminal_event_type": "run.failed",
+      "replay_gzip_sha256": "cba00e2d24c8ec7029d6f2dcf6866ee6affc4a3cc731003fe4523994e1481000",
+      "scope": "Complete saved event stream reconciled with preparation statuses, excluding browser rendering and later static replay publication"
+    },
+    "workbook_csv_sha256": "f8a46542bd23abd84bcca6bfed8e1756541e8c33fe07f54baeb6a1db269bd15f",
+    "analysis_gzip_sha256": "a53ba2aa63aff7f55cfb34f0472cb2c617b165992e16c4ee2900fa9823ad6c41",
+    "archive_sha256": "12d07e1e04a04c26459858962633544b6cb60e92e366dbbf95c448bd8ff6b18b",
+    "archive_bytes": 11810040,
+    "remote_verified_files": 6,
+    "source_profile_sha256": "eaecb402c0c06db982e53ef5d978e558c351560947dddb10521aab3a285ef084"
+  },
+  "enron": {
+    "summary": {
+      "total": 30301,
+      "processed": 30301,
+      "preserved": 0,
+      "skipped": 0,
+      "failed": 0
+    },
+    "all_input_bytes": 3392324315,
+    "processed_input_bytes": 3392324315,
+    "output_bytes": 2752050831,
+    "processed_reduction_ratio": 0.1887418255291431,
+    "elapsed_ms": 181563,
+    "verified_source_hash_rows": 30301,
+    "verified_output_hash_rows": 30301,
+    "byte_identical_processed_outputs": 8415,
+    "replay": {
+      "schema": 1,
+      "corpus": "enron",
+      "events": 574159,
+      "counts": {
+        "run.started": 1,
+        "job.started": 30301,
+        "workbook.metadata": 30301,
+        "work.started": 241627,
+        "work.finished": 241627,
+        "job.completed": 30301,
+        "run.completed": 1
+      },
+      "monotonic_microseconds": true,
+      "contiguous_sequences": true,
+      "unclosed_workbooks": 0,
+      "unclosed_tasks": 0,
+      "maximum_active_workbooks": 16,
+      "maximum_active_rayon_workers": 16,
+      "terminal_elapsed_ms": 185057,
+      "terminal_event_type": "run.completed",
+      "replay_gzip_sha256": "bdb0029c1473f8c528c0c6394e3571d0eac35b7edc95272d169d09771b9d99f3",
+      "scope": "Complete saved event stream reconciled with preparation statuses, excluding browser rendering and later static replay publication"
+    },
+    "workbook_csv_sha256": "8fff0793e1920bc63457fac00940ee6123f20a66d92c41cffbe79d0ae3374f2b",
+    "analysis_gzip_sha256": "79d864f3b311cb08147259e5ba813248d37e019e9417d8531623c42687a74b9a",
+    "archive_sha256": "040eb0be941274cd1b94f52b54f89162c972090bf37c4e2984d99909f2ece97e",
+    "archive_bytes": 32590035,
+    "remote_verified_files": 6,
+    "source_frame_sha256": "e11713d99c841245a566c3c45e26556125f918bda313e66d034078cd021b2f61",
+    "population": "Prepared XLSX baselines; unavailable raw candidates outside this frame"
+  }
 }
