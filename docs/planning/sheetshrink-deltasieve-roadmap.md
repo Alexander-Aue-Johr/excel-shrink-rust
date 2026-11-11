@@ -49,6 +49,23 @@ detail with a working difference mask were checked over public HTTPS. See
 
 ### Submission-scope correction on 2026-11-11
 
+The subsequent published refresh contains 418 observations from 45 source
+namespaces and 408 byte-exact detail payloads. Paper Pages commit `a2b039c6`
+and image Pages commit `70546e41` both deployed successfully. A newly hosted
+image matched its content SHA-256 over HTTPS. This snapshot still predates the
+latest isolated Low-Temperature and CyanoPhyto recoveries, which are being
+merged into a separate next snapshot.
+
+The isolated Low-Temperature retry completed all 4,742 selected cell regions
+per state, with 9,484 images and no reported pixel, geometry or presence
+differences. CyanoPhyto/Check Performance completed 525 cell regions and 49
+charts per state in 245.218 seconds under policy v19. Its merge permutation
+and changed row border-height hint were treated separately. Row 341 changed
+from 16.5 to 15.75 points. The DeltaSieve manuscript now includes this bounded
+methodology case and a conditional uniform-tile cost projection, preserving the
+unfinished full-grid attempt. QT/RR B remains active. QT/RR A, PubMed and offline
+failure follow-ups remain open. See the individual experiment ledgers.
+
 The later interim Atlas refresh retains 413 observations from 43 sources and
 403 byte-exact scientific detail payloads. It includes the completed Data.gov
 XLStyles group and four separately preserved high-memory recovery observations.
