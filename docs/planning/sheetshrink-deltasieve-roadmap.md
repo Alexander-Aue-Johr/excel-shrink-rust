@@ -1280,8 +1280,6 @@ cells and tests their native merge behavior too. These bounded controls add
 two mutation cases. They do not complete the broader matrix, held-out evaluation,
 major-selector ablations or matched whole-corpus cost acceptance for Task 13.
 
-## 14 Write and review complete first manuscript drafts
-
 Three further designed controls qualify changed color-scale/data-bar colors
 and a changed defined-name binding. Independent A1:N30 references contain
 5,727, 4,304 and 53 changed pixels. Selected A1:D3 masks exactly match each
@@ -1290,6 +1288,23 @@ of headroom during the bounded methods. The evidence is retained in
 `../visual-validation/experiments/independent-reference/formatting-controls-20261111.json`.
 The manuscript now summarizes nine exact-mask controls. The broader mutation
 matrix and population recall remain open.
+
+Policy v17 adds finite row borders over flat inherited backgrounds. The native
+fixed-default-height control replaces an unbounded-grid rejection with 69
+completed regions over A1:XFD4, retaining XFD. Both explicit reference areas have
+exact aligned change-mask agreement. An initial height attribute without
+customHeight produced native invariance and remains outside changed-case counts.
+The GENESIS-Online mixed-drawing fixture still keeps its conservative fallback.
+See `../visual-validation/experiments/independent-reference/finite-row-border-background-20261111.json`.
+The active v15 QT/RR comparisons retain their frozen runtime and evidence.
+
+An audit classifies twenty retained first-stage failures as eight name conflicts,
+eight unbounded-plan rejections, three repair prompts and one progress timeout.
+A separate 300-second retry of the progress-timeout case recorded 354 progress
+events and zero captures before its declared limit. It remains a partial attempt.
+See `../visual-validation/experiments/stage09-failure-audit-20261111.json`.
+
+## 14 Write and review complete first manuscript drafts
 
 - [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.
 

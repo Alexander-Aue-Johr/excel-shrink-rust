@@ -1,0 +1,261 @@
+{
+  "schema": 1,
+  "cutoff": "2026-11-11T04:48:45.249856+00:00",
+  "frozen_stage": 9,
+  "classification_counts": {
+    "capture_idle_timeout": 1,
+    "name_conflict": 8,
+    "unbounded_capture_plan": 8,
+    "repair_required": 3
+  },
+  "attempts": [
+    {
+      "corpus": "destatis",
+      "rank": 2,
+      "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "tool": "check_performance",
+      "attempt_id": "6129f779f80985d37b5f9861",
+      "failure_kind": "capture_idle_timeout",
+      "failure_receipt_sha256": "df522e9c71cc618b36d13c147dc9787581aa1f35a7fec5c7d22eb7915206257d",
+      "record_sha256": "022c5dbed9d9a639811a3d9f92ec33554a837770258d685227843212613c7432",
+      "failure_evidence": "destatis/check_performance/report/logs/validation/6129f779f80985d37b5f9861/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "workbook": "wanderungen-2010120217005.xlsx",
+      "tool": "check_performance",
+      "attempt_id": "fecac8d732e7d68f97ce3ca7",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "d37cf58df8152ee4fd80809316f769ac79a61382ac7b610fd550794509afe1ed",
+      "record_sha256": "3d907a8bfbc7042b3391799e30c5265f34a82d8eca1664983adfb3b16e0e91b7",
+      "failure_evidence": "destatis/check_performance/report/logs/validation/fecac8d732e7d68f97ce3ca7/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "workbook": "unfaelle-gewalt-kinder-tabellenband-xlsx-5230001.xlsx",
+      "tool": "check_performance",
+      "attempt_id": "ea2d6c1ebd0bbdd151d4e011",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "8927c578bc499da5d2aa69ab80a5b115d56d70b88f4a548f88ecde0f52a7efee",
+      "record_sha256": "d565e0a7015d59470157cbca3fae0a64ac24724ba3f904999b260134230f4e3d",
+      "failure_evidence": "destatis/check_performance/report/logs/validation/ea2d6c1ebd0bbdd151d4e011/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 1,
+      "workbook": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "tool": "inquire",
+      "attempt_id": "5b85b607ae89c8058773f645",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "3ae4ecee21e4bc5ca1158ee0594d4449a6bbf3f2481aea6a92dfc00f4b4735e1",
+      "record_sha256": "1338a2e98f8d87f29852f46d62ed82d95a913627ef7f5d169ff071b0c6e32e75",
+      "failure_evidence": "destatis/inquire/report/logs/validation/5b85b607ae89c8058773f645/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "workbook": "wanderungen-2010120217005.xlsx",
+      "tool": "inquire",
+      "attempt_id": "fecac8d732e7d68f97ce3ca7",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "3f34faeafe9bd6c7d8777ae6113f955f8a0427d66fda06bfc307a4070ae17145",
+      "record_sha256": "1c891b178e43f9600db5f1473df2eb798efa5ee166011714a9fbb316ec2b9298",
+      "failure_evidence": "destatis/inquire/report/logs/validation/fecac8d732e7d68f97ce3ca7/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 5,
+      "workbook": "statistischer-bericht-pflegevorausberechnung-5124209229005.xlsx",
+      "tool": "inquire",
+      "attempt_id": "d907f14b218e736b93760b56",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "3ae4ecee21e4bc5ca1158ee0594d4449a6bbf3f2481aea6a92dfc00f4b4735e1",
+      "record_sha256": "d065e6a4d1f41b01ea45fcd9a9a32df58ab0a4d5421a7be90144218e9c01bfd9",
+      "failure_evidence": "destatis/inquire/report/logs/validation/d907f14b218e736b93760b56/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "workbook": "unfaelle-gewalt-kinder-tabellenband-xlsx-5230001.xlsx",
+      "tool": "inquire",
+      "attempt_id": "ea2d6c1ebd0bbdd151d4e011",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "b121f373bc2f34b47caafba35a8cb0481a704a00c331aa037467bc78a096e9aa",
+      "record_sha256": "0f058dc668a102147cc1782500e4cd8af933aae11eb94a01acc7fe642715dc70",
+      "failure_evidence": "destatis/inquire/report/logs/validation/ea2d6c1ebd0bbdd151d4e011/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 8,
+      "workbook": "statistischer-bericht-diagnosedaten-5231301227015.xlsx",
+      "tool": "inquire",
+      "attempt_id": "5ef044610a4f9b164134eb2d",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "3ae4ecee21e4bc5ca1158ee0594d4449a6bbf3f2481aea6a92dfc00f4b4735e1",
+      "record_sha256": "dcf01c44f576c78daa2c4ad00b4a290c7df636e0953e5c264efed711cf90c145",
+      "failure_evidence": "destatis/inquire/report/logs/validation/5ef044610a4f9b164134eb2d/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 9,
+      "workbook": "statistischer-bericht-operationen-prozeduren-5231401227015.xlsx",
+      "tool": "inquire",
+      "attempt_id": "8347370f4b825ec220931973",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "3ae4ecee21e4bc5ca1158ee0594d4449a6bbf3f2481aea6a92dfc00f4b4735e1",
+      "record_sha256": "7a540740d8c1635066f0a4356591e63b21701094bc6ef4a29d9a567769ddfe91",
+      "failure_evidence": "destatis/inquire/report/logs/validation/8347370f4b825ec220931973/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 2,
+      "workbook": "verkehrsunfaelle-zeitreihen-xlsx-5462403.xlsx",
+      "tool": "nxpowerlite",
+      "attempt_id": "6129f779f80985d37b5f9861",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "4a68745ed63a83cb8fc3532f81cde68446ae1ecc1b25fdf33eaa4b9e15d29d8c",
+      "record_sha256": "3215084d3e2c91624ed371a92c9c697c3ad4a23f5d6490e94193b0c6dd8d349e",
+      "failure_evidence": "destatis/nxpowerlite/report/logs/validation/6129f779f80985d37b5f9861/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "workbook": "wanderungen-2010120217005.xlsx",
+      "tool": "nxpowerlite",
+      "attempt_id": "fecac8d732e7d68f97ce3ca7",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "c5a17a55de8397170d4a25446756409665962d8a2989b6ea5cb9d7173b430c5f",
+      "record_sha256": "255852005eabb3292a162f396a00e2a8a52a60015e0f274cf14dd549c4fd437c",
+      "failure_evidence": "destatis/nxpowerlite/report/logs/validation/fecac8d732e7d68f97ce3ca7/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "workbook": "unfaelle-gewalt-kinder-tabellenband-xlsx-5230001.xlsx",
+      "tool": "nxpowerlite",
+      "attempt_id": "ea2d6c1ebd0bbdd151d4e011",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "9eecb5e8a3fded7f903ff623b3a69ef54c95595c7e064153824ed68e9f623a8d",
+      "record_sha256": "cbb808471472ec9ae9637ffec88239efd948ac6169d6f525f0ae8d265d9d50c0",
+      "failure_evidence": "destatis/nxpowerlite/report/logs/validation/ea2d6c1ebd0bbdd151d4e011/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 3,
+      "workbook": "wanderungen-2010120217005.xlsx",
+      "tool": "xlstyles",
+      "attempt_id": "fecac8d732e7d68f97ce3ca7",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "eaa76964b5646f8a6ecaa7d3622427d5c229303150f8cc53d93c0e6b140c3580",
+      "record_sha256": "43cf7cd3cd50d0a327c6c42d2de1129ef8344bc87197996e4e928d10874e1ac3",
+      "failure_evidence": "destatis/xlstyles/report/logs/validation/fecac8d732e7d68f97ce3ca7/working-evidence/failure.json"
+    },
+    {
+      "corpus": "destatis",
+      "rank": 7,
+      "workbook": "unfaelle-gewalt-kinder-tabellenband-xlsx-5230001.xlsx",
+      "tool": "xlstyles",
+      "attempt_id": "ea2d6c1ebd0bbdd151d4e011",
+      "failure_kind": "name_conflict",
+      "failure_receipt_sha256": "a370d32ec8605378a6971d4fd22f83ef43975c533702ade452f9bcbbc484bbae",
+      "record_sha256": "7b635a766e23723a4840a326793ad4a039871c44afae8a2afe4676db1eee7d46",
+      "failure_evidence": "destatis/xlstyles/report/logs/validation/ea2d6c1ebd0bbdd151d4e011/working-evidence/failure.json"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 7,
+      "workbook": "Decentralized Life Cycle Cost Assessment_SF Reuse_69c5be921a2c.xlsx",
+      "tool": "check_performance",
+      "attempt_id": "b7bddcbbcfce1e56d956df71",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "1aca35680a2a743432a1dc5e7aac5fc4ba319b1dc237594eab70c1547d0bedcc",
+      "record_sha256": "4d9ef179a85fd1e11e98e332ec6522db183ac1b4e86c1d7ed5f0ce64a4dfcc57",
+      "failure_evidence": "datagov/check_performance/report/logs/validation/b7bddcbbcfce1e56d956df71/working-evidence/failure.json"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 7,
+      "workbook": "Decentralized Life Cycle Cost Assessment_SF Reuse_69c5be921a2c.xlsx",
+      "tool": "inquire",
+      "attempt_id": "b7bddcbbcfce1e56d956df71",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "1aca35680a2a743432a1dc5e7aac5fc4ba319b1dc237594eab70c1547d0bedcc",
+      "record_sha256": "8aee8452252bc81a9d1aa516b1761ca9c13456cb59b4696dd7f53a5bc1f0b930",
+      "failure_evidence": "datagov/inquire/report/logs/validation/b7bddcbbcfce1e56d956df71/working-evidence/failure.json"
+    },
+    {
+      "corpus": "datagov",
+      "rank": 8,
+      "workbook": "dashboard_raspberries_excel_96fd0e60120c.xlsx",
+      "tool": "xlstyles",
+      "attempt_id": "11bfcc0d562a76ea178fe7fc",
+      "failure_kind": "repair_required",
+      "failure_receipt_sha256": "3c720320e68468b93e04315e6e92cc936f3ceda8e00131312cbafcd1c5485919",
+      "record_sha256": "658b404ec2edf035fbf45ae95889ac99109995e3743e94eb5e336dcc9bd86e61",
+      "failure_evidence": "datagov/xlstyles/report/logs/validation/11bfcc0d562a76ea178fe7fc/working-evidence/failure.json"
+    },
+    {
+      "corpus": "enron",
+      "rank": 7,
+      "workbook": "106bb183b73704d6e7324eb6c879ad6e8536e52b1f5643f8c725e2ca7a74cb7e.xlsx",
+      "tool": "inquire",
+      "attempt_id": "7b889692ce0f6e20bad1d91a",
+      "failure_kind": "unbounded_capture_plan",
+      "failure_receipt_sha256": "11aaa6e87cafb622668422a5ce9fd6e1e4d77e033a2c580b903892d5338e085d",
+      "record_sha256": "5fa510f4ea46ac1df07773923b7a9291c44e651be7f48dd98bc275a8474c0511",
+      "failure_evidence": "enron/inquire/report/logs/validation/7b889692ce0f6e20bad1d91a/working-evidence/failure.json"
+    },
+    {
+      "corpus": "enron",
+      "rank": 2,
+      "workbook": "9632bf8d4ebca0af7eab93d4b3ee61595b4fa9df3e2a448c585f577adf0191b6.xlsx",
+      "tool": "nxpowerlite",
+      "attempt_id": "41cb89710c7679f218112894",
+      "failure_kind": "repair_required",
+      "failure_receipt_sha256": "ac4cf3888992c066fedeab0fe416c061af09fdc0670f37f6e2645ddd5db8a594",
+      "record_sha256": "ce1c8efbb0f1417f1f31a34ced398cd5c853e1f769650a84ace34c11e794b717",
+      "failure_evidence": "enron/nxpowerlite/report/logs/validation/41cb89710c7679f218112894/working-evidence/failure.json"
+    },
+    {
+      "corpus": "enron",
+      "rank": 2,
+      "workbook": "9632bf8d4ebca0af7eab93d4b3ee61595b4fa9df3e2a448c585f577adf0191b6.xlsx",
+      "tool": "xlstyles",
+      "attempt_id": "41cb89710c7679f218112894",
+      "failure_kind": "repair_required",
+      "failure_receipt_sha256": "7d3c654f674bd610f5ed2b4d8966b8810017b61c40c9adecf8d8078e235c98fb",
+      "record_sha256": "a8699d79bbe580534c040abbfd4e19d94cb62161d1552c8b99d60215f60f4477",
+      "failure_evidence": "enron/xlstyles/report/logs/validation/41cb89710c7679f218112894/working-evidence/failure.json"
+    }
+  ],
+  "scope": "Classifies retained unsuccessful validation attempts. These outcomes do not establish the transformation tool caused a visual regression or cannot process the source.",
+  "recovery": {
+    "corpus": "destatis",
+    "rank": 2,
+    "tool": "check_performance",
+    "status": "interrupted",
+    "deadline_seconds": 300,
+    "capture_success_sequence": 0,
+    "capture_progress_sequence": 354,
+    "outcome_sha256": "0054f133e506e8a4bd37978ec4fa6dda3b16cf76f172c4d5a4a73b8bb042cbdd",
+    "watcher": {
+      "status": "failed",
+      "reserve_bytes": 8589934592,
+      "methods": [
+        {
+          "method": "recovery",
+          "pid": 17720,
+          "status": "interrupted",
+          "minimum_free_ram": 40417935360,
+          "minimum_commit_headroom": 31425011712,
+          "exit_code": 1,
+          "elapsed_seconds": 301.1100000000006
+        }
+      ],
+      "error": "recovery failed; retain logs"
+    },
+    "scope": "Additional bounded partial attempt. Neither a completed comparison nor an equality result. It is separate from the original twenty unsuccessful records."
+  }
+}
