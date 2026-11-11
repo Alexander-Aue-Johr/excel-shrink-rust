@@ -129,5 +129,210 @@
     "The Original first-sheet prefix contains an inherited thin bottom row border. The sampled Inquire prefix has no row-style attributes. This prefix sample does not prove all rows or all cells are equivalent or different.",
     "A whole-width inherited border can remain visible far beyond value cells. A safe reduction needs a proof for repeated tail formatting and retained finite transitions, together with layout dependencies. Merely clipping to populated cells would omit potential changes."
   ],
-  "visual_verdict": "pending ongoing native comparison"
+  "visual_verdict": "pending ongoing native comparison",
+  "xml_selection_diagnostic": {
+    "source_commit": "66824174",
+    "diagnostic_sha256": "3a9a0fc7bc682f785ee77b43199d87fb2a3ee035aa120dd4f8958a27f877e618",
+    "cell_or_layout_changes": 56,
+    "potential_cell_input_changes": 0,
+    "conditional_decision_count": 0,
+    "conditional_logical_region_count": 0,
+    "layout": {
+      "logical_region_count": 11,
+      "region_examples": [
+        {
+          "cell": "A1:XFD5443",
+          "sheet": "SHR1 DE"
+        },
+        {
+          "cell": "A1:XFD5420",
+          "sheet": "SHR10 Air"
+        },
+        {
+          "cell": "A1:XFD8705",
+          "sheet": "SHR11 Air"
+        },
+        {
+          "cell": "A1:XFD5950",
+          "sheet": "SHR2 DE"
+        },
+        {
+          "cell": "A1:XFD10587",
+          "sheet": "SHR3 DE"
+        },
+        {
+          "cell": "A1:XFD5446",
+          "sheet": "SHR4 DE"
+        },
+        {
+          "cell": "A1:XFD7943",
+          "sheet": "SHR5 DE"
+        },
+        {
+          "cell": "A1:XFD6757",
+          "sheet": "SHR6 DE"
+        },
+        {
+          "cell": "A1:XFD7397",
+          "sheet": "SHR7 Air"
+        },
+        {
+          "cell": "A1:XFD3153",
+          "sheet": "SHR8 Air"
+        },
+        {
+          "cell": "A1:XFD4408",
+          "sheet": "SHR9 Air"
+        }
+      ],
+      "selected_sheet_count": 11,
+      "shared_layout_context_changed": false,
+      "sheet_examples": [
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 5443,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR1 DE",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 5420,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR10 Air",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 8705,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR11 Air",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 5950,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR2 DE",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 10587,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR3 DE",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 5446,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR4 DE",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 7943,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR5 DE",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 6757,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR6 DE",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 7397,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR7 Air",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 3153,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR8 Air",
+          "unmodeled_sheet_layout_changed": true
+        },
+        {
+          "background_tail_sampling_after": false,
+          "background_tail_sampling_before": true,
+          "content_envelope": {
+            "bottom": 4408,
+            "left": 1,
+            "right": 16384,
+            "top": 1
+          },
+          "defaults_changed": true,
+          "sheet": "SHR9 Air",
+          "unmodeled_sheet_layout_changed": true
+        }
+      ]
+    },
+    "interpretation": "The current read-only selector reports eleven content-bearing sheets selected by changed defaults and unmodeled layout metadata. Header differences exist in twelve worksheet parts, including a sheet without selected visible content. This diagnostic is separate from the frozen ongoing native attempt."
+  }
 }

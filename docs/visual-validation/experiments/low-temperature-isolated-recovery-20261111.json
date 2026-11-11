@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "case": "Low-Temperature_ConterminiousDatasets_5aeeff20b76e.xlsx / Check Performance",
+  "runtime_sha256": "5ab5c6140788a96e6a99e5fa604220adb213337369a73490da134736d42da50a",
+  "assignment_sha256": "24357aac7296dc966a4e943f257f3cdee6de1d76bc7abce49fce82f51481f0e9",
+  "report_sha256": "8fff332b8dc4cab4b8c326e8a0eac4eb29e9ca93605f46b18e59fcfbdfc1ef09",
+  "status": "completed_with_limitations",
+  "selected_regions": 4742,
+  "capture_counts": {
+    "OR": 4742,
+    "OR:charts": 0,
+    "SDR": 4742,
+    "SDR:charts": 0
+  },
+  "different_regions": 0,
+  "pixel_comparisons": 4742,
+  "pixel_differences": 0,
+  "geometry_differences": 0,
+  "rendering_presence_differences": 0,
+  "image_comparison_statistics": {
+    "comparisons": 4742,
+    "decoded_images": 9,
+    "encoded_bytes_read": 1835898822,
+    "encoded_images_reused": 9475,
+    "files_read": 9484
+  },
+  "job_limit_bytes": 34359738368,
+  "system_reserve_bytes": 8589934592,
+  "memory_interventions": 0,
+  "peak_job_committed_bytes": 11758379008,
+  "interpretation": "The isolated retry completed every selected region with zero reported differences. Coverage retains the native report limitations. The earlier failed attempt and its partial captures remain separate evidence."
+}
