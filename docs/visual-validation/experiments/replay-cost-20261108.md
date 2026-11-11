@@ -76,3 +76,30 @@ Much longer or more detailed recordings still require index-growth evaluation.
 Browser seeking, bounded cache behavior and controls have separate tests and a
 128-checkpoint browser acceptance. Process, sheet, capture and heartbeat history
 remain additional recording channels to implement and measure.
+
+## Complete-recording reader traversal on 2026-11-11
+
+```powershell
+node --expose-gc docs/visual-validation/experiments/replay-reader-cost.mjs `
+  'G:\deltasieve-work\replay-cost-100k-20261111' `
+  'G:\deltasieve-work\replay-reader-cost-20261111.json'
+```
+
+The experiment imports the production `ReplayReader`, serves the existing
+recording with an owned loopback HTTP server and reconstructs every checkpoint
+at its trailing timestamp. It checks each sequence and synthetic workbook
+completion count, followed by 128 deterministic nonsequential seeks. The server
+closes after the experiment. The receipt path must be new.
+
+All 100,000 checkpoint reconstructions and 128 seeks passed in 2.741 seconds
+under Node v24.22.1, using 3,254 HTTP requests. The decoded cache never exceeded
+two chunks or 64 events. Twelve explicit post-GC samples observed 9.10--11.53
+decimal MB used JS heap and 79.27--108.55 MB RSS. The process includes the server,
+test loop, native HTTP implementation and reader. These observations establish
+neither transient memory peaks nor browser DOM/rendering costs. The manifest's
+3,125 metadata entries remain resident throughout the experiment.
+
+`replay-reader-cost-20261111.json` retains the source manifest hash and all memory
+samples. Nine existing reader and static-control tests also passed, including
+cancelled seeks and bounded gzip expansion. The earlier native browser check
+remains the separate evidence for controls and CSP at 128 checkpoints.

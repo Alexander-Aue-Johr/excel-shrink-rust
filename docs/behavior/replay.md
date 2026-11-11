@@ -141,8 +141,19 @@ exercise. The private acceptance receipt is retained under
 A [100,000-checkpoint recording experiment](../visual-validation/experiments/replay-cost-20261108.md)
 verified all retained event identities and bounded chunk sizes. It measured
 17.369 seconds of recording wall time and approximately 3.30 MB of logical
-history files in one debug-build trial alongside Enron. Process peak memory,
-allocation overhead and broader long-run costs remain unmeasured.
+history files in one debug-build trial alongside Enron. The subsequent fresh
+test process peaked at 14.88 MiB working set and 9.81 MiB committed memory.
+
+The production JavaScript reader also traversed the complete 100,000-event
+recording through a loopback static HTTP server and completed 128 nonsequential
+seeks. It retained at most two decoded chunks containing 64 events. Twelve
+explicit post-GC samples ranged from 9.10 to 11.53 decimal MB of used JS heap
+and 79.27 to 108.55 MB RSS for the combined Node server/test/reader process.
+These samples exclude transient allocation peaks and browser UI costs.
+The reproducible command and receipt are in
+`../visual-validation/experiments/replay-cost-20261108.md`.
+Allocator attribution, browser long-run memory and broader recording costs
+still require separate measurements.
 Shared live process-component playback remains open.
 Process/sheet/capture/heartbeat recording and long-run memory/cost acceptance
 remain open too. This storage channel alone does not complete roadmap Task 15.

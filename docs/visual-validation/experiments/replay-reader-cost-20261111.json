@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "engine": "production ReplayReader in Node.js over loopback static HTTP",
+  "node_version": "v24.22.1",
+  "manifest_sha256": "e6bbf70159b5aa2773fb4152d71c14d8918a26f9ecc0f9e1d7c6ecc236b0a0a9",
+  "events_verified": 100000,
+  "nonsequential_seeks": 128,
+  "requests": 3254,
+  "maximum_cache_chunks": 2,
+  "maximum_cached_events": 64,
+  "elapsed_seconds": 2.7408748,
+  "post_gc_memory_samples": [
+    {
+      "label": "manifest loaded",
+      "rss": 79265792,
+      "heapTotal": 19185664,
+      "heapUsed": 9103440,
+      "external": 6169547,
+      "arrayBuffers": 1131460
+    },
+    {
+      "label": "after 10000 checkpoints",
+      "rss": 91095040,
+      "heapTotal": 46972928,
+      "heapUsed": 11534280,
+      "external": 7994989,
+      "arrayBuffers": 1205482
+    },
+    {
+      "label": "after 20000 checkpoints",
+      "rss": 103743488,
+      "heapTotal": 46972928,
+      "heapUsed": 10250096,
+      "external": 13583650,
+      "arrayBuffers": 8261820
+    },
+    {
+      "label": "after 30000 checkpoints",
+      "rss": 101625856,
+      "heapTotal": 46972928,
+      "heapUsed": 10202464,
+      "external": 12090610,
+      "arrayBuffers": 5981926
+    },
+    {
+      "label": "after 40000 checkpoints",
+      "rss": 103649280,
+      "heapTotal": 47235072,
+      "heapUsed": 10194264,
+      "external": 12903764,
+      "arrayBuffers": 7491901
+    },
+    {
+      "label": "after 50000 checkpoints",
+      "rss": 104529920,
+      "heapTotal": 47235072,
+      "heapUsed": 10269168,
+      "external": 13057456,
+      "arrayBuffers": 7580113
+    },
+    {
+      "label": "after 60000 checkpoints",
+      "rss": 101060608,
+      "heapTotal": 46972928,
+      "heapUsed": 10287120,
+      "external": 7625188,
+      "arrayBuffers": 1204492
+    },
+    {
+      "label": "after 70000 checkpoints",
+      "rss": 108552192,
+      "heapTotal": 46972928,
+      "heapUsed": 10334728,
+      "external": 13077734,
+      "arrayBuffers": 6850801
+    },
+    {
+      "label": "after 80000 checkpoints",
+      "rss": 108531712,
+      "heapTotal": 46972928,
+      "heapUsed": 10282936,
+      "external": 13163115,
+      "arrayBuffers": 7057257
+    },
+    {
+      "label": "after 90000 checkpoints",
+      "rss": 106680320,
+      "heapTotal": 46710784,
+      "heapUsed": 10357696,
+      "external": 11052873,
+      "arrayBuffers": 3596599
+    },
+    {
+      "label": "after 100000 checkpoints",
+      "rss": 108240896,
+      "heapTotal": 46972928,
+      "heapUsed": 10324256,
+      "external": 11033038,
+      "arrayBuffers": 1818768
+    },
+    {
+      "label": "after 128 nonsequential seeks",
+      "rss": 106135552,
+      "heapTotal": 46972928,
+      "heapUsed": 10267776,
+      "external": 9375964,
+      "arrayBuffers": 3339838
+    }
+  ],
+  "limitations": [
+    "Node process includes the static server, HTTP client, test loop and reader.",
+    "Post-GC samples are observations and do not establish transient allocation peaks.",
+    "Manifest metadata remains resident and grows with the number of chunks.",
+    "This exercises the reader and HTTP transport, excluding browser UI, DOM, CSP and rendering."
+  ]
+}
