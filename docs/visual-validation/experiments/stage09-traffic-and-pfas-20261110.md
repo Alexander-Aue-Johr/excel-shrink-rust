@@ -402,6 +402,13 @@ transformation in these two charts. They do not establish that the
 original pixel masks have the same cause. All six original findings
 remain in the report.
 
+A coordinate-by-coordinate comparison of the retained masks found no
+overlap between rank 7's nine original changed pixels and its two control
+pixels. At rank 12 all three original changed coordinates occurred among
+the seven control coordinates. Both comparisons used the same image
+dimensions. This measures coordinate overlap independently of the color
+change at those coordinates.
+
 ### Enron rank 30 raw opening exception
 
 The top-49 identity audit has no eligible comparison for rank 30,
