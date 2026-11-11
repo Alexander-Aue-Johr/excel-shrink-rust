@@ -108,6 +108,19 @@ timing to commit to completion before the manuscript review guard.
 
 ### First-stage handoff on 2026-11-11 at 01:39 CET
 
+The separately dispatched second QT/RR pair also remains in the original
+Inquire queue. A local guard watches the exact two Observatory sessions.
+After the independent pair has a completed successful receipt, the guard can
+terminate only the redundant queued launcher identified by its parent and
+exact output directory. Source and candidate hashes must match across both
+assignments. The private guard receipt is
+`G:/deltasieve-work/corpus-extremes-20261110/duplicate-qt-rr-guard.json`.
+An intervention has not occurred at this checkpoint. If it occurs, preserve
+its reason alongside the ordinary interrupted-attempt record and use the
+independent completed observation in the merged report. Inspect any remaining
+queued work afterward. The two recorded renderer recipes differ solely in
+static Atlas viewer modules, as established by the retained hash diagnostic.
+
 The locally served three-corpus Atlas contains the nine frozen ranks
 and all five transformation choices for each corpus. The 135 ordinary
 slots comprise 102 completed reports with coverage limits, 21 failures
