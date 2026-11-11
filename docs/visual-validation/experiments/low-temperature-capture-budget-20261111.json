@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "case": "Low-Temperature_ConterminiousDatasets_5aeeff20b76e.xlsx, Original versus Check Performance",
+  "runtime_sha256": "5ab5c6140788a96e6a99e5fa604220adb213337369a73490da134736d42da50a",
+  "baseline_controls": {
+    "capture_batch_ranges": 4,
+    "capture_batch_megapixels": 32
+  },
+  "trial_controls": {
+    "capture_batch_ranges": 4,
+    "capture_batch_megapixels": 128
+  },
+  "baseline": {
+    "first": {
+      "ticks": 804976834225,
+      "frequency": 10000000,
+      "utc": "2026-11-11T16:42:26.4484279Z",
+      "images": 2380
+    },
+    "last": {
+      "ticks": 805842111749,
+      "utc": "2026-11-11T16:43:52.9751983Z",
+      "images": 2826
+    },
+    "images_per_second": 5.154415636941935
+  },
+  "measurement": {
+    "first": {
+      "ticks": 806220498577,
+      "utc": "2026-11-11T16:44:30.8134623Z",
+      "images": 3076
+    },
+    "last": {
+      "ticks": 807240116415,
+      "utc": "2026-11-11T16:46:12.7741488Z",
+      "images": 3772
+    },
+    "images_per_second": 6.826086932386524,
+    "throughput_ratio": 1.3243182958439834
+  },
+  "admission": "Validated active-comparison capture-control API, matching run identity, accepted at next package boundary",
+  "decision": "Retain four ranges and 128 MP while the comparison continues under its existing memory supervisor",
+  "stability": {
+    "additional_observation_seconds_at_least": 60,
+    "new_memory_events": 0,
+    "supervisor_aborted_processes": 0,
+    "native_private_bytes": 8358162432,
+    "available_ram_bytes": 52140523520,
+    "available_commit_bytes": 40530759680,
+    "sampled_utc": "2026-11-11T16:48:03Z"
+  },
+  "interpretation": "Observed image throughput increased approximately 32 percent in sequential operational windows. Other QT/RR comparisons remained active and capture regions advanced between windows. This is not an isolated causal benchmark or a new visual-equality claim. The per-image image bound and capture selection policy were unchanged. The native comparison remains incomplete."
+}
