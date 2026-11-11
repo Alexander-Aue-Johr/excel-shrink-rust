@@ -1,0 +1,179 @@
+{
+  "date": "2026-11-11",
+  "scope": "Native shared BIFF8 fixture converted through the standalone XLSX converter and reopened independently in owned Excel",
+  "fixture_source": "tools/tests/shared-workbook-fixture.ps1",
+  "measured_fixture_working_copy_sha256": "08fa5e92eb48d25171af8b99de82dfe03afdab84fa9304e20e009d0b38286b56",
+  "fixture_source_hash_scope": "Measured Windows working-copy bytes; Git text normalization can change line-ending bytes",
+  "trials": [
+    {
+      "status": "passed",
+      "steps": [
+        {
+          "name": "create",
+          "deadline_seconds": 90,
+          "system_reserve_bytes": 8589934592,
+          "job_commit_limit_bytes": 4294967296,
+          "minimum_free_ram": 67622735872,
+          "minimum_commit_headroom": 50190622720,
+          "exit_code": 0,
+          "elapsed_seconds": 2.25,
+          "job_counters": {
+            "peak_job_committed_bytes": 548966400,
+            "peak_process_committed_bytes": 461930496,
+            "cpu_user_seconds": 2.625,
+            "cpu_kernel_seconds": 1.40625,
+            "active_processes": 0
+          }
+        },
+        {
+          "name": "convert",
+          "deadline_seconds": 90,
+          "system_reserve_bytes": 8589934592,
+          "job_commit_limit_bytes": 4294967296,
+          "minimum_free_ram": 67687923712,
+          "minimum_commit_headroom": 50381660160,
+          "exit_code": 0,
+          "elapsed_seconds": 3.014999999999418,
+          "job_counters": {
+            "peak_job_committed_bytes": 594251776,
+            "peak_process_committed_bytes": 427433984,
+            "cpu_user_seconds": 2.40625,
+            "cpu_kernel_seconds": 1.71875,
+            "active_processes": 0
+          }
+        },
+        {
+          "name": "inspect",
+          "deadline_seconds": 90,
+          "system_reserve_bytes": 8589934592,
+          "job_commit_limit_bytes": 4294967296,
+          "minimum_free_ram": 67535544320,
+          "minimum_commit_headroom": 50163470336,
+          "exit_code": 0,
+          "elapsed_seconds": 1.75,
+          "job_counters": {
+            "peak_job_committed_bytes": 536768512,
+            "peak_process_committed_bytes": 448724992,
+            "cpu_user_seconds": 2.015625,
+            "cpu_kernel_seconds": 1.234375,
+            "active_processes": 0
+          }
+        }
+      ],
+      "source": {
+        "b2_formula": "=A2+1",
+        "sheet_name": "Shared Fixture",
+        "keep_change_history": true,
+        "multi_user_editing": true,
+        "a2_value": 42,
+        "change_history_days": 30,
+        "a1_value": "shared data",
+        "b2_value": 43
+      },
+      "converted": {
+        "b2_formula": "=A2+1",
+        "sheet_name": "Shared Fixture",
+        "keep_change_history": null,
+        "multi_user_editing": false,
+        "a2_value": 42,
+        "change_history_days": null,
+        "a1_value": "shared data",
+        "b2_value": 43
+      },
+      "source_sha256": "3428e033b11c09a4a17760daf8cd8b7aad22c5ea0880a63a471f2cc8ee3a9782",
+      "output_sha256": "a6cbfaa6dca81662e2f692a75d38f11a8c346951263f52c79860e1f7b21eb675",
+      "revision_parts": [],
+      "source_bytes_unchanged": true,
+      "shared_editing_removed": true,
+      "binary_sha256": "c972da3f7b878b256fab6b98181b896b8a5d9fb5559d6a5514cba4bc484c1182"
+    },
+    {
+      "status": "passed",
+      "steps": [
+        {
+          "name": "create",
+          "deadline_seconds": 90,
+          "system_reserve_bytes": 8589934592,
+          "job_commit_limit_bytes": 4294967296,
+          "minimum_free_ram": 67472629760,
+          "minimum_commit_headroom": 50203443200,
+          "exit_code": 0,
+          "elapsed_seconds": 2.25,
+          "job_counters": {
+            "peak_job_committed_bytes": 550273024,
+            "peak_process_committed_bytes": 466509824,
+            "cpu_user_seconds": 2.515625,
+            "cpu_kernel_seconds": 1.25,
+            "active_processes": 0
+          }
+        },
+        {
+          "name": "convert",
+          "deadline_seconds": 90,
+          "system_reserve_bytes": 8589934592,
+          "job_commit_limit_bytes": 4294967296,
+          "minimum_free_ram": 67469836288,
+          "minimum_commit_headroom": 50178908160,
+          "exit_code": 0,
+          "elapsed_seconds": 2.75,
+          "job_counters": {
+            "peak_job_committed_bytes": 596606976,
+            "peak_process_committed_bytes": 429424640,
+            "cpu_user_seconds": 2.484375,
+            "cpu_kernel_seconds": 1.578125,
+            "active_processes": 0
+          }
+        },
+        {
+          "name": "inspect",
+          "deadline_seconds": 90,
+          "system_reserve_bytes": 8589934592,
+          "job_commit_limit_bytes": 4294967296,
+          "minimum_free_ram": 67487997952,
+          "minimum_commit_headroom": 50069745664,
+          "exit_code": 0,
+          "elapsed_seconds": 1.75,
+          "job_counters": {
+            "peak_job_committed_bytes": 538091520,
+            "peak_process_committed_bytes": 448978944,
+            "cpu_user_seconds": 2.40625,
+            "cpu_kernel_seconds": 0.984375,
+            "active_processes": 0
+          }
+        }
+      ],
+      "source": {
+        "b2_formula": "=A2+1",
+        "sheet_name": "Shared Fixture",
+        "keep_change_history": true,
+        "multi_user_editing": true,
+        "a2_value": 42,
+        "change_history_days": 30,
+        "a1_value": "shared data",
+        "b2_value": 43
+      },
+      "converted": {
+        "b2_formula": "=A2+1",
+        "sheet_name": "Shared Fixture",
+        "keep_change_history": null,
+        "multi_user_editing": false,
+        "a2_value": 42,
+        "change_history_days": null,
+        "a1_value": "shared data",
+        "b2_value": 43
+      },
+      "source_sha256": "5b5ece440be1fe066ad5f03834e1f983b2db00ff8a04473fca6980e5dc43b1aa",
+      "output_sha256": "a5ca13c0009be867e7d01199c5b48dc8e05f43f9ee13220e16225099d32876e8",
+      "revision_parts": [],
+      "source_bytes_unchanged": true,
+      "shared_editing_removed": true,
+      "binary_sha256": "c972da3f7b878b256fab6b98181b896b8a5d9fb5559d6a5514cba4bc484c1182"
+    }
+  ],
+  "limitations": [
+    "The input was generated for this control and is not a corpus sample.",
+    "Only the selected cells, formula, cached result, shared mode, history setting and output revision-part absence were checked.",
+    "No BIFF revision-record count or visual equality was measured.",
+    "This does not complete environment-dependent formula diagnosis or unsupported-reference coverage."
+  ]
+}

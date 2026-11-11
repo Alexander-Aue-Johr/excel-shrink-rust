@@ -1269,6 +1269,17 @@ handoff, full browser acceptance and distributed rehearsal remain open. No Task
 
 Retain the `xlExclusive` behavior that avoids carrying legacy shared-workbook history into converted outputs. Check it through the normal conversion entry point with read-only input handling and recorded conversion effects.
 
+The shared-workbook-specific native control now passes twice through the ordinary
+standalone converter. Reopened generated XLS inputs have shared editing and
+history enabled. The converter records `shared_editing_removed=true`, while
+reopened XLSX outputs have shared editing disabled and no revision XML members.
+Selected values, formula and calculated result match, and input bytes remain
+unchanged. The second trial executes the parameterized public fixture recipe.
+All six generation/conversion/inspection steps stay within their 4 GiB owned-job
+caps, 8 GiB system reserves and 90-second deadlines. See
+`../visual-validation/experiments/shared-workbook-conversion-20261111.json`.
+Formula diagnosis and its full viewer acceptance remain open below.
+
 Trace straightforward environment-dependent and volatile formula paths where supported. Show source coordinates, values, formulas, and the causal path in the viewer. Distinguish an explained cell-value change from unrelated formatting changes in the same image. Unsupported references remain explicit.
 
 Acceptance requires targeted conversion and formula fixtures, retained raw differences, and honest classifications in both the list and Atelier.

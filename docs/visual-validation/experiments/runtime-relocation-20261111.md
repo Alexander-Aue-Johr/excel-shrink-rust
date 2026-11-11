@@ -96,3 +96,35 @@ This verifies small native preparation and artifact transfer through the standal
 CLIs. The fixture has no shared editing or macros. Visual equality, larger-corpus
 throughput, all interrupted-phase recovery paths and the shared-workbook-specific
 conversion fixture remain outside this acceptance.
+
+## Legacy shared-workbook conversion control
+
+Two newly generated BIFF8 inputs exercised the outstanding `xlExclusive` case.
+Excel saved each fixture with shared access, enabled change history, changed
+A2 from 41 to 42 and recalculated B2's `=A2+1` formula. Reopening the source in
+an independently owned Excel instance reported `MultiUserEditing=true`, history
+enabled and a 30-day retention setting.
+
+The ordinary standalone converter, with one worker, reported
+`shared_editing_removed=true` for both trials. Reopening each resulting XLSX
+reported `MultiUserEditing=false`. The first-sheet name, text, numeric value,
+formula and calculated value 43 matched. No `xl/revisions/` member was present.
+Both source XLS hashes stayed unchanged. Conversion took 3.015 and 2.750 seconds
+in these small functional controls. These times are not corpus benchmarks.
+
+Each fixture-generation, conversion and inspection step had its own 90-second
+deadline, 4 GiB owned-job cap and 8 GiB physical-RAM/commit reserve. All six
+steps completed normally and their jobs had zero active processes afterward.
+The first trial used the private fixture recipe. The second exercised the
+parameterized public recipe at `tools/tests/shared-workbook-fixture.ps1` with
+`-Action create` and `-Action inspect`. Its `-Assets` argument points to the
+helper directory emitted by a completed ordinary conversion (`<output>/workers`).
+Use fresh workbook and receipt paths for creation. The experiment harness
+supplies the outer deadlines and resource guards.
+
+The path-free receipts are in
+[`shared-workbook-conversion-20261111.json`](shared-workbook-conversion-20261111.json).
+They record the measured Windows fixture-source hash separately from Git's
+line-ending normalization. This verifies the intended conversion effect on
+these generated inputs. It does not measure visual equality, a BIFF history
+record count or the behavior of other legacy features.

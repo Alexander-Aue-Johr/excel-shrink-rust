@@ -1146,6 +1146,12 @@ third preserved every formula and changed one cached value belonging to `TODAY()
 to the current date. This is an observed conversion-time calculation effect,
 separate from Shrink and from the later rebuilt comparison.
 
+The ordinary standalone converter also passes two generated shared-BIFF8 controls.
+Independent source/output reopening confirms shared editing is removed, the
+selected values/formula/result remain equal, output revision XML is absent and
+the source bytes remain unchanged. The reproducible fixture and bounded receipts
+are linked in [the relocation acceptance](../visual-validation/experiments/runtime-relocation-20261111.md).
+
 Idle sessions immediately accept another queued workbook. Increasing capacity
 starts additional sessions asynchronously. Decreasing it retires excess sessions
 after their current workbook. A failed or stalled session is replaced after its
