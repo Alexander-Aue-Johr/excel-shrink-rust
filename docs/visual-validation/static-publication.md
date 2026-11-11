@@ -57,6 +57,27 @@ distribution rights prevent releasing them. Record such omissions explicitly.
 
 ## Serve and inspect the approved snapshot
 
+For a reviewer-facing export of a completed static Atlas, generate the
+publication directory from the private Atlas:
+
+```powershell
+& 'V:\deltasieve-build\debug\deltasieve.exe' public-atlas `
+    'G:\deltasieve-releases\private-atlas' `
+    'G:\deltasieve-releases\reviewer-atlas'
+```
+
+This directory keeps the comparison pages, report observations and retained
+images. The native configuration and replay archives stay in the private
+export. Use `public-provenance.json` to trace the displayed observations to
+their source reports. Wait for `.incomplete` to disappear and review
+`publication-review.json` before serving the directory.
+
+Check the size of the complete reviewer directory against the hosting budget.
+The Atlas displays its estimated size and whether it exceeds the configured
+GitHub Pages budget. A larger release requires a static host with sufficient
+capacity. Verify the complete directory on the intended host so that both
+the overview and its linked native image evidence remain available.
+
 ```powershell
 python -m http.server 18890 --bind 127.0.0.1 `
     --directory 'G:\deltasieve-releases\enron-2026-11-08-buildid'
