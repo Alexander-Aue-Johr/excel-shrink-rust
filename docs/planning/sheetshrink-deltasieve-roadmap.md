@@ -2,6 +2,24 @@
 
 ## Current governing scope on 2026-11-10
 
+### Urgent priority added by the author on 2026-11-11
+
+Distribute full-calculation rebuilds of corpus originals and corresponding
+SheetShrink outputs across available Windows/Excel machines before the deadline.
+The standalone `excel-rebuild` CLI and web app now share the existing owned
+Excel pool, memory guards and telemetry. One native cached-formula fixture and
+one web-started run passed, preserving source bytes. A two-worker Destatis
+original queue and isolated remote Enron pair packages have started. Private
+machine assignments and transport packages remain outside the repository.
+
+Preserve input/output hashes, exact producer identity, Excel environment,
+calculation timings and every explicit opening or saving failure. Rebuild both
+partners in the same assigned environment. The subsequent semantic cell-value
+comparison must distinguish formula text, calculated caches, shared strings,
+empty cells, volatile dependencies and unresolved cases. Rebuild completion alone
+is not evidence that all values were preserved. Unsupported or failed inputs
+remain explicit exceptions. Existing visual comparisons continue independently.
+
 ### Highest priority on 2026-11-11: complete the 7x7 comparison Atlas
 
 Complete the frozen 49-workbook selection for each of Destatis, Data.gov and
