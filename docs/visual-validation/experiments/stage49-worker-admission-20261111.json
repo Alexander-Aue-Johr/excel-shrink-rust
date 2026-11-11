@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "scope": "Live operational admission trial for frozen ranks 10..49 per corpus. Two earlier comparisons continued throughout.",
+  "limitations": [
+    "Sequential windows used heterogeneous workbooks and phases. These windows do not isolate a causal scaling factor.",
+    "Image counts alone omit XML inspection and opening work. The fifth additional worker was still inspecting saved XML with 6048039 intermediate candidates and no captures at the observed checkpoint.",
+    "Pair completion counts include failures separately; no equality or complete corpus coverage is inferred."
+  ],
+  "runtime_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "windows": [
+    {
+      "additional_comparison_workers": 2,
+      "start_utc": "2026-11-11T11:29:34.317612+00:00",
+      "end_utc": "2026-11-11T11:31:34.509372+00:00",
+      "seconds": 120.18799999999464,
+      "successful_images_delta": 200,
+      "successful_images_per_second": 1.664059639897568,
+      "completed_pairs_delta": 5,
+      "failed_pairs_delta": 0,
+      "minimum_available_ram_gib": 61.3445930480957
+    },
+    {
+      "additional_comparison_workers": 3,
+      "start_utc": "2026-11-11T11:32:35.613259+00:00",
+      "end_utc": "2026-11-11T11:34:35.862855+00:00",
+      "seconds": 120.25,
+      "successful_images_delta": 768,
+      "successful_images_per_second": 6.386694386694387,
+      "completed_pairs_delta": 3,
+      "failed_pairs_delta": 0,
+      "minimum_available_ram_gib": 57.598114013671875
+    },
+    {
+      "additional_comparison_workers": 4,
+      "start_utc": "2026-11-11T11:35:34.905790+00:00",
+      "end_utc": "2026-11-11T11:37:35.409732+00:00",
+      "seconds": 120.51499999999942,
+      "successful_images_delta": 1204,
+      "successful_images_per_second": 9.990457619383527,
+      "completed_pairs_delta": 4,
+      "failed_pairs_delta": 0,
+      "minimum_available_ram_gib": 56.62409210205078
+    },
+    {
+      "additional_comparison_workers": 5,
+      "start_utc": "2026-11-11T11:38:58.453563+00:00",
+      "end_utc": "2026-11-11T11:40:59.070993+00:00",
+      "seconds": 120.60900000000402,
+      "successful_images_delta": 1011,
+      "successful_images_per_second": 8.38245902047083,
+      "completed_pairs_delta": 3,
+      "failed_pairs_delta": 0,
+      "minimum_available_ram_gib": 51.756492614746094
+    }
+  ],
+  "decision": "Hold admission at five additional workers pending another observation of the XML-heavy fifth lane; no sixth worker admitted.",
+  "prepared_expansion": {
+    "selected_ranks": [
+      10,
+      49
+    ],
+    "expected_variant_slots": 600,
+    "verified_staged_variants": 590,
+    "unavailable_variants": 10
+  },
+  "sheetshrink_projection": {
+    "selected_workbooks": 147,
+    "eligible_retained_observations_in_initial_projection": 141,
+    "scope": "Projection plan prepared; export and Atlas integration remain in progress."
+  }
+}
