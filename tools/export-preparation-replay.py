@@ -69,13 +69,19 @@ def export(run, destination):
         shutil.copyfile(assets / name, destination / name)
     shutil.copyfile(events, destination / "events.jsonl.gz")
     manifest = {
-        "schema": 1, "events_file": "events.jsonl.gz", "event_count": count,
-        "events_bytes": events.stat().st_size, "events_sha256": source["run_id"],
-        "source": source, "producer_revision": metadata["code_revision"],
+        "schema": 1,
+        "events_file": "events.jsonl.gz",
+        "event_count": count,
+        "events_bytes": events.stat().st_size,
+        "events_sha256": source["run_id"],
+        "source": source,
+        "producer_revision": metadata["code_revision"],
         "producer_sha256": metadata["binary_sha256"],
         "publication_status": "review_required",
-        "limitations": ["Full event history is loaded into browser memory.",
-                        "Recorded names, errors and sheet metadata require publication review."],
+        "limitations": [
+            "Full event history is loaded into browser memory.",
+            "Recorded names, errors and sheet metadata require publication review.",
+        ],
     }
     (destination / "recording.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     html = (assets / "index.html").read_text(encoding="utf-8")
@@ -84,9 +90,15 @@ def export(run, destination):
     html = html.replace('<title>', '<meta name="observatory-replay" content="./recording.json">\n    <title>')
     (destination / "index.html").write_text(html, encoding="utf-8")
     (destination / ".nojekyll").touch()
-    inventory = [{"file": path.name, "bytes": path.stat().st_size,
-                  "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-                 for path in sorted(destination.iterdir()) if path.is_file()]
+    inventory = [
+        {
+            "file": path.name,
+            "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+        for path in sorted(destination.iterdir())
+        if path.is_file()
+    ]
     (destination / "inventory.json").write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"events": count, "destination": str(destination), "publication_status": "review_required"}))
 
