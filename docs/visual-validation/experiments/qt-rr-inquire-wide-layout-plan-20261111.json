@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "case": "QT/RR B Original versus Inquire",
+  "frozen_source_commit": "37b36e43",
+  "measured_regions": 90112,
+  "cf_capture_decisions": 0,
+  "states": [
+    {
+      "state": "OR-rebuilt.xlsx",
+      "sha256": "f708d665e4c0a899c20ae56a3fce8d183c6ad68f0d17eafb66a1adbd42439746",
+      "sheet_headers": [
+        {
+          "part": "xl/worksheets/sheet1.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet2.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet3.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet4.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet5.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet6.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet7.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet8.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet9.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet10.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet11.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet12.xml",
+          "sheet_format": "<sheetFormatPr defaultRowHeight=\"12.75\" x14ac:dyDescent=\"0.2\"/>"
+        }
+      ],
+      "first_sheet_prefix_bytes": 262144,
+      "first_sheet_prefix_row_styles": [
+        {
+          "style": 2,
+          "border": "<ns0:border xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><ns0:left /><ns0:right /><ns0:top /><ns0:bottom style=\"thin\"><ns0:color indexed=\"64\" /></ns0:bottom><ns0:diagonal /></ns0:border>"
+        }
+      ]
+    },
+    {
+      "state": "SDR-rebuilt.xlsx",
+      "sha256": "2d5fda4db20f3781e776afe7efc3d51252d427bbf9e7df14c3407f2cf68bbcbb",
+      "sheet_headers": [
+        {
+          "part": "xl/worksheets/sheet1.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet2.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet3.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet4.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet5.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet6.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet7.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet8.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet9.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet10.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet11.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        },
+        {
+          "part": "xl/worksheets/sheet12.xml",
+          "sheet_format": "<sheetFormatPr defaultColWidth=\"9.140625\" defaultRowHeight=\"12.75\" customHeight=\"1\" x14ac:dyDescent=\"0.2\"/>"
+        }
+      ],
+      "first_sheet_prefix_bytes": 262144,
+      "first_sheet_prefix_row_styles": []
+    }
+  ],
+  "interpretation": [
+    "All twelve rebuilt worksheet headers differ in default layout metadata. The frozen layout selector includes the whole visible-content envelope for changed defaults.",
+    "The retained input envelopes extend to column XFD but have finite row bounds. This is not a whole 1048576-row raster.",
+    "The Original first-sheet prefix contains an inherited thin bottom row border. The sampled Inquire prefix has no row-style attributes. This prefix sample does not prove all rows or all cells are equivalent or different.",
+    "A whole-width inherited border can remain visible far beyond value cells. A safe reduction needs a proof for repeated tail formatting and retained finite transitions, together with layout dependencies. Merely clipping to populated cells would omit potential changes."
+  ],
+  "visual_verdict": "pending ongoing native comparison"
+}
