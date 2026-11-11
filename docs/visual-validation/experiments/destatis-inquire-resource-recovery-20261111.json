@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "comparison": "Original versus Inquire",
+  "runtime_sha256": "ebe7c16172c5126bbfd5a65c5ebf962a63eb123aeaeca3ba122fbdd5f3d30ba8",
+  "run_sha256": "19175fed49ffc67203b3b4b97e5ac77f34fb319da8e3cf81ae2205004ba90d2e",
+  "policy_version": 19,
+  "parallel_groups": 1,
+  "owned_job_limit_gib": 32,
+  "free_ram_and_commit_reserve_gib": 8,
+  "results": [
+    {
+      "name": "31122003_Auszug_GV.xlsx",
+      "pair_id": "07c284656131b7da8cf6db21",
+      "status": "failed",
+      "diagnosis": "Workbook startup timed out after 120 seconds; current dialog evidence does not identify a cause."
+    },
+    {
+      "name": "statistischer-bericht-binnenschifffahrt-2080400231065.xlsx",
+      "pair_id": "bfcb76426a42c34fc3f81698",
+      "status": "failed",
+      "diagnosis": "GENESIS-Online requires unresolved full-grid A1:XFD1048576 coverage under v19."
+    },
+    {
+      "name": "statistischer-bericht-binnenschifffahrt-2080400231125.xlsx",
+      "pair_id": "e835c255bdad88253640482c",
+      "status": "failed",
+      "diagnosis": "GENESIS-Online requires unresolved full-grid A1:XFD1048576 coverage under v19."
+    },
+    {
+      "name": "statistischer-bericht-migrationshintergrund-erst-2010220227005.xlsx",
+      "pair_id": "b83a740cb93a3db83eedd14b",
+      "status": "failed",
+      "diagnosis": "GENESIS-Online requires unresolved full-grid A1:XFD1048576 coverage under v19."
+    }
+  ],
+  "interpretation": "All four recovery attempts failed. No visual equality or regression verdict is established. Earlier resource failures remain retained as separate observations. The three full-grid requirements are unresolved method limitations.",
+  "ownership": "These four pairs remain excluded from the offline retry coordinator while their causes are investigated."
+}
