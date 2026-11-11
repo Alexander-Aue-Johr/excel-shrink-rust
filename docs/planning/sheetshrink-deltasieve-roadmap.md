@@ -41,7 +41,7 @@ pairs have equal saved contents. One workbook removes376,573 numeric zeros from
 hidden columns. Preserve this explicit content change and avoid an unconditional
 value-preservation claim. See the Destatis rebuilt-cell audit ledger.
 
-The verified Enron partial audits now cover14,536 assigned pairs.13,297 have equal
+The verified Enron partial audits now cover14,538 assigned pairs.13,299 have equal
 saved contents and1,239 contain differences requiring explanation. These are
 completed-pair selections from active assignments, not a random sample or a
 whole-corpus result. Preserve formula/time/filename diagnostics and unsupported

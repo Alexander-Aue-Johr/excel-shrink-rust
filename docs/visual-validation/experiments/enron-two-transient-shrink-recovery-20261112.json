@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "scope": "Two earlier unsuccessful SheetShrink rebuilds retried in separate output directories with the monitor-sharing revision and one guarded worker. Existing successful original rebuilds reused.",
+  "cases": [
+    {
+      "case": 10470,
+      "earlier_error": "Cannot create a file when that file already exists during full calculation rebuild",
+      "retry": "prepared"
+    },
+    {
+      "case": 24072,
+      "earlier_error": "Opening monitor progress.json sharing violation",
+      "retry": "prepared"
+    }
+  ],
+  "rebuild_seconds_for_two": 4.147446499991929,
+  "source_and_output_hashes_verified": true,
+  "comparison": {
+    "pairs": 2,
+    "equal_cell_contents": 2,
+    "difference_records": 0
+  },
+  "summary_sha256": "32c74867a09bd6e2e7b7eb36d9e273247206a18ff0df946a34524e6227a95226",
+  "remaining_original_local_assignment_shrink_exceptions": {
+    "total": 142,
+    "opening_workbook": 126,
+    "pending_calculation": 16
+  },
+  "cumulative_enron_partial_audit": {
+    "pairs": 14538,
+    "equal_cell_contents": 13299,
+    "differences_found": 1239
+  },
+  "limits": "Earlier failed attempts remain preserved. No new original rebuild was performed. Root cause of the first transient failure remains unproven."
+}
