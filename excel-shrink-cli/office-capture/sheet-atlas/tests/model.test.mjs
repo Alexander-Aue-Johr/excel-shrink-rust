@@ -3,6 +3,37 @@ import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
 import { readGzip, contextKey, assetUrl, candidatePair, sheetSummary, recordedOutcome, groupOutcome } from '../model.js';
 import { bookLayout } from '../gallery.js';
+import { catalogCollections } from '../model.js';
+
+test('optional cohorts match original identities while retaining source corpora and missing members', () => {
+  const original = 'a'.repeat(64);
+  const normalized = 'b'.repeat(64);
+  const first = { corpus: 'destatis', original_identity: original };
+  const second = { corpus: 'enron', original_identity: original };
+  const catalog = {
+    books: [first, second, { corpus: 'destatis', original_identity: normalized }],
+    cohorts: [{ id: 'opening-memory', label: 'Opening and memory case study', members: [
+      { corpus: 'destatis', original_identity: original },
+      { corpus: 'enron', original_identity: original },
+      { corpus: 'datagov', original_identity: 'c'.repeat(64) },
+    ] }],
+  };
+  const snapshot = structuredClone(catalog);
+  const collections = catalogCollections(catalog);
+  assert.deepEqual(collections.map(entry => entry.value), ['destatis', 'enron', 'cohort/opening-memory']);
+  assert.deepEqual(collections[2].books, [first, second]);
+  assert.equal(collections[2].missing.length, 1);
+  assert.deepEqual(catalog, snapshot);
+  assert.deepEqual(catalogCollections({ books: [first] })[0].books, [first]);
+});
+
+test('cohorts reject ambiguous identifiers and duplicate member declarations', () => {
+  const member = { corpus: 'destatis', original_identity: 'a'.repeat(64) };
+  const cohort = { id: 'case', label: 'Case', members: [member] };
+  assert.throws(() => catalogCollections({ books: [], cohorts: [cohort, cohort] }), /unique/);
+  assert.throws(() => catalogCollections({ books: [], cohorts: [{ ...cohort, members: [member, member] }] }), /duplicate/);
+  assert.throws(() => catalogCollections({ books: [], cohorts: [{ ...cohort, members: [{ corpus: 'destatis' }] }] }), /SHA-256/);
+});
 import { difference, nativeZoomRegion } from '../comparison.js';
 import { sheetEvidence } from '../model.js';
 import { atlasColors } from '../card-painter.js';

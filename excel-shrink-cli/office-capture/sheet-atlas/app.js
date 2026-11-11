@@ -1,10 +1,11 @@
 import { AtlasGallery } from './gallery.js';
 import { ComparisonView } from './comparison.js';
-import { readGzip, assetUrl, loadSheet, comparisonContext, sheetSummary, sheetEvidence } from './model.js';
+import { readGzip, assetUrl, loadSheet, comparisonContext, sheetSummary, sheetEvidence, catalogCollections } from './model.js';
 
 const $ = id => document.getElementById(id);
 const state = { corpus: null, selected: new Set(), book: null, sheet: null, detail: null, compare: false, token: 0 };
 let catalog;
+let collections;
 let gallery;
 let comparison;
 const names = { original: 'Original' };
@@ -31,7 +32,8 @@ function button(text, action, className = 'explorer-item') {
   result.addEventListener('click', action); return result;
 }
 
-function books() { return catalog.books.filter(book => book.corpus === state.corpus); }
+function collection() { return collections.find(entry => entry.value === state.corpus); }
+function books() { return collection()?.books || []; }
 function activeVariants() { return new Set(books().flatMap(book => book.observations.map(o => o.variant))); }
 function selectedVariants() {
   const active = activeVariants();
@@ -87,7 +89,7 @@ async function openFinding(book, sheet, id) {
   const token = ++state.token;
   state.compare = true; render();
   $('compare-title').textContent = change.label;
-  $('compare-eyebrow').textContent = `${state.corpus} / ${book.name} / ${sheet.name}`;
+  $('compare-eyebrow').textContent = `${book.corpus} / ${book.name} / ${sheet.name}`;
   $('compare-description').textContent = 'Loading native captures…';
   $('comparison-host').hidden = true;
   $('comparison-host').setAttribute('aria-busy', 'true');
@@ -136,10 +138,10 @@ function render() {
   $('viewer-layout').hidden = state.compare;
   $('compare-page').hidden = !state.compare;
   $('back-button').disabled = !state.book;
-  $('breadcrumbs').replaceChildren(button(state.corpus, overview, 'quiet-button'));
+  $('breadcrumbs').replaceChildren(button(collection().label, overview, 'quiet-button'));
   if (state.book) $('breadcrumbs').append(button(state.book.name, () => openBook(state.book), 'quiet-button'));
   if (state.sheet) $('breadcrumbs').append(element('span', '', state.sheet.name));
-  $('gallery-eyebrow').textContent = `${state.corpus} · RETAINED VISUAL EVIDENCE`;
+  $('gallery-eyebrow').textContent = `${state.book?.corpus || collection().label} · RETAINED VISUAL EVIDENCE`;
   $('gallery-title').textContent = state.sheet?.name || state.book?.name || 'Workbooks';
   const active = activeVariants();
   for (const label of $('pipeline-checkboxes').children) label.hidden = !active.has(label.dataset.variant);
@@ -151,6 +153,9 @@ function render() {
       + (state.book.inventory_complete ? '' : ' · Sheet inventory is unavailable');
   } else {
     $('gallery-description').textContent = `${books().length} workbooks · ${books().reduce((sum, book) => sum + book.sheets.length, 0)} sheets · ${catalog.variants.length} recorded runs`;
+    if (collection().missing.length) {
+      $('gallery-description').textContent += ` · ${collection().missing.length} collection members unavailable`;
+    }
   }
   $('gallery-hint').textContent = state.sheet ? 'Red finding → native comparison' : state.book ? 'Sheet → details' : 'Workbook → all sheets';
   $('rail-explanation').textContent = 'Δ Difference, cause unclassified. = No difference in compared captures. ? No pixel comparison. P Capture plan. I Conditional-formatting dependency candidate. F Conservative rule capture. A rule capture can cover part of a sheet. Full-sheet fallback and causal attribution require separate evidence. Dashed borders mark incomplete runs.';
@@ -196,6 +201,7 @@ function renderSidebar() {
       const item = button('', () => openBook(book));
       item.title = book.name;
       item.append(element('strong', 'atlas-item-title', book.name));
+      item.append(element('small', '', book.corpus));
       item.append(element('small', '', `${changedSheets(book)} / ${book.sheets.length} sheets with changes${coverageText(book)}${book.inventory_complete ? '' : ' · partial inventory'}`));
       list.append(item);
     }
@@ -243,9 +249,11 @@ async function start() {
     $('aspect-status').textContent = `~${Math.ceil(catalog.storage.bytes_before_index / 1_000_000)} MB static package`
       + (catalog.storage.within_budget ? '' : ' · exceeds GitHub Pages budget');
   }
-  const corpora = [...new Set(catalog.books.map(book => book.corpus))];
-  for (const corpus of corpora) {
-    const option = element('option', '', corpus); option.value = corpus; $('corpus-select').append(option);
+  collections = catalogCollections(catalog);
+  for (const entry of collections) {
+    const option = element('option', '', entry.label);
+    option.value = entry.value;
+    $('corpus-select').append(option);
   }
   for (const variant of catalog.variants) {
     const duplicate = catalog.variants.filter(v => v.name === variant.name).length > 1;
@@ -280,14 +288,19 @@ async function start() {
   });
   comparison = new ComparisonView($('comparison-host'), { onBack: back });
   attachControls();
-  if (!corpora.length) { $('gallery-title').textContent = 'No recorded workbooks'; return; }
-  corpusChanged();
+  if (!collections.length) { $('gallery-title').textContent = 'No recorded workbooks'; return; }
   const query = new URLSearchParams(location.search);
+  if (collections.some(entry => entry.value === query.get('collection'))) {
+    $('corpus-select').value = query.get('collection');
+  }
+  corpusChanged();
   const book = catalog.books.find(entry => entry.id === query.get('book'));
   if (!book) return;
 
-  $('corpus-select').value = book.corpus;
-  corpusChanged();
+  if (!books().includes(book)) {
+    $('corpus-select').value = book.corpus;
+    corpusChanged();
+  }
   const sheet = book.sheets.find(entry => entry.name === query.get('sheet'));
   if (!sheet) {
     openBook(book);

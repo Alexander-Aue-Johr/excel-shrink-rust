@@ -3,6 +3,46 @@ export const atlasRoot = new URL('../', import.meta.url);
 const details = new Map();
 const images = new Map();
 
+export function catalogCollections(catalog) {
+  const corpora = [...new Set(catalog.books.map(book => book.corpus))];
+  const collections = corpora.map(corpus => ({
+    value: corpus,
+    label: corpus,
+    books: catalog.books.filter(book => book.corpus === corpus),
+    missing: [],
+  }));
+  for (const cohort of catalog.cohorts || []) {
+    if (typeof cohort.id !== 'string' || !cohort.id.trim()
+      || typeof cohort.label !== 'string' || !cohort.label.trim()
+      || !Array.isArray(cohort.members)) {
+      throw new Error('Atlas cohort requires an id, label and member identities.');
+    }
+    const value = `cohort/${cohort.id}`;
+    if (collections.some(collection => collection.value === value)) {
+      throw new Error('Atlas collection identifiers must be unique.');
+    }
+    const keys = cohort.members.map(member => {
+      if (!member || typeof member.corpus !== 'string'
+        || !/^[a-f0-9]{64}$/.test(member.original_identity)) {
+        throw new Error('Atlas cohort members require a corpus and original SHA-256.');
+      }
+      return JSON.stringify([member.corpus, member.original_identity]);
+    });
+    if (new Set(keys).size !== keys.length) {
+      throw new Error('Atlas cohort contains duplicate member identities.');
+    }
+    const matches = member => catalog.books.filter(book =>
+      book.corpus === member.corpus && book.original_identity === member.original_identity);
+    collections.push({
+      value,
+      label: cohort.label,
+      books: cohort.members.flatMap(matches),
+      missing: cohort.members.filter(member => matches(member).length === 0),
+    });
+  }
+  return collections;
+}
+
 export function assetUrl(relative) {
   const url = new URL(relative, atlasRoot);
   if (url.origin !== atlasRoot.origin || !url.pathname.startsWith(atlasRoot.pathname)) {

@@ -245,3 +245,24 @@ dependency evidence a purple diamond, fallback scope an amber `F`, rendering
 variation a cyan `R`, volatile-formula evidence a purple `V`, and confirmed
 regression a red `!`. These are proposed review encodings. The current Atlas
 does not populate absent causal categories or turn unknown sheets green.
+
+## Identity-based case-study collections
+
+A derived catalog can declare an optional `cohorts` array. Each entry has an
+`id`, a displayed `label`, and `members` containing the exact `corpus` and
+`original_identity` SHA-256. The Collection selector retains the ordinary
+corpus views and adds these case-study views. A link can select a view with
+`?collection=cohort/opening-memory&theme=light`.
+
+Membership requires both the corpus and original identity to match. A
+normalized-baseline workbook stays in its separately labelled corpus. It is
+never substituted automatically for a selected raw original. Missing members
+are counted explicitly. Workbook navigation and native-comparison headings
+continue to show the source corpus. Cohorts select existing books and retain
+their observations, statuses, evidence paths and comparison-context rules.
+
+This optional metadata is supplied when deriving a study-specific publication
+snapshot. The ordinary exporter does not infer scientific case-study membership.
+Keep the cohort manifest and presentation derivation alongside the snapshot.
+The four-case opening/memory view uses the original identities in
+`experiments/opening-memory-native-case-audit-20261111.json`.
