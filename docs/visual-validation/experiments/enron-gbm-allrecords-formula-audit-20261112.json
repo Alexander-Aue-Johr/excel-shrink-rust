@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "case": "enron/local/case-010188",
+  "scope": "All21906 changed saved-cell records in this one previously sampled GBM example. Both rebuilt input identities retained. No new Excel run.",
+  "command_options": {
+    "formula_sample_limit": 65536
+  },
+  "results": {
+    "records": 21906,
+    "examined": 21906,
+    "all_records_examined": true,
+    "paths": {
+      "('path_found', 'random_time')": 21906
+    },
+    "incomplete": 0
+  },
+  "elapsed_seconds": 9.01073809999798,
+  "summary_sha256": "1fd0dce06d19058e98d913c76321feec15366ac712a1fe8a8380ebbaa6ecba73",
+  "report_sha256": "2eef9058e45dc25cf08f0926059e31d98ac025dcc403c0c41a30ce301538ec93",
+  "interpretation": "Every changed cell has a supported random/time dependency path under the saved-state formula model. This extends the earlier direct-RAND check to the6570 indirect cells. Paths do not prove exclusive causation. Raw differences remain preserved."
+}
