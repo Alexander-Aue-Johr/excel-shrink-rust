@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "scope": "Six largest-difference examples from the third and fourth local Enron audit blocks. Every changed cell in these six examples was checked, extending the runtime diagnostic sample limit of 32.",
+  "method": "Read only changed worksheet ZIP parts. Compare stored formula text and attributes on both rebuilt sides. For shared formulas resolve the formula text through the same stored shared index. Recognize only exact RAND() or NORMINV(RAND(),0,1) formula text. Other cases remain unresolved by this check.",
+  "interpretation": "Unchanged direct-random formula or shared-anchor evidence supports recalculation variation. It does not prove exclusive causation and does not suppress any raw difference.",
+  "results": [
+    {
+      "selection": "enron-local-third1000",
+      "label": "enron/local/case-003973",
+      "changed_records": 3000,
+      "formula_checks": {
+        "unchanged_direct_random_formula_or_shared_anchor": 3000
+      },
+      "exclusive_cause_proven": false
+    },
+    {
+      "selection": "enron-local-third1000",
+      "label": "enron/local/case-004197",
+      "changed_records": 3000,
+      "formula_checks": {
+        "unchanged_direct_random_formula_or_shared_anchor": 3000
+      },
+      "exclusive_cause_proven": false
+    },
+    {
+      "selection": "enron-local-third1000",
+      "label": "enron/local/case-007161",
+      "changed_records": 3000,
+      "formula_checks": {
+        "unchanged_direct_random_formula_or_shared_anchor": 3000
+      },
+      "exclusive_cause_proven": false
+    },
+    {
+      "selection": "enron-local-fourth1000",
+      "label": "enron/local/case-010188",
+      "changed_records": 21906,
+      "formula_checks": {
+        "unchanged_direct_random_formula_or_shared_anchor": 15336,
+        "requires_further_analysis": 6570
+      },
+      "exclusive_cause_proven": false
+    },
+    {
+      "selection": "enron-local-fourth1000",
+      "label": "enron/local/case-008959",
+      "changed_records": 3000,
+      "formula_checks": {
+        "unchanged_direct_random_formula_or_shared_anchor": 3000
+      },
+      "exclusive_cause_proven": false
+    },
+    {
+      "selection": "enron-local-fourth1000",
+      "label": "enron/local/case-009179",
+      "changed_records": 3000,
+      "formula_checks": {
+        "unchanged_direct_random_formula_or_shared_anchor": 3000
+      },
+      "exclusive_cause_proven": false
+    }
+  ]
+}
