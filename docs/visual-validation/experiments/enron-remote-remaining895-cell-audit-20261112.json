@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "scope": "Remaining895 complete pairs from a remote assignment. Source and output hashes verified independently. Earlier1100 audited pairs excluded. Incomplete pairs remain explicit exceptions.",
+  "pairs": 895,
+  "equal_cell_contents": 862,
+  "differences_found": 33,
+  "changed_records": 116,
+  "full_diagnostic_coverage": {
+    "examined_records": 116,
+    "random_time_paths": 100,
+    "environment_paths": 16,
+    "unresolved_records": 0
+  },
+  "audit_seconds": 26.08037379999587,
+  "summary_sha256": "ff0c0a862f2d5bcab8bd58561b095f48163942fdc440179fd605efa65e3d7356",
+  "manifest_sha256": "c753c76fa4e01ba724a8159572c0ed5a9ee9836614e3171fc9e33342b206eee5",
+  "cumulative_enron_partial_audit": {
+    "pairs": 14536,
+    "equal_cell_contents": 13297,
+    "differences_found": 1239,
+    "retained_difference_records": 141411
+  },
+  "limits": "Supported dependency paths do not prove exclusive causation. All raw differences remain retained. Completed-pair selection is not representative or whole-corpus evidence."
+}
