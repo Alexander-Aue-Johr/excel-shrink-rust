@@ -352,6 +352,24 @@ the bounded, equal SheetShrink reference above.
 Inquire failure receipt SHA-256
 `36fe36f0b7a6cf1fdb393ad6e1a142d9a0eb1c8a54d08026fc74f8d8d2de4f67`.
 
+## Remaining SheetShrink Top49 comparison slots
+
+The current-output audit has five unavailable slots across Destatis and
+Data.gov. The latest retained attempt for each identifies a distinct
+stage or stopping condition:
+
+| Corpus | Rank | Workbook | Retained outcome |
+|---|---:|---|---|
+| Destatis | 2 | Traffic | The bounded follow-up exceeded ten minutes without a complete visual verdict. |
+| Destatis | 45 | `31122003_Auszug_GV.xlsx` | Neither lane confirmed opening before the 120-second no-progress stop. |
+| Data.gov | 8 | Raspberries | The planner could not bound `By Country!A1:XFD1048576`. The separate finite reference remains a separate observation. |
+| Data.gov | 17 | PubMed | The original save returned `AccessDenied`. An editable follow-up also failed after recording a 16,733,285-candidate plan. |
+| Data.gov | 22 | Cookstove LCA | The current planner could not bound `Input Tab!A1:XFD1048576`. The historical 169-region run used a different validation iteration. |
+
+These slots stay unavailable in the version-matched comparison
+denominator. A bounded result or an older run remains evidence for
+its own recorded scope.
+
 ## Enron SheetShrink chart findings in the top-49 selection
 
 The current-output identity audit selects five Enron workbook observations
