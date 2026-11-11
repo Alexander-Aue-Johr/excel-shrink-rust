@@ -316,6 +316,7 @@ const VALIDATOR_SOURCES: &[&[u8]] = &[
     include_bytes!("../regression/targeted_comparison/preparation.rs"),
     include_bytes!("../regression/targeted_comparison/reporting.rs"),
     include_bytes!("../regression/targeted_comparison/selection_inspection.rs"),
+    include_bytes!("../regression/targeted_comparison/merge_order.rs"),
     include_bytes!("../regression/targeted_comparison/snapshot_cache.rs"),
     include_bytes!("../regression/targeted_comparison/staged.rs"),
     include_bytes!("../regression/targeted_comparison/staged_formulas.rs"),

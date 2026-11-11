@@ -59,6 +59,24 @@ It leaves the input workbooks unchanged and releases its temporary fingerprints.
 It does not open Excel, measure effective heights, capture charts or issue a
 visual verdict. The reported logical regions precede live geometry partitioning.
 
+### Merge ordering and layout coverage
+
+Policy v18 compares up to 256 valid, pairwise-disjoint merge rectangles in
+canonical coordinate order. Reordering the same disjoint rectangles cannot
+change which cells are merged. Changed rectangles still change the layout
+identity. The original order-sensitive hash remains the fallback for larger
+merge lists, duplicate or overlapping rectangles, invalid coordinates, unknown
+attributes or children, unsupported namespaces, non-whitespace content and
+inconsistent counts. Other worksheet layout metadata remains in the hash.
+Normalization uses the existing XML stream and bounds overlap checks to at
+most 32,640 rectangle pairs per sheet.
+
+This removes merge-list permutation as a reason for whole-content capture.
+Cell changes, inherited formats, geometry, drawings and conditional-format
+dependencies continue to select their own areas. A reduced plan requires a
+separate native observation before any visual verdict. Existing v17 reports
+keep their original policy and retained captures.
+
 ### Rebuild stage telemetry
 
 Resident heartbeat resource samples include bounded `targeted_progress` evidence with command ID, stage and transition timestamp. Rebuild dispatch, waiting for calculation, saving and successful save are distinct stages. A heartbeat alone does not prove calculation progress. Command deadlines and save/rebuild success requirements are unchanged.

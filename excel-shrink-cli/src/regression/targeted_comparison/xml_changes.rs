@@ -98,6 +98,25 @@ fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn hash_layout_tag(
+    layout: &mut Sha256,
+    tag: crate::regression::xml_views::Tag<'_>,
+    styles: &super::style_identity::StyleIdentity,
+) -> Result<()> {
+    layout.update(tag.name);
+    if tag.local() == b"col" {
+        styles.hash_attributes(layout, tag.attrs, b"style")?;
+    } else {
+        layout.update(tag.attrs);
+    }
+    layout.update([match tag.kind {
+        Kind::Start => 1,
+        Kind::Empty => 2,
+        Kind::End => 3,
+    }]);
+    Ok(())
+}
+
 impl Snapshot {
     /// Stream cell fingerprints to owned scratch files; retain only layout metadata in memory.
     pub fn read(path: &Path) -> Result<Self> {
@@ -439,6 +458,8 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     let mut data_depth = None;
     let mut columns_depth = None;
     let mut layout = Sha256::new();
+    let mut canonical_layout = Sha256::new();
+    let mut merge_order = super::merge_order::MergeOrder::default();
     let mut uniform_background_supported = true;
     let mut sheet_views = 0;
     let mut sheet_views_supported = true;
@@ -550,6 +571,7 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
             }
             let worksheet_column = tag.name == b"col" && tag_namespace
                 && columns_depth.is_some_and(|depth| tag.depth == depth + 1);
+            let merge_member = data_depth.is_none() && merge_order.observe(*tag, tag_namespace)?;
             if tag.local() == b"sheetData" {
                 if tag.kind == Kind::Start {
                     data_depth = Some(tag.depth);
@@ -557,17 +579,10 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                     data_depth = None;
                 }
             } else if data_depth.is_none() && tag.local() != b"dimension" && !worksheet_column {
-                layout.update(tag.name);
-                if tag.local() == b"col" {
-                    style_identity.hash_attributes(&mut layout, tag.attrs, b"style")?;
-                } else {
-                    layout.update(tag.attrs);
+                hash_layout_tag(&mut layout, *tag, style_identity)?;
+                if !merge_member {
+                    hash_layout_tag(&mut canonical_layout, *tag, style_identity)?;
                 }
-                layout.update([match tag.kind {
-                    Kind::Start => 1,
-                    Kind::Empty => 2,
-                    Kind::End => 3,
-                }]);
             }
             if tag.local() == b"conditionalFormatting" {
                 let eligible =
@@ -649,6 +664,9 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                                 layout.update(row.to_le_bytes());
                                 layout.update(key);
                                 layout.update(value);
+                                canonical_layout.update(row.to_le_bytes());
+                                canonical_layout.update(key);
+                                canonical_layout.update(value);
                             }
                         }
                         if !attributes.is_empty() {
@@ -684,6 +702,11 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                 xm_namespace = xm;
             }
         }
+        match &event {
+            Event::Text(bytes) => merge_order.observe_text(bytes, false),
+            Event::Cdata(bytes) => merge_order.observe_text(bytes, true),
+            Event::Tag(_) => {}
+        }
         match &mut cells {
             Some(cells) => cells.event_with_styles(&event, style_identity),
             None => Ok(()),
@@ -692,7 +715,12 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
     if let Some(cells) = cells {
         model.cells = cells.finish()?;
     }
-    model.cf_layout = format!("{:x}", layout.finalize());
+    model.cf_layout = if let Some(merges) = merge_order.finish() {
+        canonical_layout.update(merges);
+        format!("{:x}", canonical_layout.finalize())
+    } else {
+        format!("{:x}", layout.finalize())
+    };
     model.conditional = Arc::new(xml::catalogue(archive, part, &spans)?);
     let cf_blank_tail_inactive = model.value_namespace_supported
         && model.cf_columns.is_resolved()
@@ -1042,6 +1070,34 @@ mod tests {
         let changed = model(changed_xml.as_bytes(), &right_styles)?;
         left.cells.changes(&changed.cells, |_| { differences += 1; Ok(()) })?;
         assert_eq!(differences, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn merge_reordering_preserves_layout_but_changed_or_ambiguous_merges_do_not() -> Result<()> {
+        use std::io::Write;
+        let identity = super::super::style_identity::StyleIdentity::read(b"")?;
+        let path = std::env::temp_dir().join(format!("merge-layout-{}.zip", uuid::Uuid::new_v4()));
+        let layout = |body: &str| -> Result<String> {
+            let mut zip = zip::ZipWriter::new(File::create(&path)?);
+            zip.start_file("sheet.xml", zip::write::FileOptions::default())?;
+            write!(zip, "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData/>{body}</worksheet>")?;
+            zip.finish()?;
+            let mut archive = ZipArchive::new(File::open(&path)?)?;
+            let sheet = read_sheet::<false>(
+                &mut archive, "sheet.xml", 1, 1, None,
+                &[Default::default()], &identity, &BTreeSet::new(), false,
+            )?;
+            Ok(sheet.cf_layout)
+        };
+        let left = r#"<mergeCells count="2"><mergeCell ref="A1:B1"/><mergeCell ref="C2:D2"/></mergeCells>"#;
+        let right = r#"<mergeCells count="2"><mergeCell ref="C2:D2"/><mergeCell ref="A1:B1"/></mergeCells>"#;
+        let expected = layout(left)?;
+        assert_eq!(expected, layout(right)?);
+        assert_ne!(expected, layout(&right.replace("C2:D2", "C3:D3"))?);
+        assert_ne!(expected, layout(&right.replace("C2:D2", "A1:C2"))?);
+        assert_ne!(expected, layout(&format!("{right}<sheetProtection sheet=\"1\"/>"))?);
+        std::fs::remove_file(path)?;
         Ok(())
     }
 
