@@ -1492,6 +1492,18 @@ in `../visual-validation/experiments/replay-cost-20261108.md`.
 Task 15 remains open for detailed process/sheet/capture/heartbeat recording,
 shared live-component playback and long browser-memory acceptance.
 
+Publication preparation on 2026-11-11 found local output paths in the saved
+preparation events. Source `eea3e874` adds an opt-in standalone Windows-path
+projection, preserving the original stream and recording both source and
+export checksums. Two focused exporter tests pass. All three complete streams
+were re-exported privately as `static-replays-v4`. The decompressed streams and
+their manifest/index files have zero absolute-path or known-private-host marker
+matches after projection. One Enron credential-word match is the corpus's
+worksheet label `PASSWORDS`, without cell values in the event. The numeric
+review is in `../visual-validation/experiments/preparation-replay-publication-review-20261111.json`.
+Corpus labels remain visible. General content review, browser acceptance and
+public deployment remain separate gates. The full history still loads in memory.
+
 ## 16 Extract coherent software components
 
 - [ ] Establish the shared toolset structure incrementally as features create concrete boundaries.

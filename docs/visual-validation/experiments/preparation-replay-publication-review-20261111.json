@@ -1,0 +1,54 @@
+{
+  "scope": "Complete decompressed preparation replay and manifest/index marker scan; standalone path projection; browser acceptance and publication pending",
+  "corpora": [
+    {
+      "corpus": "destatis",
+      "events": 136630,
+      "scan_hits": {
+        "absolute_windows_path": 0,
+        "private_host_marker": 0,
+        "credential_marker": 0
+      },
+      "projection": "standalone_windows_paths_to_basename",
+      "source_events_sha256": "16b8e261b47b0ff03dd8bacb298695baab44c0c3bb3d684d355c4303566cb3ce",
+      "events_sha256": "2af6a57115676042e3e96bc6a2c98e48f79239f2cb438230eb5f94060c741f4c"
+    },
+    {
+      "corpus": "datagov",
+      "events": 228685,
+      "scan_hits": {
+        "absolute_windows_path": 0,
+        "private_host_marker": 0,
+        "credential_marker": 0
+      },
+      "projection": "standalone_windows_paths_to_basename",
+      "source_events_sha256": "cba00e2d24c8ec7029d6f2dcf6866ee6affc4a3cc731003fe4523994e1481000",
+      "events_sha256": "532c8c9457979c98eec3e0bf564d188a74924344eceecfd996f38e5508eee068"
+    },
+    {
+      "corpus": "enron",
+      "events": 574159,
+      "scan_hits": {
+        "absolute_windows_path": 0,
+        "private_host_marker": 0,
+        "credential_marker": 1
+      },
+      "projection": "standalone_windows_paths_to_basename",
+      "source_events_sha256": "bdb0029c1473f8c528c0c6394e3571d0eac35b7edc95272d169d09771b9d99f3",
+      "events_sha256": "d6865e922280b54e259ca624f4235d27ebeae2a56063ce3a528a002c3511e677",
+      "credential_marker_review": {
+        "sequence": 436241,
+        "field": "payload.sheet_names.xl/worksheets/sheet3.xml",
+        "value": "PASSWORDS",
+        "classification": "Public corpus worksheet label; no cell values are recorded in this event"
+      }
+    }
+  ],
+  "exporter_revision": "eea3e874",
+  "limitations": [
+    "Marker scan is not a general secret detector",
+    "Corpus workbook and worksheet names remain visible",
+    "Full history is still loaded into browser memory",
+    "Public HTTP deployment remains pending"
+  ]
+}
