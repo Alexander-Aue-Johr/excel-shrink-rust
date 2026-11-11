@@ -12,8 +12,8 @@ baselines explicitly. Extend the existing static Atlas to these selections.
 The 7x7 layout motivates the demonstration size; the frozen ranking selects
 large absolute SheetShrink byte reductions and is a targeted stress selection.
 
-The laptop, work laptop and Computer Susann now own manuscript work. This agent
-handles red editorial markers addressed to it and otherwise prioritizes native
+Other collaborators now own manuscript work. This agent handles red editorial
+markers addressed to it and otherwise prioritizes native
 validation and Atlas delivery. Preserve the rest of this roadmap as deferred
 work rather than declaring it completed.
 
