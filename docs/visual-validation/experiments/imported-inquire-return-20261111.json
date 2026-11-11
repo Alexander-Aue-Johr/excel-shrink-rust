@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "scope": "Incremental first-pass Enron/Inquire and Destatis/Inquire return",
+  "manifest_sha256": "92bfdcd7c1a0ae8b98cbde77d34a7971d4d31dd835c1989148fac46d4893bb38",
+  "assignment_sha256": "24357aac7296dc966a4e943f257f3cdee6de1d76bc7abce49fce82f51481f0e9",
+  "local_verification": {
+    "files": 37192,
+    "bytes": 12499415626,
+    "elapsed_seconds": 175.656,
+    "all_manifest_hashes_matched": true
+  },
+  "terminal_first_pass_outcomes": {
+    "destatis_inquire": {"pairs": 40, "completed_with_limitations": 7, "failed": 33},
+    "enron_inquire": {"pairs": 39, "completed_with_limitations": 29, "failed": 10}
+  },
+  "failure_inventory": {
+    "destatis": {"whole_grid": 29, "resident_resource_guard": 4},
+    "enron": {"whole_grid": 1, "resident_resource_guard": 7, "unresolved_native": 2},
+    "meaning": "Categories describe retained failure evidence. They do not establish workbook corruption or visual equality."
+  },
+  "read_only_v19_probe": {
+    "workbook": "statistischer-bericht-kostenstruktur-med-bereich-2020161227005.xlsx",
+    "sheet": "GENESIS-Online",
+    "retained_first_pass_id": "03578c0ff0ad6ce6b7f35528",
+    "policy": "targeted-content-grid-v19",
+    "layout_range": "A1:XFD1048576",
+    "cf_capture_decisions": 0,
+    "observation": "The sheet has solid column backgrounds plus a drawing containing an image and text shapes. This mixed drawing is outside the closed-line qualification. The read-only v19 selector retains whole-grid fallback.",
+    "visual_verdict": "not_observed"
+  },
+  "merged_snapshot": {
+    "sources": 50,
+    "observations": 500,
+    "run_sha256": "444dfcc43f4f8fc78c7860a74e94879cf9dee148a59362b98f2367499182654d",
+    "source_metadata_hashes_verified": true,
+    "includes": "Earlier local observations, the 79 returned pairs and completed QT/RR B",
+    "public_export": "In progress with compact generated report serialization"
+  },
+  "resource_followups": {
+    "enron": "Seven separately owned raw-pair retries admitted with policy v19",
+    "destatis": "Four separately owned raw-pair retries planned after Enron",
+    "comparison_groups": 1,
+    "job_memory_limit_bytes": 34359738368,
+    "system_ram_and_commit_reserve_bytes": 8589934592,
+    "runtime_sha256": "ebe7c16172c5126bbfd5a65c5ebf962a63eb123aeaeca3ba122fbdd5f3d30ba8",
+    "coordination": "Exact group and input-hash tuples posted to the private handover before starting. Earlier attempts remain retained."
+  }
+}

@@ -304,7 +304,7 @@ Keep the cohort manifest and presentation derivation alongside the snapshot.
 The four-case opening/memory view uses the original identities in
 `experiments/opening-memory-native-case-audit-20261111.json`.
 
-## Preparation replay path projection
+## Compact comparison reports
 
 Public comparison JSON uses compact serialization. Pretty-printing the completed
 QT/RR package expanded its roughly 77-MB report to 135,523,855 bytes, exceeding
@@ -313,6 +313,8 @@ the same JSON values and keeps the existing bound. Source packages retain their
 original bytes. The public-export regression checks compact output, retained
 comparison values and images, projected private paths and source immutability.
 Oversized-report errors identify the path and byte length.
+
+## Preparation replay path projection
 
 `tools/export-preparation-replay.py` preserves the exact compressed event stream
 by default. For a public candidate, pass `--redact-local-paths` to replace
