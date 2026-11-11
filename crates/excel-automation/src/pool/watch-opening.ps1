@@ -4,6 +4,18 @@ param(
     [Parameter(Mandatory=$true)][int]$HelperPid
 )
 $ErrorActionPreference = 'Stop'
+
+function Read-WorkerJson([string]$Path) {
+    try {
+        return ([IO.File]::ReadAllText($Path) | ConvertFrom-Json)
+    } catch [IO.FileNotFoundException] {
+        return $null
+    } catch [IO.IOException] {
+        $code = $_.Exception.HResult -band 0xffff
+        if ($code -eq 32 -or $code -eq 33) { return $null }
+        throw
+    }
+}
 try {
     Add-Type -Path (Join-Path $PSScriptRoot 'TargetedOpeningDialogs.cs')
     Import-Module (Join-Path $PSScriptRoot 'OpeningDialogKinds.psm1') -Force
@@ -12,11 +24,12 @@ try {
     while (-not $helper.HasExited) {
         $activePath = Join-Path $Session 'active.json'
         if ([IO.File]::Exists($activePath)) {
-            try { $active = [IO.File]::ReadAllText($activePath) | ConvertFrom-Json }
-            catch [IO.FileNotFoundException] { continue }
+            $active = Read-WorkerJson $activePath
+            if ($null -eq $active) { continue }
             $progressPath = Join-Path $active.directory 'progress.json'
             if ([IO.File]::Exists($progressPath)) {
-                $progress = [IO.File]::ReadAllText($progressPath) | ConvertFrom-Json
+                $progress = Read-WorkerJson $progressPath
+                if ($null -eq $progress) { continue }
                 if ($progress.phase -eq 'opening workbook') {
                     $excel = [Diagnostics.Process]::GetProcessById($identity.pid)
                     try { $sameProcess = ([DateTimeOffset]$excel.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds() -eq $identity.started_ms }

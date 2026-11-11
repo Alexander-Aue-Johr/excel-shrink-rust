@@ -129,3 +129,9 @@ pending results as successful. Active `xlCalculating` periods retain the outer
 stall guard. User-defined functions can occur in affected inputs, but their
 presence alone is not recorded as a proven cause. Failed copies and diagnostic
 receipts remain available for fresh-session investigation.
+
+The opening-dialog observer defers a snapshot when its active/progress JSON file
+is temporarily absent or Windows reports a sharing/lock violation (32/33). It
+retries on its next observation cycle. Malformed JSON and other I/O failures
+remain errors. A native four-case probe covered a held exclusive file lock,
+a successful read after releasing it, a missing path and malformed JSON.
