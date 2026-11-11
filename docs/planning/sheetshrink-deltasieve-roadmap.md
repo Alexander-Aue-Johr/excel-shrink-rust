@@ -2,6 +2,38 @@
 
 ## Current governing scope on 2026-11-10
 
+### Urgent complete-corpus distributions on 2026-11-11
+
+The user's latest priority places three fresh normal-policy SheetShrink runs
+ahead of the remaining implementation tasks. Process all 1,182 Destatis and
+9,117 Data.gov XLSX inputs and all 30,301 prepared Enron XLSX baselines. Keep
+raw Enron candidates without a valid preparation outside the XLSX population
+and explicit in coverage accounting. Use sixteen active-workbook slots and
+sixteen Rayon threads, matching this host's logical processors. Retain complete
+workbook/sheet/chunk events for subsequent replay publication.
+
+The release-build series runs sequentially, preserving the active native
+visual comparisons. New optimized workbook outputs are on
+`I:\deltasieve-work\corpus-distributions-20261111`, with capacity on a local NVMe
+drive. Run control, analysis handovers and environment metadata are under
+`G:\deltasieve-work\corpus-distributions-20261111`. A stopped debug pilot is
+separate and does not enter the intended release series. The ordinary observed
+runner now writes analysis CSV under the normal cleanup policy.
+
+After each corpus reaches a terminal outcome, reconcile its full preparation
+count, freeze the complete analysis CSV, compressed-workbook status table,
+source identities, configuration, version, environment and replay events.
+Transfer the checksummed package to LAPTOP-H86KBIH3 under the distribution
+directory requested in the private SSH handover. Include unchanged workbooks,
+failures and exclusions. Verify archive and extracted-file hashes on the
+destination before reporting availability. Treat these instrumented runs as
+distribution measurements, with concurrent native work recorded as context.
+
+Keep each completed run's Observatory available for replay. Static GitHub Pages
+replay publication remains a separate delivery gate from saving its event log.
+Resume the staged comparison/report and evaluation plan below after this urgent
+distribution delivery. The manuscript deadline and final-review buffer remain.
+
 ### Highest priority. Staged multi-tool reports
 
 The user's latest delivery priority is an incremental static comparison report
