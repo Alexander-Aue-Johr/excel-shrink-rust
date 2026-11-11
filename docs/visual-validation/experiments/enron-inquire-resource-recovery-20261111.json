@@ -1,0 +1,86 @@
+{
+  "status": "terminal; reports preserved",
+  "runtime_sha256": "ebe7c16172c5126bbfd5a65c5ebf962a63eb123aeaeca3ba122fbdd5f3d30ba8",
+  "assignment_sha256": "24357aac7296dc966a4e943f257f3cdee6de1d76bc7abce49fce82f51481f0e9",
+  "run_sha256": "a672dcf484d24b4cae512e95ad3c3b72e5d602d02d7631417e026341a9748733",
+  "pairs": [
+    {
+      "id": "dc412ed95a60144dc741ba13",
+      "name": "003c6366d0451793d7874ca56a6acf77ad5c0a328995c5fb2096bdbbb0b4a73b.xlsx",
+      "status": "completed_with_limitations",
+      "different_regions": 9,
+      "packaged_report_sha256": "77bb15ce358b90a73e96ff49168d741a659eecc3f1c119f7605b5b8df1d25cf5",
+      "original_sha256": "915fb3bbf19b4de4d2534aaff76b790b68d3dec9e30e84f2af3db5010b636a93",
+      "variant_sha256": "e51484783467d1e42e0001433cc71d89b647f3a723e694b61a0f30fdb5288d90"
+    },
+    {
+      "id": "c3785d0c160a3e5da6e03d99",
+      "name": "00f8fb769c305d9114647758f3c38cfa2cbbcc18dc5bb9ad7b254b2b5949506b.xlsx",
+      "status": "completed_with_limitations",
+      "different_regions": 2,
+      "packaged_report_sha256": "c5c537dd20e612d04e3d4016698b6d829d3398e7941e8ab578f5b2628bf56b0e",
+      "original_sha256": "f9d4f9fd01d6a8404140c4c9c6d2ebd50f232a33a4b5154f8d8276d2800dbc97",
+      "variant_sha256": "573737d2f4206cf913d2f51fba284c3a7b846816ec0210f75cd910f2ef563cfc"
+    },
+    {
+      "id": "c025694e0f58bf19c0e5734b",
+      "name": "03fcd31fdf9f7d9256a216e1a99925b85cde0f2681296230e51772a18aec5585.xlsx",
+      "status": "completed_with_limitations",
+      "different_regions": 134,
+      "packaged_report_sha256": "ba6ead9e2c9a63e495dc4e3688f1793ae05df27ffa2b50d3a8a5f54bae43544b",
+      "original_sha256": "9dbda2ab6f077914fb1b942551cb3c2296aac61dab32954fb5eb0debaa5b11bd",
+      "variant_sha256": "393974d31ad76623681468d49b80fdee6794ef1975b7d5d5f4b5c62ba1e3ad9e"
+    },
+    {
+      "id": "ddf196844f4a048fb0324dc4",
+      "name": "21398667c04b7d993ee095bc2639dac4039c5dd1b064223239f346c8a967772f.xlsx",
+      "status": "completed_with_limitations",
+      "different_regions": 0,
+      "packaged_report_sha256": "3bc5269f432eaf644f3eb04b05189bd521ec01eae0c7da8bf9176ceb6c0ba800",
+      "original_sha256": "d1387f657a14079dc06d625a4605c858997f0f687bb3767bde49f90497c547c4",
+      "variant_sha256": "cc48a27e38b96bab98dcf776c411e92069ba09d902f82e0013bb18c2d24a848c"
+    },
+    {
+      "id": "785d431944a4a7508f5f9ff7",
+      "name": "315ef1824c505dd7724777c63a1062e707852b86d85c7e07ddcbe6fec0b249b4.xlsx",
+      "status": "completed_with_limitations",
+      "different_regions": 8,
+      "packaged_report_sha256": "8d494d3db187a1bdc2a576dc05c6489f6a19f4ca4b84d8d315d89fb32ea090dd",
+      "original_sha256": "67dca192f921cced50dd6068fe779c4dcb48c6dfe42310a1b79028a6c51f9c5d",
+      "variant_sha256": "b089bffc5bb91ce05c7baec230b921678272fe063196ffa889ed06c743ff6bc9"
+    },
+    {
+      "id": "b92b3593ce4ddbdc6d98c102",
+      "name": "90295ed422459b07234e6042a99b97afa01fe498f84a5bfb1e2c15ce6f7d046d.xlsx",
+      "status": "completed_with_limitations",
+      "different_regions": 134,
+      "packaged_report_sha256": "6864f3fada02537a65bf0e71589365e76296d87e741ed5e10e11527b32e7aae5",
+      "original_sha256": "79e8554cf5c98da4712c362e0c8b4731b541bc4c37d07491d6e688e45ad96a3e",
+      "variant_sha256": "a3f09d5e16c9f588c0024760e338ec2dcb042ed6b9e6608dc3b329307ed5ecf7"
+    },
+    {
+      "id": "cf7cfe529aaad763549eb16c",
+      "name": "a01db7a0d4042e6537efa2b4c92bce225967c6496df37239f8a5378c30e20d78.xlsx",
+      "status": "completed_with_limitations",
+      "different_regions": 9,
+      "packaged_report_sha256": "20a7a4606b990817fc4f5942e9aad5ed6fce15b2936fa1647119150a365ab2fa",
+      "original_sha256": "b2d3b3595733302d6cf8f82a9598108960987979aac0c73821e1768f19c0e0fc",
+      "variant_sha256": "23fe3779dd4f6c90cfc575781785612708be268c4ac47f5a8e8a186ffbc7a8e6"
+    }
+  ],
+  "aborted_processes": [],
+  "peak_job_committed_bytes": 2065272832,
+  "schema": 1,
+  "capture_policy": "targeted-content-grid-v19",
+  "scope": "Seven Enron Original/Inquire pairs whose earlier attempt hit a resident resource guard",
+  "limitations": [
+    "All seven completed with limitations under the selected-region method. Six report differences and one reports zero differences.",
+    "These are separately retained retry observations. The first-pass failures remain in the imported return.",
+    "Differences describe region observations and do not independently establish seven whole-workbook verdicts or causal attribution."
+  ],
+  "guards": {
+    "system_ram_and_commit_reserve_bytes": 8589934592,
+    "job_memory_limit_bytes": 34359738368,
+    "comparison_groups": 1
+  }
+}
