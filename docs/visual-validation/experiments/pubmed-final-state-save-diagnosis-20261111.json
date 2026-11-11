@@ -30,5 +30,30 @@
     "native_started": false,
     "admission": "Deferred by existing 32-GiB job plus 8-GiB reserve admission requirement"
   },
-  "interpretation": "The raw failed observation is retained. An editable-copy probe would be a separately labelled normalized baseline, without replacing the raw Original or its failure. No pixel-equality or confirmed causal claim is made."
+  "interpretation": "The raw failed observation is retained. An editable-copy probe would be a separately labelled normalized baseline, without replacing the raw Original or its failure. No pixel-equality or confirmed causal claim is made.",
+  "native_probe_followup": {
+    "admission": "Separate labelled editable-copy probe admitted with a 24-GiB job bound and unchanged 8-GiB system reserve",
+    "raw_original_changed": false,
+    "telemetry_sha256": "7a1f86e2f17c5b49e014587fec1f2de1c2c336ebae402ecd172d5c4b78fc0f0a",
+    "supervisor_sha256": "aea42ed2766e570945d393f299e1d8fa1b30ad2dd73b539ce9999ed8c515ae2a",
+    "save_steps": [
+      {
+        "lane": "O",
+        "save": "done",
+        "inspect_save": "running"
+      },
+      {
+        "lane": "SD",
+        "save": "done",
+        "inspect_save": "running"
+      }
+    ],
+    "successful_captures": 0,
+    "comparison_completed": false,
+    "job_limit_bytes": 25769803776,
+    "peak_job_committed_bytes": 25770082304,
+    "stderr": "memory allocation of 544 bytes failed",
+    "supervisor_intervention": "Job memory events recorded and exact native process identified for termination",
+    "interpretation": "The normalized copy passed the previously failing save step. Full visual validation failed during XML inspection. This observation does not replace the raw failure or establish visual equivalence."
+  }
 }

@@ -55,7 +55,19 @@ XLStyles group and four separately preserved high-memory recovery observations.
 The three raw corpus grids still contain exactly 49 workbooks each. Seven
 normalized baselines remain separately labelled. Both Pages deployments built
 successfully, and the new ScienceHub/NXPowerLite image detail was checked over
-public HTTPS. The two QT/RR comparisons and offline work remain open. See
+public HTTPS. QT/RR B and offline work remain active. The QT/RR A retry later
+stopped after 86,256 individual images when both resident lanes detected depleted
+system commit headroom. The Low-Temperature Check Performance retry stopped at
+the same time after 8,908 images. All four resident metrics record 740–777 MiB
+commit headroom against an 8,192-MiB reserve. Their partial captures remain
+separate failed-attempt evidence. The transient allocation responsible for the
+system-wide pressure remains unresolved. A separately labelled editable PubMed
+probe passed both save operations but reached its 24-GiB job bound during XML
+inspection. Its full comparison remains unsuccessful. See
+`docs/visual-validation/experiments/concurrent-capture-reserve-aborts-20261111.json`.
+An isolated Low-Temperature retry uses the same frozen input hashes and runtime
+with one comparison group, a 32-GiB job limit and an 8-GiB system reserve.
+The interim public snapshot predates these latest attempts. See
 `docs/visual-validation/experiments/static-atlas-refresh-20261111.json`.
 
 The author is shortening both manuscripts and now prioritizes verification of
