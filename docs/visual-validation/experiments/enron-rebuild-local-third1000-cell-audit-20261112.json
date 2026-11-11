@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "scope": "Third disjoint local completed-pair selection. Source and rebuilt output hashes verified before audit. Completed-pair selection is not a representative random sample. All raw differences retained. Formula dependency paths are diagnostic and do not prove exclusive causation.",
+  "pairs": 1000,
+  "equal_cell_contents": 937,
+  "differences_found": 63,
+  "difference_records": 9404,
+  "difference_kinds": {
+    "changed": 9404
+  },
+  "formula_prefixed_difference_records": 0,
+  "summary_sha256": "e43ea338d0e5a5581c9c537f22fa706ce75a60270a3ca8c6b1dea72fc69c5cb2",
+  "manifest_sha256": "0b85970f6bd6d514a37408bb893fb095ffc698a8b13b175e28a894a17cf8f313",
+  "cumulative_enron_partial_audit": {
+    "pairs": 5499,
+    "equal_cell_contents": 5010,
+    "differences_found": 489
+  }
+}
