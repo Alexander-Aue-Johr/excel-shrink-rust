@@ -20,6 +20,31 @@ empty cells, volatile dependencies and unresolved cases. Rebuild completion alon
 is not evidence that all values were preserved. Unsupported or failed inputs
 remain explicit exceptions. Existing visual comparisons continue independently.
 
+### Rebuild and saved-content checkpoint on 2026-11-11
+
+The rebuilt Destatis comparison is complete for1,182pairs. Of these,165 use
+workbook-only normalized originals after name-conflict opening failures.1,181
+pairs have equal saved contents. One workbook removes376,573 numeric zeros from
+hidden columns. Preserve this explicit content change and avoid an unconditional
+value-preservation claim. See the Destatis rebuilt-cell audit ledger.
+
+The verified Enron partial audits now cover1,499 assigned pairs.1,388 have equal
+saved contents and111 contain differences requiring explanation. These are
+completed-pair selections from active assignments, not a random sample or a
+whole-corpus result. Preserve formula/time/filename diagnostics and unsupported
+cases without suppressing raw differences. The original199-pair pilot remains
+separately identifiable in its ledger.
+
+Native rebuild workers now enable automatic calculation during full rebuild and
+restore manual calculation before saving. Three formerly stalled cases completed
+in a bounded four-input reused-worker test. Other requests can still remain
+`xlPending` after the call returns. Continuous pending status for30seconds is an
+explicit failed attempt, preserving the request and stage evidence. This is an
+execution guard, not proof of a defective input or of an exclusive UDF cause.
+Successful old producer receipts remain immutable while unfinished inputs are
+retried under the new producer. Four active machines have adopted the revision.
+Offline machine revision and return status remain unverified.
+
 ### Highest priority on 2026-11-11: complete the 7x7 comparison Atlas
 
 Complete the frozen 49-workbook selection for each of Destatis, Data.gov and

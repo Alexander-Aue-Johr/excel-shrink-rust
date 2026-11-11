@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "pairs": 200,
+  "statuses": {
+    "equal_cell_contents": 175,
+    "differences_found": 25
+  },
+  "difference_kinds": {
+    "changed": 58
+  },
+  "summary_sha256": "b65fc6808a1b62396989048c2bc2da11bec96808c03af976069be89de803c676",
+  "scope": "Two disjoint remote assignments,100 complete pairs each. Transport archive, source-assignment and output receipt hashes verified. Diagnostics do not suppress raw differences."
+}
