@@ -2,6 +2,32 @@
 
 ## Current governing scope on 2026-11-10
 
+### Opening figure and public Atlas priority on 2026-11-11
+
+After the full-grid request compaction fix, the user prioritizes a full-width
+DeltaSieve opening figure matching the companion SheetShrink layout. Combine a
+light-mode worksheet overview with native detail of a verified visual change.
+Keep the combined graphic independently reusable from LaTeX. Add a light/dark
+Atlas option, expose retained planning evidence and distinguish missing causal
+metadata from observed outcomes. Review published IEEE, ACM and PVLDB designs
+for appropriate category encodings. Publish the current static Atlas through
+GitHub Pages if technically available and link it from the figure caption.
+
+Source commit `133a3db2` provides the theme, outcome symbols and retained
+per-sheet coverage/conditional-formatting/chart decisions. Eleven JavaScript
+tests and four Rust Atlas contract tests pass. The opening figure draft uses
+the Data.gov nine-workbook overview and the matched Adage title-band control.
+The first full-width layout currently moves the no-reference manuscript to
+thirteen pages. Restore the manuscript budget during layout review before
+calling this paper deliverable complete. Native comparisons remain active.
+
+Detailed per-candidate direct/indirect XML provenance and explicit whole-sheet
+fallback scope are not consistently present in existing public report indexes.
+Rendering and volatile-formula causes also require evidence-backed review.
+Do not fabricate these labels from formula presence, a large extent or a pixel
+difference. The inventory and proposed richer encoding are recorded in
+`docs/visual-validation/static-publication.md`.
+
 ### Urgent complete-corpus distributions on 2026-11-11
 
 The user's latest priority places three fresh normal-policy SheetShrink runs
