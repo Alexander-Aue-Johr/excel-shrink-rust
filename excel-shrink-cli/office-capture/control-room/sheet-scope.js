@@ -7,6 +7,7 @@ import { installStudyConfiguration } from '/observatory-assets/study-configurati
 import { installPreparationPackages } from '/observatory-assets/preparation-packages.js';
 import { installPerformancePreparation, installPreparationSources } from '/observatory-assets/performance-preparation.js';
 import { installCorpusAcquisition } from '/observatory-assets/corpus-acquisition.js';
+import { installCaptureControls } from '/observatory-assets/capture-controls.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -41,6 +42,7 @@ let workbookRequest = 0;
 let workbookSearchTimer;
 let preparationJobView;
 let corpusJobView;
+let captureControlsView;
 const targetedPanel = createTargetedPanel(byId('targeted-comparisons'), {
   candidateLabel: () => runCandidateLabel,
 });
@@ -430,6 +432,7 @@ function renderProgress(state) {
 
   byId('connection-status').textContent = state.active ? 'Live · local runner' : 'Connected · ready';
   targetedPanel.updateMany([...(state.comparisons || [])].reverse().concat(state.telemetry || []));
+  captureControlsView?.render(state);
   renderKpis(progress);
   const revision = JSON.stringify([progress.state, progress.total, progress.completed, progress.current,
     progress.processing?.completed, Object.keys(progress.processing?.running || {}), reportBase]);
@@ -651,6 +654,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
   try {
     const session = await api('/api/session');
     token = session.token;
+    captureControlsView = installCaptureControls({ api });
     nativePicker = session.native_picker;
     processorSchema = session.processor_schema;
     shrinkPreset = session.shrink_preset;

@@ -126,7 +126,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool, application: Appl
         )
         .route("/api/session", get(session))
         .route("/api/state", get(state))
-        .route("/api/capture/control", post(capture_control::update))
+        .route("/api/capture/control", get(capture_control::current).post(capture_control::update))
         .route("/api/live-atlas/{run}", get(live_atlas::catalog))
         .route("/api/live-atlas/{run}/images/{id}", get(live_atlas::image))
         .route("/live-atlas/{*path}", get(live_atlas::asset))

@@ -630,6 +630,15 @@ The response explicitly identifies the active-report scope. The settings also
 apply to subsequent comparisons within that report. Per-image limits, capture
 selection and scientific reuse identities are unchanged.
 
+`GET /api/capture/control` exposes the current active comparison identity and
+effective settings, resolving omitted keys through the same worker defaults.
+The standalone progress view offers a collapsed **Live capture batches** form.
+It loads the server settings when the observed comparison changes and allows
+explicit reload. Late reads or writes from an earlier comparison cannot enable
+stale fields for its successor. An accepted update is distinguished from worker
+application at the next package boundary. Unavailable or invalid controls remain
+visible as an error in the form.
+
 Transport image bytes to the resident Rust host, not a large Base64 JSON response.
 Office's capture API may initially return Base64 internally; this does not mean
 the host upload is Base64. The authenticated upload route validates command/client

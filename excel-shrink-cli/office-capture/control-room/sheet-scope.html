@@ -293,6 +293,19 @@
           <tbody id="processing-rows"></tbody>
         </table></div>
       </section>
+      <form id="live-capture-controls" hidden>
+        <details>
+          <summary>Live capture batches</summary>
+          <fieldset id="live-capture-fields" disabled class="grid">
+            <label>Geometry ranges per sync<input name="geometry_batch_ranges" type="number" min="1" max="4096" required></label>
+            <label>Capture ranges per sync<input name="capture_batch_ranges" type="number" min="1" max="64" required></label>
+            <label>Aggregate capture budget (MP)<input name="capture_batch_megapixels" type="number" min="32" max="256" required></label>
+            <div class="actions"><button type="submit">Apply capture settings</button></div>
+          </fieldset>
+          <button id="reload-capture-controls" type="button">Reload settings</button>
+          <p id="live-capture-status" role="status" class="help"></p>
+        </details>
+      </form>
       <section id="targeted-comparisons" hidden aria-label="Targeted comparison processes"></section>
       <h3>Recent completed comparisons</h3>
       <div class="table-wrap"><table><thead><tr><th>Workbook</th><th>Outcome</th><th>Differences</th><th>Evidence</th></tr></thead><tbody id="results"></tbody></table></div>

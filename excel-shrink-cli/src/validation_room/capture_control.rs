@@ -11,6 +11,38 @@ pub(super) struct Request {
     capture_batch_megapixels: Option<usize>,
 }
 
+pub(super) async fn current(State(room): State<Arc<Room>>) -> ApiResult {
+    Ok(Json(current_settings(&room)?))
+}
+
+fn current_settings(room: &Room) -> Result<Value> {
+    let progress = room
+        .progress
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Progress lock poisoned"))?;
+    if !room.active.load(Ordering::Acquire) {
+        return Ok(json!({"available":false}));
+    }
+    let Some(path) = progress.telemetry_path.as_deref() else {
+        return Ok(json!({"available":false}));
+    };
+    let telemetry = read_controls(path)?;
+    if telemetry["status"] != "running" {
+        return Ok(json!({"available":false}));
+    }
+    let root = progress
+        .report_dir
+        .as_deref()
+        .context("No active report directory")?;
+    let controls = read_controls(&root.join("logs/validation/control.json"))?;
+    Ok(json!({"available":true,"run_id":telemetry["run_id"],
+        "geometry_batch_ranges":capture_settings::batch_size(&controls["geometry_batch_ranges"],
+            capture_settings::DEFAULT_GEOMETRY_RANGES, capture_settings::MAX_GEOMETRY_RANGES)?,
+        "capture_batch_ranges":capture_settings::batch_size(&controls["capture_batch_ranges"],
+            capture_settings::DEFAULT_CAPTURE_RANGES, capture_settings::MAX_CAPTURE_RANGES)?,
+        "capture_batch_megapixels":capture_settings::capture_batch_megapixels(&controls["capture_batch_megapixels"])?}))
+}
+
 pub(super) async fn update(
     State(room): State<Arc<Room>>,
     Json(request): Json<Request>,
@@ -140,17 +172,20 @@ mod tests {
             .is_err());
         let path = root.join("logs/validation/control.json");
         assert!(!path.exists());
+        assert_eq!(current_settings(&room)?["capture_batch_megapixels"], 32);
         let response = update(State(room.clone()), Json(request("current")?))
             .await
             .map_err(|error| error.0)?;
         assert_eq!(response.0["accepted"], true);
         let before = fs::read(&path)?;
         assert_eq!(read_controls(&path)?["capture_batch_megapixels"], 128);
+        assert_eq!(current_settings(&room)?["capture_batch_megapixels"], 128);
         fs::write(&telemetry, br#"{"run_id":"current","status":"completed"}"#)?;
         assert!(update(State(room.clone()), Json(request("current")?))
             .await
             .is_err());
         room.active.store(false, Ordering::Release);
+        assert_eq!(current_settings(&room)?["available"], false);
         assert!(update(State(room), Json(request("current")?))
             .await
             .is_err());

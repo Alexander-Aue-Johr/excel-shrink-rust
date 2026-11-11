@@ -68,6 +68,12 @@ cover partial updates, bounds, unknown fields, stale identities and terminal or
 inactive runs. The ongoing hosts retain their earlier frozen executable and
 continue reading their scoped control files at package boundaries. No live binary
 replacement or native-comparison restart was performed for this API change.
+The standalone progress view now includes a collapsed live-batch form with
+independent geometry, capture-count and aggregate-MP inputs. A bounded GET reads
+effective server settings. UI tests cover late reads and a comparison transition
+during a pending update, preventing stale fields from becoming enabled for the
+successor. Two native control tests and eight focused JS regression tests pass.
+The updated form has not been deployed into the ongoing frozen hosts.
 
 The controlled single-thread memchr-dispatch ablation is retained in
 `../visual-validation/experiments/memchr-dispatch-ablation-20261111.json` with
