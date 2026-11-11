@@ -35,10 +35,11 @@ whole-corpus result. Preserve formula/time/filename diagnostics and unsupported
 cases without suppressing raw differences. The original199-pair pilot remains
 separately identifiable in its ledger.
 
-The Data.gov completed-pair audit now covers898 pairs with equal saved contents.
-Two selected cases still lack a successful partner in the returned matched
-packages. Preserve these exceptions. Selection follows small original ZIP sizes
-and cannot establish whole-corpus preservation. See the Data.gov packet ledgers.
+The Data.gov completed-pair audit now covers1,100 pairs with equal saved contents.
+The two previously missing originals succeeded on isolated retries in the same
+remote environment. Their earlier failed attempts remain preserved. Selection
+follows small original ZIP sizes and cannot establish whole-corpus preservation.
+See the Data.gov packet and final-retry ledgers.
 
 Native rebuild workers now enable automatic calculation during full rebuild and
 restore manual calculation before saving. Three formerly stalled cases completed

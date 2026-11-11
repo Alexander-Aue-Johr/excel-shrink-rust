@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "scope": "Two final 100-pair small-file packets plus two successful retry originals paired with their earlier rebuilt SheetShrink partners in the same assigned Excel environment. Earlier failed attempts remain preserved.",
+  "pairs": 202,
+  "equal_cell_contents": 202,
+  "differences_found": 0,
+  "audit_seconds": 6.010920200002147,
+  "summary_sha256": "184ab327122defad7a9dcc1ba2dfdcf351c927be4b76c6ef1a75856ca2ef7f12",
+  "manifest_sha256": "4d5ea71ce530168353e9f4e83a699084c35e2573e1a2ba4c16f1347d6a0f7d27",
+  "successful_retry_cases": [
+    {
+      "workbook": "Data submission for A-pk17_f2afc662da1d.xlsx",
+      "previous_failure": "Excel SaveAs reported that a file already existed",
+      "retry": "Fresh output directory, same remote producer and one-worker environment; successful full rebuild and saved-content equality"
+    },
+    {
+      "workbook": "File_Descriptions_1238e0eb5e8f.xlsx",
+      "previous_failure": "Opening-dialog monitor could not read worker progress.json due to access denied",
+      "retry": "Successful full rebuild and saved-content equality; original and SheetShrink input hashes are identical",
+      "root_cause": "Transient status-file access is suspected; the precise Windows access-denied mechanism remains unproven"
+    }
+  ],
+  "cumulative_datagov_partial_audit": {
+    "pairs": 1100,
+    "equal_cell_contents": 1100,
+    "differences_found": 0
+  },
+  "limits": "Small-file ordered selection. No whole-corpus or visual-equivalence claim."
+}
