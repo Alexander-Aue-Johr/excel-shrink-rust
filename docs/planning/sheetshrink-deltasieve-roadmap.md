@@ -106,7 +106,7 @@ and distinguish their explicit reference controls from the unfinished
 ordinary outcomes. The second pair has insufficient steady-state
 timing to commit to completion before the manuscript review guard.
 
-### First-stage handoff on 2026-11-11 at 01:39 CET
+### Duplicate queue guard on 2026-11-11 at 03:09 CET
 
 The separately dispatched second QT/RR pair also remains in the original
 Inquire queue. A local guard watches the exact two Observatory sessions.
@@ -120,6 +120,8 @@ its reason alongside the ordinary interrupted-attempt record and use the
 independent completed observation in the merged report. Inspect any remaining
 queued work afterward. The two recorded renderer recipes differ solely in
 static Atlas viewer modules, as established by the retained hash diagnostic.
+
+### First-stage handoff on 2026-11-11 at 01:39 CET
 
 The locally served three-corpus Atlas contains the nine frozen ranks
 and all five transformation choices for each corpus. The 135 ordinary
