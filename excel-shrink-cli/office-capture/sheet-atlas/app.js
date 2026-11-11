@@ -246,8 +246,8 @@ async function start() {
   catalog = await readGzip('atlas-data/catalog.json.gz');
   if (catalog.schema !== 1) throw new Error('Unsupported atlas schema.');
   if (catalog.storage) {
-    $('aspect-status').textContent = `~${Math.ceil(catalog.storage.bytes_before_index / 1_000_000)} MB static package`
-      + (catalog.storage.within_budget ? '' : ' · exceeds GitHub Pages budget');
+    $('aspect-status').textContent = `~${Math.ceil(catalog.storage.bytes_before_index / 1_000_000)} MB export package`
+      + (catalog.storage.within_budget ? '' : ' · larger than one GitHub Pages site');
   }
   collections = catalogCollections(catalog);
   for (const entry of collections) {
