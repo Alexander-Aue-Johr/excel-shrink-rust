@@ -64,8 +64,16 @@ All checked same-dimension pixel flags agree with the source verdicts. Different
 tool plans prevent using these quotients as a preservation-quality ranking.
 Migration's fresh resource-study output matches the retained native candidate's
 138 uncompressed members, with its normalized-baseline qualification preserved.
-The full profile/resource-output join and dedicated case-study Atlas remain
-open. The bounded 4/24 GiB library follow-up and native QT/RR comparisons continue.
+The full profile/resource-output join remains open. The optional four-case Atlas
+collection is now public at the stage-nine URL with
+`?theme=light&collection=cohort/opening-memory`. Source `fa225a92` matches cohort
+members by original SHA-256 and corpus, preserves original-corpus labels, counts
+missing members and leaves ordinary corpus views available. Thirteen Atlas tests
+pass. Browser checks exercised the four-workbook/161-sheet case-study view,
+the ordinary nine-workbook Destatis view and source-corpus labels on book detail.
+Publication commit `f7cb008` retains all 125 detail payloads byte-identically.
+The normalized Migration baseline is not substituted for the raw-original case.
+The bounded 4/24 GiB library follow-up and native QT/RR comparisons continue.
 
 ### Urgent complete-corpus distributions on 2026-11-11
 
