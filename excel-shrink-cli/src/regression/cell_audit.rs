@@ -94,12 +94,7 @@ fn inspect(pair: &Pair) -> Result<Value> {
             == office_plan::formula_worksheet_parts(&mut right_archive)?,
         "Worksheet names, order or part mappings changed; explicit correspondence is required"
     );
-    let report = xlsx_value_compare::compare_workbook_preservation(
-        &pair.left,
-        &pair.right,
-        xlsx_value_compare::MissingCellPolicy::strict(),
-        None,
-    )?;
+    let report = xlsx_value_compare::compare_workbook_cell_contents(&pair.left, &pair.right)?;
     let diagnostics = if report.differences.is_empty() {
         json!({"status":"not_needed"})
     } else {

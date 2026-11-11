@@ -98,3 +98,10 @@ records and retain unsupported or budget-limited cases. Dependency paths are
 explanations and do not suppress differences or establish exclusive causation.
 The compact progress record is replaced per pair; the full summary is written
 once at the end. The audit neither starts Excel nor establishes visual equality.
+
+The dedicated saved-content audit excludes column-width range validation.
+Native Excel can save a width such as273.5703125 that exceeds the capture
+planner's255 limit. This layout attribute does not change a cell's saved value
+or formula. Capture and preservation callers retain their existing width
+validation. Content-audit summaries use a separate cache namespace, so accepting
+such an input cannot bypass a later caller's required layout validation.

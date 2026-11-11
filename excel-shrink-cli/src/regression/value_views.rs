@@ -208,8 +208,15 @@ impl<'a> Bounds<'a> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ColumnWidths {
+    Validate,
+    IgnoreForContentAudit,
+}
+
 pub(super) struct Cells<'a> {
     reader: Reader<'a>, shared: &'a SharedStrings,
+    column_widths: ColumnWidths,
     row: u32, column: u32, row_hidden: bool, in_row: bool, in_data: bool,
     root_seen: bool, data_seen: bool, dimension_seen: bool,
     hidden_columns: Vec<(u32, u32)>,
@@ -217,8 +224,15 @@ pub(super) struct Cells<'a> {
 }
 impl<'a> Cells<'a> {
     pub fn new(bytes: &'a [u8], shared: &'a SharedStrings) -> Result<Self> {
+        Self::with_column_widths(bytes, shared, ColumnWidths::Validate)
+    }
+    fn with_column_widths(
+        bytes: &'a [u8],
+        shared: &'a SharedStrings,
+        column_widths: ColumnWidths,
+    ) -> Result<Self> {
         std::str::from_utf8(bytes)?;
-        Ok(Self { reader: Reader::<128>::new(bytes)?, shared, row: 0, column: 0, row_hidden: false, in_row: false,
+        Ok(Self { column_widths, reader: Reader::<128>::new(bytes)?, shared, row: 0, column: 0, row_hidden: false, in_row: false,
             in_data: false, root_seen: false, data_seen: false, dimension_seen: false, hidden_columns: Vec::new(), ordered: true,
             previous: None, bounds: Bounds::new() })
     }
@@ -248,7 +262,9 @@ impl<'a> Cells<'a> {
             }
             if tag.depth == 1 && name == b"sheetFormatPr" {
                 if let Some(width) = tag.attr(b"defaultColWidth")? {
-                    column_width(width)?;
+                    if self.column_widths == ColumnWidths::Validate {
+                        column_width(width)?;
+                    }
                 }
                 self.reader.element(tag)?;
                 continue;
@@ -263,7 +279,9 @@ impl<'a> Cells<'a> {
                         let hi = xml::decimal(col.attr(b"max")?.context("column max is missing")?)?;
                         ensure!(lo > 0 && hi >= lo && hi <= 16_384, "invalid column range");
                         let hidden = xml::truth(col.attr(b"hidden")?);
-                        col.attr(b"width")?.map(column_width).transpose()?;
+                        if self.column_widths == ColumnWidths::Validate {
+                            col.attr(b"width")?.map(column_width).transpose()?;
+                        }
                         if hidden { self.hidden_columns.push((lo, hi)); }
                     }
                 }
@@ -365,9 +383,16 @@ fn summary_key(sheet_hash: &str, sst_hash: &str) -> String {
 fn add_coordinate(hash: &mut Sha256, coordinate: Coordinate) {
     hash.update(coordinate.row.to_le_bytes()); hash.update(coordinate.column.to_le_bytes());
 }
-fn summarize(bytes: &[u8], sst: &SharedStrings, name: &str, index: usize, key: String) -> Result<Summary> {
+fn summarize(
+    bytes: &[u8],
+    sst: &SharedStrings,
+    name: &str,
+    index: usize,
+    key: String,
+    column_widths: ColumnWidths,
+) -> Result<Summary> {
     let _phase = super::super::visual_diagnostics::phase("values.cells_and_bounds", name.to_owned());
-    let mut cells = Cells::new(bytes, sst)?;
+    let mut cells = Cells::with_column_widths(bytes, sst, column_widths)?;
     let mut values = Sha256::new(); values.update(b"typed-values-v9\0");
     let mut formulas = Sha256::new(); formulas.update(b"formula-preservation-v9\0");
     let mut value_count = 0; let mut formula_count = 0;
@@ -404,9 +429,21 @@ impl Workbook {
         ensure!(cache::sha256(buffer) == expected.sha256, "worksheet changed after package manifest was read");
         Ok(())
     }
-    fn summary(&mut self, name: &str, buffer: &mut Vec<u8>, root: &Path, use_cache: bool) -> Result<Summary> {
+    fn summary(
+        &mut self,
+        name: &str,
+        buffer: &mut Vec<u8>,
+        root: &Path,
+        use_cache: bool,
+        column_widths: ColumnWidths,
+    ) -> Result<Summary> {
         let sst_hash = self.manifest.parts.get("xl/sharedStrings.xml").map(|p| p.sha256.as_str()).unwrap_or("absent");
         let key = summary_key(&self.manifest.parts.get(name).context("missing sheet")?.sha256, sst_hash);
+        let key = if column_widths == ColumnWidths::IgnoreForContentAudit {
+            cache::sha256(format!("content-audit/{key}").as_bytes())
+        } else {
+            key
+        };
         let file = root.join("values").join(format!("{key}.json"));
         let index = self.order.iter().position(|n| n == name).context("worksheet absent from workbook order")? + 1;
         if use_cache {
@@ -419,7 +456,7 @@ impl Workbook {
             }
         }
         self.ensure_sst()?; self.read_sheet(name, buffer)?;
-        let summary = summarize(buffer, self.sst.as_ref().unwrap(), name, index, key)?;
+        let summary = summarize(buffer, self.sst.as_ref().unwrap(), name, index, key, column_widths)?;
         if use_cache { cache::write_record(&file, &summary)?; }
         Ok(summary)
     }
@@ -528,8 +565,8 @@ pub fn compare_workbook_changed_rows(left: &Path, right: &Path, only: &HashSet<S
                 a.sst.as_ref().unwrap(), b.sst.as_ref().unwrap())?
         } else {
             // Preserve the established digest-cache fast path for ordinary sheets.
-            let sa = a.summary(name, &mut left_buffer, &root, use_cache)?;
-            let sb = b.summary(name, &mut right_buffer, &root, use_cache)?;
+            let sa = a.summary(name, &mut left_buffer, &root, use_cache, ColumnWidths::Validate)?;
+            let sb = b.summary(name, &mut right_buffer, &root, use_cache, ColumnWidths::Validate)?;
             ensure!(sa.ordered && sb.ordered, "unordered cells require full capture: {name}");
             if sa.values_sha256 == sb.values_sha256 && sa.value_count == sb.value_count { continue; }
             a.ensure_sst()?;
@@ -630,7 +667,29 @@ fn changed_row_ranges(left: &[u8], right: &[u8], left_sst: &SharedStrings, right
     Ok(rows)
 }
 
+/// Layout widths are outside this strict saved-content audit's scope.
+pub fn compare_workbook_cell_contents(
+    left: &Path,
+    right: &Path,
+) -> Result<WorkbookComparisonReport> {
+    compare_with_widths(
+        left, right, MissingCellPolicy::strict(), None, true,
+        ColumnWidths::IgnoreForContentAudit,
+    )
+}
+
 fn compare(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&HashSet<String>>, formulas: bool) -> Result<WorkbookComparisonReport> {
+    compare_with_widths(left, right, policy, only, formulas, ColumnWidths::Validate)
+}
+
+fn compare_with_widths(
+    left: &Path,
+    right: &Path,
+    policy: MissingCellPolicy,
+    only: Option<&HashSet<String>>,
+    formulas: bool,
+    column_widths: ColumnWidths,
+) -> Result<WorkbookComparisonReport> {
     let _phase = super::super::visual_diagnostics::phase("values.views_compare", format!("{} <-> {}", left.display(), right.display()));
     let mut a = Workbook::open(left)?; let mut b = Workbook::open(right)?;
     let names: BTreeSet<_> = a.order.iter().chain(&b.order).filter(|n| only.is_none_or(|set| set.contains(*n))).cloned().collect();
@@ -640,8 +699,8 @@ fn compare(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&H
     let mut report = WorkbookComparisonReport { compared_sheets: names.len(), difference_count: 0, differences: Vec::new(), right_capture_ranges: Vec::new(), left_capture_ranges: Vec::new() };
     let mut left_buffer = Vec::new(); let mut right_buffer = Vec::new();
     for name in names {
-        let sa = if a.manifest.parts.contains_key(&name) { Some(a.summary(&name, &mut left_buffer, &root, use_cache)?) } else { None };
-        let sb = if b.manifest.parts.contains_key(&name) { Some(b.summary(&name, &mut right_buffer, &root, use_cache)?) } else { None };
+        let sa = if a.manifest.parts.contains_key(&name) { Some(a.summary(&name, &mut left_buffer, &root, use_cache, column_widths)?) } else { None };
+        let sb = if b.manifest.parts.contains_key(&name) { Some(b.summary(&name, &mut right_buffer, &root, use_cache, column_widths)?) } else { None };
         if let Some(s) = &sa { report.left_capture_ranges.push(s.bounds.clone()); }
         if let Some(s) = &sb { report.right_capture_ranges.push(s.bounds.clone()); }
         let hashes_equal = match (&sa, &sb) {
@@ -655,7 +714,7 @@ fn compare(left: &Path, right: &Path, policy: MissingCellPolicy, only: Option<&H
         if sb.is_some() { b.read_sheet(&name, &mut right_buffer)?; } else { right_buffer = b"<worksheet><sheetData/></worksheet>".to_vec(); }
         let before = report.differences.len();
         let unordered = sa.as_ref().is_some_and(|s| !s.ordered) || sb.as_ref().is_some_and(|s| !s.ordered);
-        compare_sheet_views(&name, &left_buffer, &right_buffer, a.sst.as_ref().unwrap(), b.sst.as_ref().unwrap(), policy, formulas, unordered, &mut report.differences)?;
+        compare_sheet_with_widths(&name, &left_buffer, &right_buffer, a.sst.as_ref().unwrap(), b.sst.as_ref().unwrap(), policy, formulas, unordered, &mut report.differences, column_widths)?;
         if sa.is_none() || sb.is_none() {
             // Even an empty missing sheet is a structural difference.
             report.differences.push(CellValueDifference { sheet_file: name.clone(), cell_ref: "<worksheet>".into(),
@@ -705,7 +764,23 @@ fn compare_cell(name: &str, a: Option<CellView<'_>>, b: Option<CellView<'_>>, po
 
 pub(super) fn compare_sheet_views(name: &str, left: &[u8], right: &[u8], left_sst: &SharedStrings, right_sst: &SharedStrings,
     policy: MissingCellPolicy, formulas: bool, unordered: bool, differences: &mut Vec<CellValueDifference>) -> Result<()> {
-    let mut a = Cells::new(left, left_sst)?; let mut b = Cells::new(right, right_sst)?;
+    compare_sheet_with_widths(name, left, right, left_sst, right_sst, policy, formulas, unordered, differences, ColumnWidths::Validate)
+}
+
+fn compare_sheet_with_widths(
+    name: &str,
+    left: &[u8],
+    right: &[u8],
+    left_sst: &SharedStrings,
+    right_sst: &SharedStrings,
+    policy: MissingCellPolicy,
+    formulas: bool,
+    unordered: bool,
+    differences: &mut Vec<CellValueDifference>,
+    column_widths: ColumnWidths,
+) -> Result<()> {
+    let mut a = Cells::with_column_widths(left, left_sst, column_widths)?;
+    let mut b = Cells::with_column_widths(right, right_sst, column_widths)?;
     if unordered {
         // Rare non-row-major input: one contiguous vector of borrowed views, no
         // cloned cell addresses or values. Reject duplicate addresses explicitly.

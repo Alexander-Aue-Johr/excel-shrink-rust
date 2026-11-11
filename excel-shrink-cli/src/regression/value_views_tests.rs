@@ -371,3 +371,19 @@ fn converted_vba_placeholder_does_not_hide_real_sheet_relationship_errors() -> R
     }
     Ok(())
 }
+
+#[test]
+fn cell_content_audit_excludes_width_validation_without_weakening_capture_checks() -> Result<()> {
+    let fixture = Fixture::new();
+    let left = fixture.0.join("left.xlsx");
+    let right = fixture.0.join("right.xlsx");
+    let xml = br#"<worksheet><cols><col min="1" max="1" width="273.5703125"/></cols><sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData></worksheet>"#;
+    workbook(&left, xml, None)?;
+    workbook(&right, xml, None)?;
+    assert!(compare_workbook_preservation(&left, &right, MissingCellPolicy::strict(), None).is_err());
+    assert_eq!(compare_workbook_cell_contents(&left, &right)?.difference_count, 0);
+    workbook(&right, &sheet("<c r=\"A1\"><v>8</v></c>"), None)?;
+    assert_eq!(compare_workbook_cell_contents(&left, &right)?.difference_count, 1);
+    assert!(compare_workbook_preservation(&left, &right, MissingCellPolicy::strict(), None).is_err());
+    Ok(())
+}
