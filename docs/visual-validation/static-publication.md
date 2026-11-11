@@ -124,6 +124,16 @@ evidence and use `image-derivation.json.gz` to trace presentation assets
 to their source PNG hashes. Check the overview, thumbnails, direct links
 and per-comparison detail pages over static HTTP after conversion.
 
+The equal-image encoding probe in
+`experiments/equal-capture-lossy-encoding-20261111.json` tested nine captures
+whose source PNG hashes matched in positively measured equal contexts and did
+not participate in a differing or unresolved context. JPEG qualities 80, 65
+and 50 with no chroma subsampling produced larger files than the existing
+lossless assets for every sample. Three follow-up samples also grew with lossy
+WebP qualities 80, 60 and 40. The sample emphasizes large assets and includes
+three size quantiles. It does not estimate a corpus-wide compression ratio.
+No lossy preview mode was enabled, and all source captures remain intact.
+
 Run `python tools/compact-public-atlas.py SOURCE DESTINATION --verify` after
 the compact export finishes. This read-only check verifies every source PNG
 hash, mapped presentation asset hash and byte length, the scientific catalog,

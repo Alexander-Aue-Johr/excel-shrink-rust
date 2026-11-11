@@ -1,0 +1,212 @@
+{
+  "schema": 1,
+  "case": "Equal retained captures from the partial 49-workbook-per-corpus Atlas",
+  "pillow_version": "13.0.0",
+  "eligibility": "Identical source PNG hashes, positive pixel comparison and false difference flags in every referenced context.",
+  "eligible_image_count": 10357,
+  "sampling": "Six largest eligible lossless assets and three size-quantile samples. The WebP follow-up uses the smallest, middle and largest assets in that nine-image sample. This is a targeted encoding probe, not a representative corpus-wide compression estimate.",
+  "jpeg_options": {
+    "quality_levels": [
+      80,
+      65,
+      50
+    ],
+    "subsampling": 0,
+    "optimize": true
+  },
+  "jpeg_samples": [
+    {
+      "source_sha256": "01160640f2d60664b7643979dedd5ce2bcca5248d1215654aa7f179fe9ccbc2e",
+      "dimensions": [
+        2889,
+        4767
+      ],
+      "lossless_bytes": 520816,
+      "jpeg_bytes": {
+        "80": 5881573,
+        "65": 4086657,
+        "50": 3150978
+      },
+      "seconds": 0.5310000000026776
+    },
+    {
+      "source_sha256": "53ed71ba4a87b9362d1f15c3213444077c11d80931342764cf77b478adeee525",
+      "dimensions": [
+        6363,
+        2143
+      ],
+      "lossless_bytes": 21070,
+      "jpeg_bytes": {
+        "80": 285527,
+        "65": 245210,
+        "50": 224510
+      },
+      "seconds": 0.28100000000267755
+    },
+    {
+      "source_sha256": "7528ce09d9869afa673e0f074dcecf514cbb2a6f9cfba5f1b69660a0850123e2",
+      "dimensions": [
+        996,
+        14179
+      ],
+      "lossless_bytes": 513150,
+      "jpeg_bytes": {
+        "80": 6988664,
+        "65": 4935697,
+        "50": 3808589
+      },
+      "seconds": 0.5469999999913853
+    },
+    {
+      "source_sha256": "7a18c6f17c4607340012f6d5681ab03865af9be7b79f5213dbbc12cb10b6f78a",
+      "dimensions": [
+        963,
+        8221
+      ],
+      "lossless_bytes": 176924,
+      "jpeg_bytes": {
+        "80": 3454476,
+        "65": 2454619,
+        "50": 1908076
+      },
+      "seconds": 0.26600000000325963
+    },
+    {
+      "source_sha256": "91c7966b856f9fe59b96fbb3af21045fa5508dd0e044d97d6a73606192a956e3",
+      "dimensions": [
+        1139,
+        2255
+      ],
+      "lossless_bytes": 58708,
+      "jpeg_bytes": {
+        "80": 538245,
+        "65": 382778,
+        "50": 300110
+      },
+      "seconds": 0.07800000000861473
+    },
+    {
+      "source_sha256": "94d2caba1a231db27366dd2e0521fce004c7da889458398acfc3e0a41f347264",
+      "dimensions": [
+        996,
+        14196
+      ],
+      "lossless_bytes": 512350,
+      "jpeg_bytes": {
+        "80": 6952491,
+        "65": 4923669,
+        "50": 3801367
+      },
+      "seconds": 0.5779999999940628
+    },
+    {
+      "source_sha256": "c7d8add4b8c9849b22d8fe0426084990836264a9ac3241f3bc95a21a909bca62",
+      "dimensions": [
+        996,
+        14179
+      ],
+      "lossless_bytes": 513370,
+      "jpeg_bytes": {
+        "80": 6967862,
+        "65": 4918312,
+        "50": 3795810
+      },
+      "seconds": 0.5160000000032596
+    },
+    {
+      "source_sha256": "e820fb338399c4c65f7234527b1781168328e623b18dd0af9d360bfb09b190a3",
+      "dimensions": [
+        996,
+        14179
+      ],
+      "lossless_bytes": 518266,
+      "jpeg_bytes": {
+        "80": 6988642,
+        "65": 4934764,
+        "50": 3803717
+      },
+      "seconds": 0.5310000000026776
+    },
+    {
+      "source_sha256": "f8650c4aa3ce9bed3f707a0f87d594bda2ca23b380a789bcd2fe236fffb3dbbe",
+      "dimensions": [
+        2889,
+        4521
+      ],
+      "lossless_bytes": 522952,
+      "jpeg_bytes": {
+        "80": 4980925,
+        "65": 3551315,
+        "50": 2726396
+      },
+      "seconds": 0.4379999999946449
+    }
+  ],
+  "lossy_webp_options": {
+    "quality_levels": [
+      80,
+      60,
+      40
+    ],
+    "method": 4
+  },
+  "lossy_webp_samples": [
+    {
+      "source_sha256": "53ed71ba4a87b9362d1f15c3213444077c11d80931342764cf77b478adeee525",
+      "lossless_bytes": 21070,
+      "lossy_webp": {
+        "80": {
+          "bytes": 75514,
+          "seconds": 1.0929999999934807
+        },
+        "60": {
+          "bytes": 64714,
+          "seconds": 1.0320000000065193
+        },
+        "40": {
+          "bytes": 58122,
+          "seconds": 1.0310000000026776
+        }
+      }
+    },
+    {
+      "source_sha256": "7528ce09d9869afa673e0f074dcecf514cbb2a6f9cfba5f1b69660a0850123e2",
+      "lossless_bytes": 513150,
+      "lossy_webp": {
+        "80": {
+          "bytes": 3298162,
+          "seconds": 1.9530000000086147
+        },
+        "60": {
+          "bytes": 2641834,
+          "seconds": 1.8589999999967404
+        },
+        "40": {
+          "bytes": 2213946,
+          "seconds": 1.8279999999940628
+        }
+      }
+    },
+    {
+      "source_sha256": "f8650c4aa3ce9bed3f707a0f87d594bda2ca23b380a789bcd2fe236fffb3dbbe",
+      "lossless_bytes": 522952,
+      "lossy_webp": {
+        "80": {
+          "bytes": 2242912,
+          "seconds": 1.687000000005355
+        },
+        "60": {
+          "bytes": 1809652,
+          "seconds": 1.625
+        },
+        "40": {
+          "bytes": 1557338,
+          "seconds": 1.6719999999913853
+        }
+      }
+    }
+  ],
+  "result": "Every sampled JPEG and lossy WebP was larger than its existing lossless presentation asset. No lossy preview mode was enabled.",
+  "source_images_and_scientific_reports": "Unchanged",
+  "scope": "Encoding sizes only. No new Excel captures or scientific comparison verdicts were generated."
+}
