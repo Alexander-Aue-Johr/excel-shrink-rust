@@ -1,0 +1,73 @@
+{
+  "kind": "live-package-operational-observation",
+  "run_id": "1794350431063-4edcadbc-2527-4aef-ae77-5bbe07d3ae96",
+  "status": "completed_defaults_restored",
+  "nominal_phase_seconds": 180,
+  "reserve_bytes": 8589934592,
+  "baseline_controls": {
+    "capture_batch_ranges": 4,
+    "capture_batch_megapixels": 32
+  },
+  "larger_controls": {
+    "capture_batch_ranges": 4,
+    "capture_batch_megapixels": 128
+  },
+  "default_controls_restored": true,
+  "phases": [
+    {
+      "label": "baseline-before",
+      "started_utc": "2026-11-11T08:42:21Z",
+      "start_capture_sequence": 68406,
+      "minimum_free_ram_bytes": 69177442304,
+      "minimum_commit_headroom_bytes": 51809128448,
+      "end_capture_sequence": 68582,
+      "observed_seconds": 178.29699999999866,
+      "captures_per_second": 0.9871170014077708,
+      "successful_individual_images": 176,
+      "observed_package_range_counts": [
+        1
+      ]
+    },
+    {
+      "label": "larger-package",
+      "started_utc": "2026-11-11T08:45:21Z",
+      "start_capture_sequence": 68584,
+      "minimum_free_ram_bytes": 69130194944,
+      "minimum_commit_headroom_bytes": 51659931648,
+      "end_capture_sequence": 69082,
+      "observed_seconds": 178.40600000000268,
+      "captures_per_second": 2.7913859399347136,
+      "successful_individual_images": 498,
+      "observed_package_range_counts": [
+        1,
+        4
+      ]
+    },
+    {
+      "label": "baseline-after",
+      "started_utc": "2026-11-11T08:48:21Z",
+      "start_capture_sequence": 69090,
+      "minimum_free_ram_bytes": 69016973312,
+      "minimum_commit_headroom_bytes": 51395878912,
+      "end_capture_sequence": 69270,
+      "observed_seconds": 178.31299999999464,
+      "captures_per_second": 1.009460891802647,
+      "successful_individual_images": 180,
+      "observed_package_range_counts": [
+        1,
+        4
+      ]
+    }
+  ],
+  "frozen_runtime_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "scope": "One ongoing QT/RR Original/Inquire pair; successful individual native images; sequential A/B/A phases; no randomized corpus-level estimate",
+  "limitations": [
+    "Adjacent planned ranges differ between phases",
+    "Boundary packages may span control changes",
+    "No comparison restart or capture-plan change",
+    "Raw display labels contain a decoding artifact and are omitted from this numeric projection",
+    "Pixel equivalence was tested separately on the Lysimeter package-budget experiment"
+  ],
+  "private_raw_state_sha256": "e9cb6398918689ea3efc2818e138009af40c1ea9a46a29ba26879cd6be8f828b",
+  "probe_script_sha256": "3af2a3eafa132fee183c13cce0fae29e8575b9087735ab4a370515ab6c2ccd2e"
+}

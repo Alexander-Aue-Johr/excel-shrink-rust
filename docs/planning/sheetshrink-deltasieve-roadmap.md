@@ -45,6 +45,24 @@ rebased above concurrent paper changes and pushed in `7743a1c7`.
 
 ### Evaluation evidence checkpoint on 2026-11-11
 
+The Enron fourth-case resource follow-up completed eighteen openpyxl trials.
+Original and XLStylesTool reached the configured 4 GiB limit in all repetitions.
+The four other variants completed. Prepared external outputs measure library
+processing, while SheetShrink includes fresh cleanup. A separate fresh control
+matches all eighteen uncompressed members of the native candidate. Paper
+evidence commit `44f2b67b` and manuscript/PDF commit `8cf68cc0` preserve these
+endpoint qualifications and the separate host lane.
+
+The live capture-package A/B/A observation is retained in
+`../visual-validation/experiments/live-capture-package-aba-20261111.json`.
+One exact ongoing pair produced 0.987, 2.791 and 1.009 individual images/s
+under default, four-range/128 MP and restored-default phases. Boundary packages,
+adjacent-range differences and concurrent work qualify this operational result.
+Both ongoing QT/RR pairs now use the larger package budget under an identity-bound
+RAM/commit rollback watcher. Coverage plans and per-image limits are unchanged.
+The standalone host's authenticated live-control API remains an implementation
+gap. The current frozen runtime reads its scoped control file at package boundaries.
+
 The controlled single-thread memchr-dispatch ablation is retained in
 `../visual-validation/experiments/memchr-dispatch-ablation-20261111.json` with
 the isolated override helper and execution recipe. All eighteen cleanup outputs
