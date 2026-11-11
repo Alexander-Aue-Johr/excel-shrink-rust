@@ -32,6 +32,7 @@ mod application;
 mod preparation;
 mod preparation_job;
 mod corpus_job;
+mod capture_control;
 mod live_atlas;
 pub(crate) use application::Application;
 
@@ -125,6 +126,7 @@ async fn serve_async(config: RunConfig, port: u16, open: bool, application: Appl
         )
         .route("/api/session", get(session))
         .route("/api/state", get(state))
+        .route("/api/capture/control", post(capture_control::update))
         .route("/api/live-atlas/{run}", get(live_atlas::catalog))
         .route("/api/live-atlas/{run}/images/{id}", get(live_atlas::image))
         .route("/live-atlas/{*path}", get(live_atlas::asset))

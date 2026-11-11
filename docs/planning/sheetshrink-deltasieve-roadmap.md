@@ -60,8 +60,14 @@ under default, four-range/128 MP and restored-default phases. Boundary packages,
 adjacent-range differences and concurrent work qualify this operational result.
 Both ongoing QT/RR pairs now use the larger package budget under an identity-bound
 RAM/commit rollback watcher. Coverage plans and per-image limits are unchanged.
-The standalone host's authenticated live-control API remains an implementation
-gap. The current frozen runtime reads its scoped control file at package boundaries.
+The standalone host now has a source-level `POST /api/capture/control` endpoint
+under the existing same-origin/session-token middleware. It requires the active
+comparison identity and validates the three independent package settings,
+preserving omitted controls through an atomic report-scoped write. Focused tests
+cover partial updates, bounds, unknown fields, stale identities and terminal or
+inactive runs. The ongoing hosts retain their earlier frozen executable and
+continue reading their scoped control files at package boundaries. No live binary
+replacement or native-comparison restart was performed for this API change.
 
 The controlled single-thread memchr-dispatch ablation is retained in
 `../visual-validation/experiments/memchr-dispatch-ablation-20261111.json` with

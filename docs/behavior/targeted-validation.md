@@ -616,6 +616,20 @@ Example live control update through `POST /api/control` on the Observatory host:
 {"geometry_batch_ranges":128,"capture_batch_ranges":3}
 ```
 
+The standalone validation server exposes `POST /api/capture/control` under its
+ordinary same-origin and session-token middleware. Include the currently
+observed comparison `run_id` and at least one of `geometry_batch_ranges`,
+`capture_batch_ranges` or `capture_batch_megapixels`. For example, a request
+can set four ranges and 128 MP aggregate package budget independently of the
+geometry range cap. Unknown fields and invalid bounds are rejected. Stale
+comparison IDs, inactive runs and terminal comparisons are rejected before
+writing controls. Successful updates preserve omitted settings and other
+control-file properties, write atomically to the active report's
+`logs/validation/control.json`, and take effect at the next package boundary.
+The response explicitly identifies the active-report scope. The settings also
+apply to subsequent comparisons within that report. Per-image limits, capture
+selection and scientific reuse identities are unchanged.
+
 Transport image bytes to the resident Rust host, not a large Base64 JSON response.
 Office's capture API may initially return Base64 internally; this does not mean
 the host upload is Base64. The authenticated upload route validates command/client
