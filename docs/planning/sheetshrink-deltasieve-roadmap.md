@@ -34,6 +34,24 @@ replay publication remains a separate delivery gate from saving its event log.
 Resume the staged comparison/report and evaluation plan below after this urgent
 distribution delivery. The manuscript deadline and final-review buffer remain.
 
+Distribution delivery completed on 2026-11-11 at 04:23 CET. Destatis processed
+all 1,182 inputs. Data.gov processed 8,623 and explicitly skipped 494 unsupported
+namespace inputs, with no cleanup failures. All 30,301 prepared Enron XLSX
+inputs processed. Source and produced-output hashes were checked after each
+run. All three analysis/status/replay packages reached the requested laptop,
+where each archive and its six data/metadata files passed hash verification.
+The private SSH handover records destinations and package identities.
+
+The complete saved traces contain 136,630, 228,685 and 574,159 events respectively.
+Each has contiguous sequences, monotonic microseconds and closed workbook/task
+intervals. All three actually reached sixteen active workbooks and sixteen
+active Rayon workers. The anonymous evidence and raw status distinctions are
+in `../visual-validation/experiments/full-corpus-distribution-20261111.json`.
+The UI's Data.gov aggregate `failed` status includes the unsupported skips.
+It must not replace the distinct preparation outcomes in scientific reporting.
+Static replay publication remains open. Resume the earlier staged-report and
+evaluation priorities while the laptop prepares the distribution figures.
+
 ### Highest priority. Staged multi-tool reports
 
 The user's latest delivery priority is an incremental static comparison report
