@@ -1192,6 +1192,26 @@ source identities and limits are recorded in
 The production corpus runner and frozen capture policy were not changed by these
 reference-only extensions.
 
+Evaluation checkpoint on 2026-11-11 at 03:34 CET. The Data.gov inventory now has
+a separate four-occurrence fixed-seed, size-quartile reference sample. Selection
+was frozen before joining cleanup outputs and reproduced exactly. Two initial
+references passed over eleven areas. Two failed the declared image-size guard.
+Independent smaller row partitions subsequently qualified the same two inputs
+over fourteen and 163 areas. The failed attempts remain retained. All 188
+successful areas have matching dimensions and RGBA pixels. Targeted plans use
+zero, eight, zero and three paired areas, all equal. Prior development exposure
+is unclassified. This all-equal sample does not establish changed-case recall.
+The source inventory and native receipt/image identities are retained in
+`../visual-validation/experiments/independent-reference/datagov-sample-20261111.json`
+and `datagov-supplementary-20261111.json` alongside it.
+
+Two additional designed wrapping/merge controls have exact change-mask agreement
+between independently frozen A1:N30 references and selected A1:D3 captures.
+They changed 1,775 and 3,873 RGBA pixels. The merge case includes populated
+cells and tests their native merge behavior too. These bounded controls add
+two mutation cases. They do not complete the broader matrix, held-out evaluation,
+major-selector ablations or matched whole-corpus cost acceptance for Task 13.
+
 ## 14 Write and review complete first manuscript drafts
 
 - [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.
@@ -1253,6 +1273,18 @@ Provide play, pause, seek, time jumps, acceleration, and slowed playback. Reuse 
 Store compressed, independently loadable chunks and a manifest. Use relative same-origin requests on static hosting, bounded decoding and caches, and cancellation when seeking. Retain difference images according to the evidence policy. Identify unavailable historical telemetry explicitly.
 
 Acceptance requires deterministic reconstruction at selected timestamps, correct seeking, bounded memory on a representative long run, and static-host playback. Explain which events were recorded, sampled, or unavailable. Replay demonstrates recorded execution and supports exploration alongside provenance and checksums.
+
+Replay checkpoint on 2026-11-11. A fresh debug test process recorded and verified
+100,000 aggregate checkpoints in 3,125 chunks. Windows lifetime counters measured
+14.88 MiB peak working set and 9.81 MiB peak committed memory for recording plus
+verification. The production JS reader reconstructed all 100,000 checkpoints
+and 128 nonsequential seeks over loopback static HTTP. Its decoded cache stayed
+within two chunks and 64 events. Twelve post-GC samples describe the combined
+Node test/server/reader process, excluding browser UI and transient peaks.
+Nine existing replay/control tests passed. Exact receipts and reproduction are
+in `../visual-validation/experiments/replay-cost-20261108.md`.
+Task 15 remains open for detailed process/sheet/capture/heartbeat recording,
+shared live-component playback and long browser-memory acceptance.
 
 ## 16 Extract coherent software components
 
