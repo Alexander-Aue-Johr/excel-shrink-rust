@@ -1504,6 +1504,19 @@ review is in `../visual-validation/experiments/preparation-replay-publication-re
 Corpus labels remain visible. General content review, browser acceptance and
 public deployment remain separate gates. The full history still loads in memory.
 
+The reviewed preparation recordings are now published at
+<https://alexander-aue-johr.github.io/excel-shrink-paper/replays/corpus-distributions-20261111/>.
+GitHub Pages built deployment `6248225`. All eighteen committed replay asset
+hashes match their inventories. Local static-browser checks loaded all three
+complete recordings, exercised backward seek and accelerated playback to each
+terminal clock, and observed no console errors. The public index and Destatis
+recording were then verified in the browser, including 1,182 completed jobs and
+the recorded 119.80-second endpoint. Data.gov's 494 unsupported-namespace skips
+remain explicitly explained beside its 9,117-input link. Enron represents the
+30,301 prepared-XLSX population. The published review preserves original and
+projected event digests. Whole-history browser peak-memory acceptance and the
+detailed validation-process/heartbeat replay work remain open.
+
 ## 16 Extract coherent software components
 
 - [ ] Establish the shared toolset structure incrementally as features create concrete boundaries.

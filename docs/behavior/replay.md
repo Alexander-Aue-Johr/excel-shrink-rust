@@ -23,6 +23,17 @@ server is not yet supported. A missing or malformed log produces an error.
 The browser loads the full event history for replay, so its memory use grows
 with the recording. Ordinary live polling retains its bounded history.
 
+Completed distribution runs can also be exported through
+`tools/export-preparation-replay.py` and opened over static HTTP, using the same
+Observatory presentation. Export verifies contiguous sequences, monotonic clocks,
+terminal events and preparation outcome counts. The manifest and compressed event
+stream use relative same-origin URLs with a verified size and SHA-256. Playback
+supports the recorded timeline, speed selection and backward seeking without a
+live preparation server. `--redact-local-paths` projects standalone Windows paths
+to basenames while retaining source and export checksums. Publication still
+requires review of corpus labels and diagnostic prose. Full-history browser
+memory remains an explicit limitation of this preparation replay path.
+
 Each worksheet has a stable color across the worker timeline and Workbook Atlas.
 Hovering either original or optimized columns links their work items to that
 column. Hovering a work item targets the optimized column. Column bodies and
