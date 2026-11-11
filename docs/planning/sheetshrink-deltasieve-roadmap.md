@@ -37,6 +37,16 @@ Before direct control-file writes, validate every value against the exact
 runtime's bounds. Prefer its validated API where available. See
 `docs/visual-validation/experiments/rejected-capture-budget-20261111.json`.
 
+The interim 49-workbook-per-corpus Atlas is published at
+`https://alexander-aue-johr.github.io/excel-shrink-paper/atlas/stage-49/?theme=light`.
+It retains 147 raw workbook identities and seven separately labelled normalized
+baselines. The snapshot includes available observations, failures and pending
+outcomes. Native completion remains open. Lossless full-resolution images are
+shared with a separate public image site under the same HTTPS origin. Both sites
+fit within the per-site one-GB Pages limit. Three corpus grids and one native
+detail with a working difference mask were checked over public HTTPS. See
+`docs/visual-validation/experiments/static-atlas-shared-images-20261111.json`.
+
 ### Submission-scope correction on 2026-11-11
 
 The author is shortening both manuscripts and now prioritizes verification of

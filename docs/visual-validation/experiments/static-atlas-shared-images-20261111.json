@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "verified_utc": "2026-11-11T14:30:19Z",
+  "snapshot": "Interim frozen selection of 49 raw workbook identities per corpus, with available observations and explicit pending or failed outcomes",
+  "atlas_url": "https://alexander-aue-johr.github.io/excel-shrink-paper/atlas/stage-49/?theme=light",
+  "earlier_snapshot_url": "https://alexander-aue-johr.github.io/excel-shrink-paper/atlas/stage-09/?theme=light",
+  "hosting": {
+    "atlas_repository": "https://github.com/Alexander-Aue-Johr/excel-shrink-paper",
+    "atlas_branch": "gh-pages",
+    "atlas_commit": "77a31ab9d0e16e6f722386beae1c29eb6d562137",
+    "atlas_site_bytes": 774466635,
+    "atlas_site_files": 6818,
+    "image_repository": "https://github.com/Alexander-Aue-Johr/deltasieve-atlas-images",
+    "image_branch": "gh-pages",
+    "image_commit": "91d3fb494fa666c302fb47bf9c1d4fbfe0aabdbe",
+    "image_site_bytes": 801914786,
+    "image_site_files": 9482,
+    "image_base_url": "https://alexander-aue-johr.github.io/deltasieve-atlas-images/atlas-assets/",
+    "github_pages_builds": "Both exact commits built successfully",
+    "github_tree_responses_truncated": false,
+    "per_site_budget_bytes": 1000000000
+  },
+  "source_snapshot_verification": {
+    "compact_bytes": 1384509926,
+    "raw_workbook_identities": 147,
+    "separately_labelled_normalized_baselines": 7,
+    "exact_scientific_detail_payloads": 366,
+    "mapped_source_png_paths": 17562,
+    "unique_lossless_presentation_assets": 14737,
+    "encoding": "Lossless WebP and verified lossless tiled SVG where needed",
+    "spatial_downscaling": false,
+    "native_source_pngs_retained": true,
+    "relocation": "Generated presentation URL maps and hosting metadata changed. Scientific reports and presentation image bytes were preserved.",
+    "earlier_replay_files_changed": 0
+  },
+  "browser_checks": {
+    "transport": "Public HTTPS pages",
+    "overviews": [
+      {"corpus": "datagov", "workbooks": 49, "sheets": 507},
+      {"corpus": "destatis", "workbooks": 49, "sheets": 3678},
+      {"corpus": "enron", "workbooks": 49, "sheets": 763}
+    ],
+    "detail": "Data.gov Adage_oilprice_main_results_42eeaec3f7ff.xlsx, readme, A1:M22, Original versus Check Performance",
+    "difference_mask": "Rendered successfully using the shared same-origin image host",
+    "console_errors_observed": 0,
+    "scope": "Three corpus overviews and one native detail interaction. This does not establish successful browsing of every finding."
+  },
+  "http_asset_checks": [
+    {
+      "file": "images/0008aee4b89c6fa445e42f53a69e38b99a5bd1f63505c3a115e47e169b65eb95.webp",
+      "status": 200,
+      "content_type": "image/webp",
+      "bytes": 1294,
+      "sha256": "0008aee4b89c6fa445e42f53a69e38b99a5bd1f63505c3a115e47e169b65eb95"
+    },
+    {
+      "file": "images/00422d285a681667aa00bd874a7e5fe3f516ebd9c787d9212efbbaf28e365b56.svg",
+      "status": 200,
+      "content_type": "image/svg+xml",
+      "bytes": 202406,
+      "sha256": "00422d285a681667aa00bd874a7e5fe3f516ebd9c787d9212efbbaf28e365b56"
+    }
+  ]
+}
