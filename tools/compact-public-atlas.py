@@ -187,9 +187,102 @@ def extended_windows_path(path):
     return Path("\\\\?\\" + value)
 
 
+def file_sha256(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def atlas_file(root, relative):
+    if not isinstance(relative, str) or "\\" in relative:
+        raise ValueError("Expected a relative Atlas path with forward slashes")
+    parts = relative.split("/")
+    if not relative or any(part in ("", ".", "..") or ":" in part for part in parts):
+        raise ValueError("Atlas path escapes its directory")
+    path = root.joinpath(*parts)
+    if not path.resolve().is_relative_to(root.resolve()) or not path.is_file():
+        raise ValueError(f"Missing or unconfined Atlas file: {relative}")
+    return path
+
+
+def verify(source, destination):
+    source = source.resolve(strict=True)
+    destination = destination.resolve(strict=True)
+    if os.name == "nt":
+        source = extended_windows_path(source)
+        destination = extended_windows_path(destination)
+    for root in (source, destination):
+        if (root / ".incomplete").exists():
+            raise ValueError("Cannot verify an incomplete Atlas")
+    manifest_bytes = (destination / "image-derivation.json.gz").read_bytes()
+    manifest = json.loads(gzip.decompress(manifest_bytes))
+    if manifest.get("schema") != 1:
+        raise ValueError("Unsupported image derivation schema")
+    paths = manifest["paths"]
+    images = manifest["source_images"]
+    source_paths = {path.relative_to(source).as_posix() for path in source.rglob("*.png")}
+    if source_paths != set(paths) or set(paths.values()) != set(images):
+        raise ValueError("Source images and presentation mappings differ")
+    checked_assets = set()
+    for relative, digest in paths.items():
+        original = atlas_file(source, relative)
+        if file_sha256(original) != digest:
+            raise ValueError(f"Source PNG hash differs: {relative}")
+        info = images[digest]
+        target = atlas_file(destination, info["file"])
+        if (
+            target.stat().st_size != info["encoded_bytes"]
+            or original.stat().st_size != info["source_bytes"]
+        ):
+            raise ValueError(f"Recorded image size differs: {relative}")
+        if target not in checked_assets:
+            if (
+                target.suffix not in (".png", ".webp", ".svg")
+                or file_sha256(target) != target.stem
+            ):
+                raise ValueError(f"Presentation image hash differs: {info['file']}")
+            checked_assets.add(target)
+    catalogs = []
+    for root in (source, destination):
+        catalog_bytes = (root / "atlas-data/catalog.json.gz").read_bytes()
+        catalog = json.loads(gzip.decompress(catalog_bytes))
+        catalog.pop("storage", None)
+        catalogs.append(catalog)
+    if catalogs[0] != catalogs[1]:
+        raise ValueError("Scientific Atlas catalog changed")
+    details = {
+        observation["detail"]
+        for book in catalogs[0]["books"]
+        for observation in book["observations"]
+        if observation.get("detail")
+    }
+    for relative in sorted(details):
+        original = atlas_file(source, relative)
+        if file_sha256(original) != file_sha256(atlas_file(destination, relative)):
+            raise ValueError(f"Scientific detail payload changed: {relative}")
+        detail = json.loads(gzip.decompress(original.read_bytes()))
+        report = detail["image_base"] + "report.json"
+        if file_sha256(atlas_file(source, report)) != file_sha256(atlas_file(destination, report)):
+            raise ValueError(f"Scientific report changed: {report}")
+    total = sum(path.stat().st_size for path in destination.rglob("*") if path.is_file())
+    return {
+        "bytes": total,
+        "within_one_gb": total < PAGES_BUDGET_BYTES,
+        "exact_detail_payloads": len(details),
+        "verified_source_png_paths": len(paths),
+        "unique_presentation_assets": len(checked_assets),
+    }
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Completed public-atlas directory")
     parser.add_argument("destination", type=Path, help="New compact output directory")
+    parser.add_argument(
+        "--verify", action="store_true",
+        help="Verify an existing compact export against its source",
+    )
     args = parser.parse_args()
-    print(f"Compact Atlas: {export(args.source, args.destination):,} bytes")
+    if args.verify:
+        print(json.dumps(verify(args.source, args.destination), indent=2))
+    else:
+        print(f"Compact Atlas: {export(args.source, args.destination):,} bytes")

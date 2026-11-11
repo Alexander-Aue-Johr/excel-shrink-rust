@@ -117,6 +117,14 @@ evidence and use `image-derivation.json.gz` to trace presentation assets
 to their source PNG hashes. Check the overview, thumbnails, direct links
 and per-comparison detail pages over static HTTP after conversion.
 
+Run `python tools/compact-public-atlas.py SOURCE DESTINATION --verify` after
+the compact export finishes. This read-only check verifies every source PNG
+hash, mapped presentation asset hash and byte length, the scientific catalog,
+and the exact bytes of each linked detail payload and native report JSON.
+It rejects incomplete exports and paths outside the two supplied directories.
+Its output reports package bytes and the numbers of checked payloads and images.
+Browser navigation and decoded-pixel checks remain additional verification steps.
+
 A retained 573-by-19,981-pixel capture exercises the tiled SVG path beyond
 WebP's single-image height limit. The browser decoded the embedded tiles into
 a full-size canvas. Its SHA-256 over RGBA bytes matched the original PNG's
