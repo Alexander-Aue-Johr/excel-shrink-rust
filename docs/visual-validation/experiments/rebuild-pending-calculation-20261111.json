@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "manual_probe_guard_seconds": 60,
+  "automatic_total_seconds": 7.156,
+  "native_trials": [
+    {
+      "name": "case-1224.xlsx",
+      "calculation": "automatic_full_rebuild_then_manual_save",
+      "seconds": 0.1196345
+    },
+    {
+      "name": "case-1225.xlsx",
+      "calculation": "automatic_full_rebuild_then_manual_save",
+      "seconds": 0.174651
+    },
+    {
+      "name": "case-1396.xlsx",
+      "calculation": "automatic_full_rebuild_then_manual_save",
+      "seconds": 0.0633172
+    },
+    {
+      "name": "fixture.xlsx",
+      "calculation": "automatic_full_rebuild_then_manual_save",
+      "seconds": 0.0479042
+    }
+  ],
+  "fixture_expected_values": {
+    "B1": 14,
+    "C1": 15
+  },
+  "scope": "Three previously stalled inputs and one fixture, one reused native private-desktop worker. Whole-corpus impact remains under observation."
+}

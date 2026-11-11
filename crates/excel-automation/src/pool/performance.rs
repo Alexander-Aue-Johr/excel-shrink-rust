@@ -855,6 +855,8 @@ mod tests {
         assert!(script.contains("calculation-state.json"));
         assert!(script.contains("stage='calling_full_rebuild'"));
         assert!(script.contains("stage='full_rebuild_returned'"));
+        assert!(script.contains("$excel.Calculation = -4105"));
+        assert!(script.contains("automatic_full_rebuild_then_manual_save"));
     }
 
     #[test]

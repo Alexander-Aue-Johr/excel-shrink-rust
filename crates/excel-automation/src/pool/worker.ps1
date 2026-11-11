@@ -156,6 +156,10 @@ try {
                 Write-Receipt (Join-Path $request.directory 'calculation-state.json') @{
                     stage='calling_full_rebuild';updated_utc=[DateTime]::UtcNow.ToString('o')
                 }
+                # Native /automation workers can remain xlPending in manual mode.
+                # Allow calculation while rebuilding, then restore manual save behavior.
+                $excel.Calculation = -4105
+                $metrics['calculation'] = 'automatic_full_rebuild_then_manual_save'
                 $excel.CalculateFullRebuild()
                 $calculationState = $excel.CalculationState
                 Write-Receipt (Join-Path $request.directory 'calculation-state.json') @{
@@ -174,6 +178,7 @@ try {
                     $calculationState = $nextState
                 }
                 $phaseTimes[$phase] = $phaseClock.Elapsed.TotalSeconds
+                $excel.Calculation = -4135
                 $excel.CalculateBeforeSave = $false
             }
             $phase = if ($request.performance) { 'optimizing workbook performance' } else { 'saving XLSX conversion' }

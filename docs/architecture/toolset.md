@@ -105,3 +105,20 @@ planner's255 limit. This layout attribute does not change a cell's saved value
 or formula. Capture and preservation callers retain their existing width
 validation. Content-audit summaries use a separate cache namespace, so accepting
 such an input cannot bypass a later caller's required layout validation.
+
+
+### Rebuild calculation completion
+
+Excel rebuild workers open inputs with manual calculation. During the full
+rebuild they temporarily enable automatic calculation, wait for Excel to report
+completion, and restore manual calculation before saving. The receipt records
+`automatic_full_rebuild_then_manual_save`. Native `/automation` workers can
+otherwise return from `CalculateFullRebuild` with `xlPending` indefinitely even
+when no CPU work occurs. The request retains calculation-stage evidence and the
+existing stall limit. A pending calculation is never published as completed.
+
+The bounded native regression probe reused one worker for three affected Enron
+inputs and a cached-formula fixture. All four completed, with rebuild phases
+between0.048 and0.175seconds. The fixture's stale cached values were recalculated
+to14 and15. Earlier manual-mode probes reached their60-second guard with
+`xlPending`; those observations remain separate from successful results.
