@@ -171,6 +171,16 @@ navigation preserves access to the complete observed worksheet history. A
 backward replay seek clamps pages to the remaining observed matches and cannot
 expose future worksheet metadata through the selector.
 
+The follow-up browser probe exercised the paginated selector against the same
+complete Destatis recording. The endpoint displayed 1,182 completed workbooks,
+66,541 work items and 33,058 worksheets across 331 selector pages. Searching
+`wa-gegenueberstellung` returned five worksheets across the matching workbooks.
+Pause, End-key seek and the final observation completed in about seven seconds
+in one automation call. The earlier call took about 25 seconds. These single
+observations include automation and accessibility extraction, so they do not
+establish isolated rendering speed or long-run memory behavior. The temporary
+tab and read-only proxy were closed after both tests.
+
 A [100,000-checkpoint recording experiment](../visual-validation/experiments/replay-cost-20261108.md)
 verified all retained event identities and bounded chunk sizes. It measured
 17.369 seconds of recording wall time and approximately 3.30 MB of logical

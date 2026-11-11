@@ -54,6 +54,17 @@ evaluation priorities while the laptop prepares the distribution figures.
 
 ### Highest priority. Staged multi-tool reports
 
+At 04:48 CET on 2026-11-11, both owned QT/RR native hosts remained live.
+The first comparison had retained 50,688 successful individual captures in
+about 18,472 seconds, and the independent second comparison had retained
+42,830 in about 15,284 seconds. Against the provisional upper bound of
+180,224 images per pair, their whole-attempt average rates imply roughly
+13.1 and 13.6 additional hours respectively. This excludes remaining queue
+items and publication work, and changing image costs can move the estimate.
+Continue the current comparisons, keep unresolved slots explicit, and retain
+the earlier decision to advance evaluation while stage nine remains pending.
+Larger report stages remain deferred pending a fresh stage-boundary forecast.
+
 The user's latest delivery priority is an incremental static comparison report
 for the DeltaSieve paper within the remaining submission window. Prepare stages
 of 9, 16, 25, 36 and 49 complete workbooks, preserving the frozen absolute
