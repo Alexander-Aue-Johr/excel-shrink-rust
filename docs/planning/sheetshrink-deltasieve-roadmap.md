@@ -105,7 +105,12 @@ export now writes compact report JSON and loads it adjacent to its HTML page,
 without duplicating the complete report inside that page. The exporter refreshes
 viewer assets so frozen older source packages cannot supply an incompatible
 viewer. All 47 targeted Rust report tests passed, and the large QT/RR detail was
-visibly checked in the browser. Publication is pending Pages deployment.
+visibly checked in the browser. The500-observation snapshot is now deployed
+on both Pages sites. The public catalog and one new image match local bytes.
+The Data.gov49-workbook overview and the deferred QT/RR Original/Inquire detail
+with its difference mask were visibly verified over HTTPS. Both sites remain
+below one billion bytes each. The initial image workflow startup failure was
+retained; the explicit new build completed successfully.
 
 Seven additional Enron/Inquire resource retries completed with limitations.
 Four Destatis/Inquire retries failed: one unresolved workbook-opening timeout

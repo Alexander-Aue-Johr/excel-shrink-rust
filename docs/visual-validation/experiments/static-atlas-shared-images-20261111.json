@@ -36,9 +36,21 @@
   "browser_checks": {
     "transport": "Public HTTPS pages",
     "overviews": [
-      {"corpus": "datagov", "workbooks": 49, "sheets": 507},
-      {"corpus": "destatis", "workbooks": 49, "sheets": 3678},
-      {"corpus": "enron", "workbooks": 49, "sheets": 763}
+      {
+        "corpus": "datagov",
+        "workbooks": 49,
+        "sheets": 507
+      },
+      {
+        "corpus": "destatis",
+        "workbooks": 49,
+        "sheets": 3678
+      },
+      {
+        "corpus": "enron",
+        "workbooks": 49,
+        "sheets": 763
+      }
     ],
     "detail": "Data.gov Adage_oilprice_main_results_42eeaec3f7ff.xlsx, readme, A1:M22, Original versus Check Performance",
     "difference_mask": "Rendered successfully using the shared same-origin image host",
@@ -60,5 +72,37 @@
       "bytes": 202406,
       "sha256": "00422d285a681667aa00bd874a7e5fe3f516ebd9c787d9212efbbaf28e365b56"
     }
-  ]
+  ],
+  "publication_500_followup": {
+    "verified_utc": "2026-11-11T22:23:15.629670+00:00",
+    "atlas_commit": "a8bfc900a4ef14dd270c335f843cfdcf1fa612e2",
+    "image_commit": "43e568ed821aeeda4627a182ff8cfc33ebc623ce",
+    "atlas_build_run": 43110749604,
+    "image_build_run": 43110341427,
+    "earlier_image_build": {
+      "id": 43096025697,
+      "result": "startup_failure"
+    },
+    "both_pages_builds": "built",
+    "atlas_site_bytes": 940839414,
+    "image_site_bytes": 979445853,
+    "observations": 500,
+    "sources": 50,
+    "exact_detail_payloads": 460,
+    "source_image_paths": 23337,
+    "public_catalog_bytes_match_local": true,
+    "public_new_image_bytes_match_local": true,
+    "browser_check": {
+      "overview": "Data.gov49 workbooks537 sheets6 recorded runs",
+      "workbook": "QT_RR data_dobutamine challenge test_Hazari_Dec 2015b_425cb8e17e0c.xlsx",
+      "sheet": "SHR1 DE",
+      "range": "A1:DX100",
+      "variants": [
+        "Original",
+        "Inquire"
+      ],
+      "difference_mask": "Rendered successfully",
+      "scope": "One overview and the large deferred QT/RR detail. Other views retain earlier acceptance evidence. No whole-selection completion claim."
+    }
+  }
 }
