@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "observed_utc": "2026-11-11T16:58:51Z",
+  "cases": [
+    {
+      "case": "QT/RR A",
+      "successful_individual_captures": 86256,
+      "comparison_completed": false,
+      "lanes": [
+        {
+          "lane": "resident-O",
+          "metrics_sha256": "dd98f4a01e922904b503b57da922d3e95318f6ae14aa662c029c276a8fd6776b",
+          "error": "Resident RAM guard: physical available 28339 MiB; system commit headroom 776 MiB; required reserve 8192 MiB.",
+          "minimum_commit_bytes": 814702592,
+          "cleanup_started_unix_ms": 1794416331172
+        },
+        {
+          "lane": "resident-SD",
+          "metrics_sha256": "1918d463ddaa3a96c8ba85e03fe7c61fcaa2e45bbf3fe904ac6e1549902ffbcc",
+          "error": "Resident RAM guard: physical available 28395 MiB; system commit headroom 777 MiB; required reserve 8192 MiB.",
+          "minimum_commit_bytes": 815153152,
+          "cleanup_started_unix_ms": 1794416331158
+        }
+      ]
+    },
+    {
+      "case": "Low-Temperature / Check Performance",
+      "successful_individual_captures": 8908,
+      "comparison_completed": false,
+      "lanes": [
+        {
+          "lane": "resident-O",
+          "metrics_sha256": "0a6e6b5a4ea3b996925e21f842c63b3b6f88c2ee7861a50f6007aa97ca95ea90",
+          "error": "Resident RAM guard: physical available 28309 MiB; system commit headroom 741 MiB; required reserve 8192 MiB.",
+          "minimum_commit_bytes": 777003008,
+          "cleanup_started_unix_ms": 1794416331178
+        },
+        {
+          "lane": "resident-SD",
+          "metrics_sha256": "2461391d8fcaa91634460870595c30bedb2667834e1021a1dc35888b7e392884",
+          "error": "Resident RAM guard: physical available 28309 MiB; system commit headroom 740 MiB; required reserve 8192 MiB.",
+          "minimum_commit_bytes": 775950336,
+          "cleanup_started_unix_ms": 1794416331180
+        }
+      ]
+    }
+  ],
+  "editable_pubmed_probe": {
+    "supervisor_sha256": "aea42ed2766e570945d393f299e1d8fa1b30ad2dd73b539ce9999ed8c515ae2a",
+    "job_limit_bytes": 25769803776,
+    "reserve_bytes": 8589934592,
+    "peak_job_committed_bytes": 25770082304,
+    "native_pid": 15160,
+    "aborted_utc": "2026-11-11T16:58:52Z",
+    "job_memory_events": [
+      {
+        "message": 10,
+        "pid": 15160
+      },
+      {
+        "message": 10,
+        "pid": 51796
+      },
+      {
+        "message": 10,
+        "pid": 5576
+      },
+      {
+        "message": 10,
+        "pid": 26376
+      },
+      {
+        "message": 10,
+        "pid": 11356
+      },
+      {
+        "message": 10,
+        "pid": 5048
+      },
+      {
+        "message": 10,
+        "pid": 49236
+      },
+      {
+        "message": 10,
+        "pid": 15688
+      }
+    ],
+    "comparison_completed": false
+  },
+  "findings": [
+    "All four resident lanes explicitly recorded system-wide commit reserve failures within 22 milliseconds.",
+    "Their detailed metrics explain the generic resident-exited errors.",
+    "The separately normalized PubMed probe reached its own job memory limit and its supervisor killed only the identified native process.",
+    "The responsible system-wide transient allocation is not yet identified. Five-second supervisor samples missed the low headroom recorded by residents between samples. Its exact duration is unknown.",
+    "The live QT/RR B process survived and continued capturing. Raw captures and failed attempts remain retained. Completed pixel comparison cannot be inferred from capture counts."
+  ]
+}
