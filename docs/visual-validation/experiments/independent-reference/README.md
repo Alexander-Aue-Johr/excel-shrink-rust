@@ -1,5 +1,27 @@
 # Explicit native reference comparisons
 
+## INDIRECT conditional-format controls on 2026-11-11
+
+`../comparator-pilot/dependency_controls.py` freezes two synthetic pairs and
+`Data!A1:AA30` before native execution. X1 changes from 1 to 9. An expression
+rule over A1:A3 uses either `INDIRECT("X1")>5` or `INDIRECT($Z$1)>5`, with Z1
+holding the unchanged text X1. Both references visibly acquire the red fill
+and change the source value. Each reference contains 5,070 changed RGBA pixels.
+
+The tested v15 selector records `unsupported-rule-semantics` for both rules.
+It does not resolve the literal INDIRECT dependency in this experiment. The
+finite fallback selects A1:AA3 once per pair. Both selected masks exactly match
+their independent reference masks at their shared A1 origin, including absence
+of changed pixels outside the selected height. A separate first-column pixel
+check confirms the conditional fill changed, with 4,869 red pixels in a fixed
+90-by-60-pixel crop afterward and none beforehand.
+
+`dependency-controls-20261111.json` records input, producer, receipt and image
+identities and the exact rule decisions. Raw evidence remains under
+`G:\deltasieve-work\dependency-controls-20261111`. These two designed controls
+exercise finite unsupported-rule coverage. They do not establish support for
+resolving either INDIRECT form or population detection recall.
+
 ## Isolated layout controls on 2026-11-11
 
 `../comparator-pilot/layout_controls.py` freezes two synthetic pairs and the

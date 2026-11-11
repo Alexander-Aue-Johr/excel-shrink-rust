@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "protocol": {
+    "schema": 1,
+    "cases": [
+      {
+        "case": "literal-indirect",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\dependency-controls-20261111\\literal-indirect\\original.xlsx",
+            "sha256": "5f6b6967770288cfeeee8a569e643a743344f6bcb66b2bdb20606081e1c5d0b6"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\dependency-controls-20261111\\literal-indirect\\candidate.xlsx",
+            "sha256": "2d74c1dc6e39bd235593085fe158570722ecc5d3ff056a6312d2391b1d55cbdf"
+          }
+        },
+        "changed_input": "Data!X1 changes from 1 to 9; Z1 remains the text X1",
+        "expected": "The red conditional fill appears across A1:A3, alongside the X1 value change.",
+        "formula_xml": "INDIRECT(\"X1\")&gt;5"
+      },
+      {
+        "case": "dynamic-indirect",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\dependency-controls-20261111\\dynamic-indirect\\original.xlsx",
+            "sha256": "2214ae2d067fb3c0cb9a6ed140055e1157ff8bc8f1cbe8800ccd2f2523f06320"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\dependency-controls-20261111\\dynamic-indirect\\candidate.xlsx",
+            "sha256": "c0dbcee81ee506f1df5b1d0fa17461cdb3030c722b07124ece7b88fce959f013"
+          }
+        },
+        "changed_input": "Data!X1 changes from 1 to 9; Z1 remains the text X1",
+        "expected": "The red conditional fill appears across A1:A3, alongside the X1 value change.",
+        "formula_xml": "INDIRECT($Z$1)&gt;5"
+      }
+    ],
+    "native_status": "pending"
+  },
+  "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "cases": [
+    {
+      "case": "literal-indirect",
+      "reference_status": "completed",
+      "targeted_status": "completed_with_limitations",
+      "reference_dimensions": [
+        1749,
+        601
+      ],
+      "targeted_dimensions": [
+        1749,
+        61
+      ],
+      "selected_range": "A1:AA3",
+      "reference_pixels": {
+        "changed_rgba_pixels": 5070,
+        "red_pixels_first_column_before": 0,
+        "red_pixels_first_column_after": 4869,
+        "images": [
+          {
+            "sha256": "e59519ed989d0b301ff4ba6e30adfda836a0a8ca42c285fcd8c6d438ef60d94d",
+            "file": "literal-indirect-reference\\reference-0-O.png"
+          },
+          {
+            "sha256": "73301eaba40bdeff4a13fe805e57f020d9342c4ae1cddfaffc8d6bcedefbcc8e",
+            "file": "literal-indirect-reference\\reference-0-SD.png"
+          }
+        ]
+      },
+      "targeted_pixels": {
+        "changed_rgba_pixels": 5070,
+        "red_pixels_first_column_before": 0,
+        "red_pixels_first_column_after": 4869,
+        "images": [
+          {
+            "sha256": "5738bbb7eb486d8ba20bc281336840c82708838baa82617949854a8ae9c19914",
+            "file": "literal-indirect-targeted\\evidence-OR\\8bb55181a52507cc0da7decc49c794d3bdd2025b36b0ffbd7ea430ae2f46cd53.png"
+          },
+          {
+            "sha256": "2a57e364feebb974f36a26d73db4f6765be11c6fe98b0586230a51817b082025",
+            "file": "literal-indirect-targeted\\evidence-SDR\\8bb55181a52507cc0da7decc49c794d3bdd2025b36b0ffbd7ea430ae2f46cd53.png"
+          }
+        ]
+      },
+      "change_masks_equal_at_common_A1_origin": true,
+      "conditional_formatting_decisions": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "decisions": [
+            {
+              "sheet": "Data",
+              "block_index": 0,
+              "sqref": "A1:A3",
+              "catalogue_side": "both",
+              "outcome": "capture",
+              "reason": "unsupported-rule-semantics",
+              "changed_inputs": 0,
+              "referenced_input_changes": 0,
+              "referenced_formula_observations": 0,
+              "formula_input_observations": 0,
+              "layout_rows": 0,
+              "comparison_extent": {
+                "top": 1,
+                "left": 1,
+                "bottom": 3,
+                "right": 26
+              }
+            }
+          ]
+        }
+      ],
+      "reference_receipt_sha256": "6584bda8fd6ab09a70621f3992cd0340028b36a98f313e702efeaa31f6f1ff1f",
+      "targeted_receipt_sha256": "9b3cf8ce904c9ed59bf0d10f6d6dca1c77af8ed70c67b2c575dc112655dcb58f"
+    },
+    {
+      "case": "dynamic-indirect",
+      "reference_status": "completed",
+      "targeted_status": "completed_with_limitations",
+      "reference_dimensions": [
+        1749,
+        601
+      ],
+      "targeted_dimensions": [
+        1749,
+        61
+      ],
+      "selected_range": "A1:AA3",
+      "reference_pixels": {
+        "changed_rgba_pixels": 5070,
+        "red_pixels_first_column_before": 0,
+        "red_pixels_first_column_after": 4869,
+        "images": [
+          {
+            "sha256": "e59519ed989d0b301ff4ba6e30adfda836a0a8ca42c285fcd8c6d438ef60d94d",
+            "file": "dynamic-indirect-reference\\reference-0-O.png"
+          },
+          {
+            "sha256": "73301eaba40bdeff4a13fe805e57f020d9342c4ae1cddfaffc8d6bcedefbcc8e",
+            "file": "dynamic-indirect-reference\\reference-0-SD.png"
+          }
+        ]
+      },
+      "targeted_pixels": {
+        "changed_rgba_pixels": 5070,
+        "red_pixels_first_column_before": 0,
+        "red_pixels_first_column_after": 4869,
+        "images": [
+          {
+            "sha256": "5738bbb7eb486d8ba20bc281336840c82708838baa82617949854a8ae9c19914",
+            "file": "dynamic-indirect-targeted\\evidence-OR\\8bb55181a52507cc0da7decc49c794d3bdd2025b36b0ffbd7ea430ae2f46cd53.png"
+          },
+          {
+            "sha256": "2a57e364feebb974f36a26d73db4f6765be11c6fe98b0586230a51817b082025",
+            "file": "dynamic-indirect-targeted\\evidence-SDR\\8bb55181a52507cc0da7decc49c794d3bdd2025b36b0ffbd7ea430ae2f46cd53.png"
+          }
+        ]
+      },
+      "change_masks_equal_at_common_A1_origin": true,
+      "conditional_formatting_decisions": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "decisions": [
+            {
+              "sheet": "Data",
+              "block_index": 0,
+              "sqref": "A1:A3",
+              "catalogue_side": "both",
+              "outcome": "capture",
+              "reason": "unsupported-rule-semantics",
+              "changed_inputs": 0,
+              "referenced_input_changes": 0,
+              "referenced_formula_observations": 0,
+              "formula_input_observations": 0,
+              "layout_rows": 0,
+              "comparison_extent": {
+                "top": 1,
+                "left": 1,
+                "bottom": 3,
+                "right": 26
+              }
+            }
+          ]
+        }
+      ],
+      "reference_receipt_sha256": "062fcd269f1f6161b3e5a66022e730577d755165ceb647efe4b3e9f8cd74bb3b",
+      "targeted_receipt_sha256": "d612efc8368f7b652bbd2cb299507861ed0892c0c5ea3b6e85aa2b035df872bb"
+    }
+  ],
+  "limitations": [
+    "Both INDIRECT forms take the unsupported-rule-semantics capture fallback in the tested v15 selector. This does not establish dependency resolution for literal INDIRECT.",
+    "Two developer-designed mutations over a fixed reference area. No population recall claim.",
+    "All operations ran on sequential owned private desktops while production capture jobs remained active."
+  ]
+}
