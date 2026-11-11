@@ -1,0 +1,79 @@
+{
+  "status": "passed",
+  "runs": [
+    {
+      "application": "xlsx-convert",
+      "deadline_seconds": 180,
+      "job_commit_limit_bytes": 4294967296,
+      "system_reserve_bytes": 8589934592,
+      "workers": 1,
+      "binary_sha256": "c972da3f7b878b256fab6b98181b896b8a5d9fb5559d6a5514cba4bc484c1182",
+      "minimum_free_ram": 67584675840,
+      "minimum_commit_headroom": 49748303872,
+      "exit_code": 0,
+      "total": 1,
+      "status": "passed",
+      "elapsed_seconds": 3.0,
+      "job_counters": {
+        "peak_job_committed_bytes": 592838656,
+        "peak_process_committed_bytes": 426614784,
+        "cpu_user_seconds": 2.875,
+        "cpu_kernel_seconds": 1.453125,
+        "active_processes": 0
+      }
+    },
+    {
+      "application": "excel-check-performance",
+      "deadline_seconds": 180,
+      "job_commit_limit_bytes": 4294967296,
+      "system_reserve_bytes": 8589934592,
+      "workers": 1,
+      "binary_sha256": "83b7e0757998528291c6fa67f9450c498a253ca0ea2a5bc54a8ad2134cb711fb",
+      "minimum_free_ram": 67364954112,
+      "minimum_commit_headroom": 49462157312,
+      "exit_code": 0,
+      "total": 2,
+      "status": "passed",
+      "elapsed_seconds": 7.265999999995984,
+      "job_counters": {
+        "peak_job_committed_bytes": 674631680,
+        "peak_process_committed_bytes": 427425792,
+        "cpu_user_seconds": 6.875,
+        "cpu_kernel_seconds": 4.03125,
+        "active_processes": 0
+      }
+    }
+  ],
+  "fixture_sha256": {
+    "legacy.xls": "b991ac52e350c3eac2df1226e620d2a327fb5c328bc2a264483eaf915ddb82ca",
+    "formatted.xlsx": "645fa51067918034c11adcc85739dfaf5c3effe7f7e9d633cb4957a6eefeb7d3"
+  },
+  "converted_values_and_formulas_match_reference": true,
+  "performance_results": [
+    {
+      "name": "converted.xlsx",
+      "native_result": "no_optimization_needed",
+      "values_and_formulas_preserved": true,
+      "output_sha256": "fc3ccf35bc7930eba21a3940b4af633d539e200a1c43f8a4f52a15e47ca71b9a"
+    },
+    {
+      "name": "formatted.xlsx",
+      "native_result": "optimization_confirmed",
+      "values_and_formulas_preserved": true,
+      "output_sha256": "200a3cacc6517dfc39605644fdd90bc6349d6d828ee0801e604c284b7d219978"
+    }
+  ],
+  "date": "2026-11-11",
+  "scope": "Standalone CLI conversion and Check Performance from a copied full-toolset package, using small generated Office fixtures",
+  "package_members": 133,
+  "package_hashes_unchanged": true,
+  "exported_preparation_outcomes": 2,
+  "copied_export_verification": "passed",
+  "limitations": [
+    "Values and formulas were compared with an earlier conversion reference for the same legacy input and between Check Performance inputs and outputs.",
+    "No visual-equality claim is made by this preparation acceptance.",
+    "The legacy fixture was not shared and contained no macros, so this does not test removal of those features.",
+    "The tests exercise one worker and small fixtures, not corpus throughput or interrupted-run recovery.",
+    "The optional preparation executables must be built before packaging a complete toolset."
+  ]
+}

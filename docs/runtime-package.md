@@ -171,7 +171,7 @@ Git are required by the packaging tool. The resulting runtime requires Windows
 and installed Excel for native comparisons.
 
 ```powershell
-cargo build -p excel-shrink-cli -p sheetshrink --bins --release -j 2
+cargo build -p excel-shrink-cli -p sheetshrink -p xlsx-convert -p excel-check-performance --bins --release -j 2
 python tools/package-validation.py `
   --binary-directory "$env:CARGO_TARGET_DIR\release" `
   --output 'V:\releases\deltasieve-candidate'
@@ -196,6 +196,12 @@ When `sheetshrink.exe` is present in the supplied binary directory, it is includ
 and verified under the same manifest. Historical two-binary packages remain
 verifiable. Build both packages with the command above for a two-application
 release.
+
+The complete toolset build also supplies `xlsx-convert.exe` and
+`excel-check-performance.exe`. The packager includes each when present. Verify
+that both names appear in the release manifest when preparing a conversion and
+Check Performance deployment. Historical validation-only packages remain
+verifiable without these applications.
 
 The asset checkout commit and dirty state are recorded separately from supplied
 binary hashes. The packager does not infer which source revision produced an

@@ -1637,6 +1637,17 @@ The failed attempt remains separate. Evidence is in
 Legacy conversion, Check Performance and distributed interrupted-phase recovery
 still require their own relocated-release acceptance.
 
+Standalone preparation relocation now passes for small fixtures. The complete
+133-member package includes the separately built conversion and Check Performance
+apps. One legacy conversion completed in 3.000 seconds, and two Check Performance
+inputs completed in 7.266 seconds with native no-op/optimization confirmation.
+Independent values/formula checks passed. Sources and runtime hashes stayed
+unchanged, and both exported outcomes verified after transfer to another drive.
+The 4 GiB owned-job and 8 GiB system guards remained satisfied. Evidence is in
+`../visual-validation/experiments/standalone-preparation-relocation-20261111.json`.
+These small CLI checks do not complete distributed interrupted-phase recovery,
+the shared-workbook conversion fixture or the final artifact freeze.
+
 Create versioned manifests and checksums for code, profiles, evaluation scripts, results, and static reports. Verify existing publication links and artifact storage boundaries, and record deployment status for prepared exports. Retain useful Perfetto traces and figures that explain scheduling.
 
 For a possible shrinker Observatory, determine whether existing traces can support a small useful demonstration of workbook, sheet, and chunk scheduling with slowed playback. Record the decision and remaining work. Give paper evidence and the delivered results explorer priority when scheduling that extension.

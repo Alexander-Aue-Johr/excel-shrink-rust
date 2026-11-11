@@ -66,3 +66,33 @@ attempt is retained separately. The path-free result receipt is in
 This extends acceptance to a small native SheetShrink study. Legacy conversion,
 Check Performance, distributed interrupted-phase recovery and final release
 inventory remain separate requirements.
+
+## Standalone native preparation
+
+The next full-toolset package contained 133 members, including freshly built
+`xlsx-convert.exe` and `excel-check-performance.exe`. The earlier package omitted
+the optional conversion executable because the documented build command selected
+only the validation and cleanup packages. The release instructions now build all
+four application packages before packaging.
+
+From the copied package on V:, one conversion worker processed the existing
+generated 25,088-byte legacy XLS fixture in 3.000 seconds. Its nonempty cell
+values, formulas and worksheet names matched the earlier XLSX conversion
+reference. One Check Performance worker then processed this converted input and
+the generated formatted workbook in 7.266 seconds. Native inspection confirmed
+`no_optimization_needed` and `optimization_confirmed`, respectively. Values and
+formulas matched each input after processing. Both operations exited successfully
+with zero failures and no active owned job processes after normal completion.
+
+Each operation had a 180-second deadline, a 4 GiB process-tree commit cap and
+8 GiB system physical-RAM and commit reserves. Peak job commit was 592,838,656
+bytes for conversion and 674,631,680 bytes for Check Performance. Source fixture
+hashes and all runtime member hashes were unchanged. Both Check Performance
+outcomes exported successfully, and the transferred package verified again after
+copying from V: to G:. The path-free receipt is
+[`standalone-preparation-relocation-20261111.json`](standalone-preparation-relocation-20261111.json).
+
+This verifies small native preparation and artifact transfer through the standalone
+CLIs. The fixture has no shared editing or macros. Visual equality, larger-corpus
+throughput, all interrupted-phase recovery paths and the shared-workbook-specific
+conversion fixture remain outside this acceptance.
