@@ -56,3 +56,22 @@ two conversion workers, three shrink processes, one thread per process and
 two visual groups. Check Performance remained unchecked, and the Start corpus
 study button was available. No Start action was performed. Native execution
 and resume remain outside this check.
+
+## Completed-study resume
+
+The ordinary SheetShrink starter subsequently opened a separate configuration
+host. Its authenticated same-origin resume endpoint accepted the earlier
+one-workbook study's saved receipt. The exact recorded runner completed in
+11.594 seconds. The launch receipt, request, configuration and result-record
+SHA-256 values remained unchanged, and the single capture-attempt directory
+set was unchanged. The test's owned process tree was then stopped.
+
+The outer guard allowed 180 seconds and 4 GiB aggregate job commit, with an
+8 GiB physical-RAM and commit reserve. Peak job commit was 160,387,072 bytes.
+Minimum free RAM and commit headroom were 67,968,643,072 and 50,760,081,408 bytes.
+The path-free receipt is in
+[`ordinary-web-resume-20261111.json`](ordinary-web-resume-20261111.json).
+The full private driver and receipt remain beside the earlier prefill fixture.
+This verifies completed-study evidence reuse through the ordinary web resume
+adapter. Interrupted-phase recovery and portable relocation keep their own
+acceptance requirements.

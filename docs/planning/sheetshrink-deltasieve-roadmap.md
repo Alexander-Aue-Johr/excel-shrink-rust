@@ -1116,7 +1116,7 @@ manuscript and author-review requirements.
 
 ## 04 Integrate the web configuration entry point
 
-- [ ] Provide the ordinary startup path through a web configuration page and the Observatory.
+- [x] Provide the ordinary startup path through a web configuration page and the Observatory.
 
 Reuse the standalone branch's working components where their behavior matches the contracts. Share configuration validation and run coordination across CLI and web entry points. Opening the application without a complete run configuration should expose configuration. Starting a configured run should lead to its Observatory.
 
@@ -1147,6 +1147,17 @@ uses the shared corpus configurator and selects its prefilled form. Browser
 inspection verified partition 4/6 and all four supplied worker settings, with
 Start awaiting user action. Two routing, two starter, five form and six package
 tests pass. Guarded release compilation completed. Native resume remains open.
+
+The subsequent ordinary-web resume acceptance completed in 11.594 seconds.
+The saved one-workbook study used its exact recorded executable. Its receipt,
+request, configuration, result record and single capture-attempt set stayed
+unchanged. A 4 GiB owned-job cap and 8 GiB system RAM/commit reserve remained
+satisfied. The path-free receipt is
+`../visual-validation/experiments/ordinary-web-resume-20261111.json`.
+Together with the shared CLI/web creation contract, prior bounded native
+new-study check, current ordinary-starter prefill/browser checks and documented
+commands, this completes Task 04's startup acceptance. Portable relocation,
+interrupted-phase recovery and profile migration remain tracked in Tasks 06/18.
 
 ## 05 Add stable local service names
 

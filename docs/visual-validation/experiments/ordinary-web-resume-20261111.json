@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-11",
+  "status": "passed_reused_existing_evidence",
+  "scope": "One completed one-workbook study resumed through the ordinary SheetShrink web configurator and its saved launch receipt",
+  "configurator_sha256": "b29a46ce04ab55d4e3b52cedc395d4f3c6cd1b5de53cafc32e88c8713dc12ea5",
+  "recorded_runner_sha256": "d00c611234882ebcf0f6704516965f01c71e1672271e646ddafcc938a4acd127",
+  "endpoint": "POST /api/study/resume",
+  "elapsed_seconds": 11.593999999997322,
+  "deadline_seconds": 180,
+  "job_commit_limit_bytes": 4294967296,
+  "system_reserve_bytes": 8589934592,
+  "minimum_free_ram_bytes": 67968643072,
+  "minimum_commit_headroom_bytes": 50760081408,
+  "peak_job_committed_bytes": 160387072,
+  "before_and_after": {
+    "launch_receipt_sha256": "b30c4a3499b611981d3f72d8fa154fe615a7afd7a3fb7a6a484fe1c47a7ad920",
+    "request_sha256": "eaa8c6dc05d90f289275452e864345d31d73f793ed62930d91daaa3b69e0549a",
+    "configuration_sha256": "62daeb23b30e898658d81cc9a36672bc7e0ad6f6188135692f4b922f58ded311",
+    "result_record_sha256": "10e9465b81a3a1a95f1df4e68d32e57447c9c6fcc1f81957deca6cb9bf272624",
+    "capture_attempt_count": 1,
+    "capture_attempt_set_equal": true
+  },
+  "limitations": [
+    "The saved runner retains its own earlier capture policy and producer identity.",
+    "The test verifies reuse of a completed study; it does not prove recovery at every interrupted phase.",
+    "This test does not establish relocation of a distributed runtime package.",
+    "The resume endpoint was exercised over HTTP; the form itself was browser-checked in the preceding prefill acceptance."
+  ]
+}
