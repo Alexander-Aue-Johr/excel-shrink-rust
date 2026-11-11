@@ -67,6 +67,9 @@ pub(crate) fn export(source: &Path, destination: &Path) -> Result<()> {
             }
         }
     }
+    // Frozen sources can carry an older inline-only viewer. Public pages use
+    // this exporter's data contract and its corresponding compiled assets.
+    site::ensure_viewer_assets(&destination)?;
     let mut provenance = Vec::new();
     let mut catalog_omissions = Vec::new();
     let mut copied_details = BTreeSet::new();

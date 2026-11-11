@@ -346,7 +346,7 @@ fn overview_rows(root: &Path, run: &Value) -> Result<Vec<Value>> {
     Ok(rows)
 }
 
-fn ensure_viewer_assets(root: &Path) -> Result<()> {
+pub(super) fn ensure_viewer_assets(root: &Path) -> Result<()> {
     let directory = root.join("report-assets");
     if !directory.try_exists()? {
         fs::create_dir(&directory)?;

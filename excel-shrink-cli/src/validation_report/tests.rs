@@ -390,6 +390,8 @@ fn public_atlas_preserves_images_and_findings_without_exporting_run_configuratio
     write_site(&root, &run)?;
     let before = fs::read(root.join("pairs/one/report.json"))?;
     let original: Value = serde_json::from_slice(&before)?;
+    let old_viewer = b"/* prior inline-only viewer */";
+    fs::write(root.join("report-assets/report-view.js"), old_viewer)?;
     let target = fixture.0.join("public-presentation");
     export_public_atlas(&root, &target)?;
     assert!(target.join("index.html").is_file());
@@ -401,6 +403,9 @@ fn public_atlas_preserves_images_and_findings_without_exporting_run_configuratio
     assert!(public_page.contains(r#""report_url":"report.json""#));
     assert!(public_page.contains(r#""back":"../../index.html""#));
     assert!(!public_page.contains(r#""comparisons":"#));
+    assert!(fs::read_to_string(target.join("report-assets/report-view.js"))?
+        .contains("async function loadComparisonReport("));
+    assert_eq!(fs::read(root.join("report-assets/report-view.js"))?, old_viewer);
     let projected = read_json_file(&target.join("pairs/one/report.json"))?;
     assert_eq!(
         fs::read(target.join("pairs/one/report.json"))?,
