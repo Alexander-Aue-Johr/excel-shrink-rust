@@ -50,5 +50,31 @@
     "https_image_sha256": "1e07adeacd97401142d2369333c4a9007a24f90c9e0aa633b3e70adaf1bec6fc",
     "https_verification": "Fresh HTTPS retrieval with deployment-specific query matched SHA-256. Initial unversioned request returned a cached404 during publication propagation.",
     "remaining": "Latest isolated Low-Temperature and CyanoPhyto recoveries are excluded from this published snapshot. QT/RR B and offline first-pass/retry work continue. Earlier failures remain retained."
+  },
+  "native_recovery_refresh": {
+    "paper_pages_commit": "29920794934902fe8d39b7d4cae8970d23fb886d",
+    "image_pages_commit": "0f611204c7cca181269bde2a870422e20d24e7be",
+    "merged_sources": 47,
+    "merged_observations": 420,
+    "exact_detail_payloads": 410,
+    "verified_source_png_paths": 19381,
+    "unique_presentation_assets": 15629,
+    "published_site_bytes": {
+      "images_including_retained_older_assets": 948407257,
+      "paper": 916843700
+    },
+    "pages_workflows": {
+      "images": 43080943155,
+      "conclusion": "success",
+      "paper": 43081098200
+    },
+    "https_image_sha256": "4316ae91e774ad54b613fe236bf8f2154b6f235c4e34e53d992c1e0c8a22e75a",
+    "https_merged_cyanophyto_detail_sha256": "6ef712114e6a3796a0e226ffb8bd55a30f6b76937cf1d73fcb5e53a9b55e2058",
+    "verification": "Public merged detail and image matched their local publication SHA-256 values over HTTPS. Raw source report identity remains separately recorded in the recovery experiment.",
+    "new_observations": [
+      "Low-Temperature isolated native recovery",
+      "CyanoPhyto v19 native recovery"
+    ],
+    "remaining": "QT/RR B remains active. QT/RR A and PubMed failures retain their evidence. Offline first-pass and retry work and physical result return remain pending."
   }
 }

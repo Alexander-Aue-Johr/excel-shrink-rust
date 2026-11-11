@@ -49,6 +49,14 @@ detail with a working difference mask were checked over public HTTPS. See
 
 ### Submission-scope correction on 2026-11-11
 
+The native-recovery refresh is now published with 420 observations, 47 source
+namespaces and 410 exact detail payloads. Both Pages builds succeeded for paper
+commit `29920794` and image commit `0f611204`. The public merged CyanoPhyto detail
+and a new image matched their local publication checksums over HTTPS. The latest
+Low-Temperature and CyanoPhyto observations are included. Actual sites occupy
+916,843,700 and 948,407,257 bytes, including retained older shared images.
+QT/RR B and offline validation remain incomplete.
+
 The subsequent published refresh contains 418 observations from 45 source
 namespaces and 408 byte-exact detail payloads. Paper Pages commit `a2b039c6`
 and image Pages commit `70546e41` both deployed successfully. A newly hosted
