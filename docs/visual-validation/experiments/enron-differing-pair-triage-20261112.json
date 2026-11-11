@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "scope": "Triage of all965 differing pairs in the first10499 audited Enron pairs. This is diagnostic evidence, not an exhaustive proof of the cause of every changed cell.",
+  "initial_triage": {
+    "pairs_with_supported_paths_in_existing_samples": 960,
+    "pairs_with_unavailable_diagnostics": 5
+  },
+  "sample_limit_per_pair": 32,
+  "recovery": {
+    "rechecked_pairs": 5,
+    "new_sparse_reader_resolved": 4,
+    "remaining_text_budget_case": "enron/local/case-011517",
+    "new_summary_sha256": "93ed0173b95ecd5d824470ffba385637db2cd75d444be3fedac7ebd558dff322"
+  },
+  "targeted_case011517": {
+    "changed_cells": 6,
+    "direct_unchanged_now_formulas": 4,
+    "unchanged_A4_references": 2,
+    "cells": [
+      {
+        "sheet_part": "xl/worksheets/sheet4.xml",
+        "cell": "A4",
+        "sides": {
+          "left": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          },
+          "right": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          }
+        }
+      },
+      {
+        "sheet_part": "xl/worksheets/sheet4.xml",
+        "cell": "C4",
+        "sides": {
+          "left": {
+            "formula": "A4",
+            "attributes": {
+              "ca": "1"
+            }
+          },
+          "right": {
+            "formula": "A4",
+            "attributes": {
+              "ca": "1"
+            }
+          }
+        }
+      },
+      {
+        "sheet_part": "xl/worksheets/sheet5.xml",
+        "cell": "A4",
+        "sides": {
+          "left": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          },
+          "right": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          }
+        }
+      },
+      {
+        "sheet_part": "xl/worksheets/sheet5.xml",
+        "cell": "C4",
+        "sides": {
+          "left": {
+            "formula": "A4",
+            "attributes": {
+              "ca": "1"
+            }
+          },
+          "right": {
+            "formula": "A4",
+            "attributes": {
+              "ca": "1"
+            }
+          }
+        }
+      },
+      {
+        "sheet_part": "xl/worksheets/sheet6.xml",
+        "cell": "A4",
+        "sides": {
+          "left": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          },
+          "right": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          }
+        }
+      },
+      {
+        "sheet_part": "xl/worksheets/sheet7.xml",
+        "cell": "A4",
+        "sides": {
+          "left": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          },
+          "right": {
+            "formula": "IF(HOUR(NOW())>15,NOW(),NOW()-IF(WEEKDAY(NOW())=2,2,0)-1)",
+            "attributes": {
+              "ca": "1"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "limits": [
+    "A supported dependency path does not establish exclusive causation.",
+    "Large changed-cell sets remain sampled by runtime formula diagnostics.",
+    "Raw cell differences remain retained and unsuppressed.",
+    "The separately documented Destatis hidden-zero deletion remains an explicit content change."
+  ],
+  "confirmed_new_sheetshrink_regression_from_this_triage": false
+}
