@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "scope": "Disjoint 2000-pair remote selection following its prior1100 audited pairs. Transport, assignment source and output receipt hashes verified. Preserve raw differences. Completed-pair selection is not representative.",
+  "pairs": 2000,
+  "statuses": {
+    "equal_cell_contents": 1767,
+    "differences_found": 233
+  },
+  "difference_kinds": {
+    "changed": 529
+  },
+  "audit_seconds": 149.09279199999582,
+  "summary_sha256": "e8ebf46df364ae147ae9997ba966dbc60e632926b68a0ceb3cc2f0ce741bcb1d",
+  "manifest_sha256": "65859a64a6edc21428f2701d0feb2b310027d75e020e18f1d147b0387f999311",
+  "cumulative_enron_partial_audit": {
+    "pairs": 10499,
+    "equal_cell_contents": 9534,
+    "differences_found": 965
+  }
+}

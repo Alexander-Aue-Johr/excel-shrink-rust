@@ -2,6 +2,19 @@
 
 ## Current governing scope on 2026-11-10
 
+### Author priority update on 2026-11-12
+
+Prioritize full-calculation rebuilds of SheetShrink outputs. Defer further
+original-file rebuilds while preserving all successful original outputs and
+paired audit evidence. Report distinct workbooks, successful SheetShrink
+rebuilds and complete audited pairs separately. The remote workstation paused
+by the author remains held. A second remote laptop hit its512MiB physical
+reserve and stopped with585 successful single-file outputs. Its292 complete
+pairs were returned and hash-verified. Its708 unfinished SheetShrink outputs
+were reassigned locally without repeating the292 verified successes. This
+one-sided priority does not establish a matched rebuilt-original comparison
+for outputs whose original rebuild is still missing.
+
 ### Urgent priority added by the author on 2026-11-11
 
 Distribute full-calculation rebuilds of corpus originals and corresponding
@@ -28,8 +41,8 @@ pairs have equal saved contents. One workbook removes376,573 numeric zeros from
 hidden columns. Preserve this explicit content change and avoid an unconditional
 value-preservation claim. See the Destatis rebuilt-cell audit ledger.
 
-The verified Enron partial audits now cover8,499 assigned pairs.7,767 have equal
-saved contents and732 contain differences requiring explanation. These are
+The verified Enron partial audits now cover10,499 assigned pairs.9,534 have equal
+saved contents and965 contain differences requiring explanation. These are
 completed-pair selections from active assignments, not a random sample or a
 whole-corpus result. Preserve formula/time/filename diagnostics and unsupported
 cases without suppressing raw differences. The original199-pair pilot remains
