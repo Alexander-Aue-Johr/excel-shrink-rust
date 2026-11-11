@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "date": "2026-11-11",
+  "scope": "Small local Enron pilot during active background corpus rebuilding. Two repetitions per worker count. Includes cold worker startup. Does not establish VM scaling or full-corpus scaling.",
+  "selection": "24 originals sampled at evenly spaced size quantiles from the frozen Enron plan",
+  "input_sha256": [
+    "04d4b6e93f82e3cd4e99e345eef1b33bdc745fae6ab5bc53c575d6278b072296",
+    "8b14fc666ce9ffe680a3b4d704a507f52cb28667f84c783d8b25500bd0c2a351",
+    "6e82584996ca72b58ab90a20dd91d8133d02469eb72d9b206f200270b43ce33c",
+    "5ffb94d55643323296dc9d0e4e535bc6813fc7ad4d08b2a459af3df23a2228bd",
+    "a76e9574d9408c1862ad2bc41ad01ee55ee735f7058c0b91a3d0c7d52b57ec54",
+    "73bba41e5e23121819a98e77eb2627c34c428294be7dfc1175b2a32927cf1e6d",
+    "3bf67f2d4dff1ed83d42ad081295509f3d200a987f1b2f991f7d78c2674cf12f",
+    "980bba77ff0880c430163197ba1aa4d0fcfd03630a2bba306f847d60a3b690df",
+    "e5c526090bc6b4cbf17ad0b0b0113ca7e5d73c656ea37cc7232879d915d4d31c",
+    "d9a55038544a0ce60d25e11dd9a41e46493ad6d9cab39b1c49698a9db1d2112d",
+    "53269c0eb775a491d5f3370336d56e09318f3cde7e292ddf23f190c4522ff4f8",
+    "8fda0f91c53985ed5858de34a07a8910ac9a8a4b3fe61bd88641c3a6b4defdf9",
+    "47057a68e1185751120fdba5a5c7f39b4ff717530afc50321b23fd4c4b229922",
+    "bdf9eaf3d99c68df5600f0e3cf3d70c4353322553af7a0f53e2d5008c33dd999",
+    "c900b1a0172bec97a5d31a2a73d57823c38b1fd388ee9e46025831e307e5ca3e",
+    "d0f7d95f4838da1a7a0c74f2e73ce8de22f23bce677fe631ecc32423304fc726",
+    "661b26398b3cb38fb996be4e158e3ac467ed12be3ed54b063739dfe31648865d",
+    "7dc27f3300f089a3d4ee4eb3defb4340389a6e5e1d30ab4102de4b3f5ba34a61",
+    "4e5a6ababbf751955b1165fd6b244004d4a7e390f9955c382ea5b3e1bc94aba8",
+    "79395153cfd2685397a7cc46042100e021ed0966e5787607585fbb7b3fade9a3",
+    "eb0a7a2630ab4e37d1ae8043227efc3ff8c89d2abc1d3af319579ffc89501f0d",
+    "e9311c3cbb758e0ce1c4c8e568d25cb34724a832c1369e402e18b3df05ba448c",
+    "73950f747d7f6a83797d3a5b38373862c11e47e0d71560d861cfd184a7ebac9c",
+    "c4115ad8c1b1eab5f877024d5b9edbf8561e0ac2d8597e62a4bb7730695f649d"
+  ],
+  "trials": [
+    {
+      "workers": 1,
+      "seconds": 11.546999999991385,
+      "exit_code": 0,
+      "successful": 24,
+      "phase_seconds": {
+        "closing workbook": 0.7174683,
+        "full calculation rebuild": 0.4727827,
+        "opening workbook": 4.2054706,
+        "saving XLSX conversion": 1.0413910999999998
+      }
+    },
+    {
+      "workers": 2,
+      "seconds": 7.797000000005937,
+      "exit_code": 0,
+      "successful": 24,
+      "phase_seconds": {
+        "closing workbook": 0.9598956000000001,
+        "full calculation rebuild": 0.5569514,
+        "opening workbook": 5.0457853,
+        "saving XLSX conversion": 1.1691700999999999
+      }
+    },
+    {
+      "workers": 4,
+      "seconds": 7.562000000005355,
+      "exit_code": 0,
+      "successful": 24,
+      "phase_seconds": {
+        "closing workbook": 1.7072103,
+        "full calculation rebuild": 0.5089553,
+        "opening workbook": 8.16123,
+        "saving XLSX conversion": 1.6955771999999996
+      }
+    },
+    {
+      "workers": 4,
+      "seconds": 7.562999999994645,
+      "exit_code": 0,
+      "successful": 24,
+      "phase_seconds": {
+        "closing workbook": 1.8822592999999996,
+        "full calculation rebuild": 0.5927791,
+        "opening workbook": 8.377594299999998,
+        "saving XLSX conversion": 1.5892033
+      }
+    },
+    {
+      "workers": 2,
+      "seconds": 7.889999999999418,
+      "exit_code": 0,
+      "successful": 24,
+      "phase_seconds": {
+        "closing workbook": 0.9681287,
+        "full calculation rebuild": 0.36655960000000004,
+        "opening workbook": 5.1087591,
+        "saving XLSX conversion": 1.1532625
+      }
+    },
+    {
+      "workers": 1,
+      "seconds": 11.625,
+      "exit_code": 0,
+      "successful": 24,
+      "phase_seconds": {
+        "closing workbook": 0.8484733,
+        "full calculation rebuild": 0.45161290000000004,
+        "opening workbook": 4.3539347,
+        "saving XLSX conversion": 1.0640062000000001
+      }
+    }
+  ],
+  "web_comparison": {
+    "scope": "Synthetic 8-workbook fixture repeated three times per mode. Web server started through HTTP API with state polling. Browser rendering was not measured.",
+    "trials": [
+      {
+        "mode": "cli",
+        "seconds": 4.812999999994645,
+        "exit_code": 0,
+        "successful": 8,
+        "phase_seconds": {
+          "closing workbook": 0.23178069999999998,
+          "full calculation rebuild": 0.08752309999999999,
+          "opening workbook": 1.1156913999999998,
+          "saving XLSX conversion": 0.2530403
+        }
+      },
+      {
+        "mode": "web",
+        "seconds": 4.610000000000582,
+        "exit_code": 0,
+        "successful": 8,
+        "phase_seconds": {
+          "closing workbook": 0.1888589,
+          "full calculation rebuild": 0.08709249999999999,
+          "opening workbook": 0.9720729,
+          "saving XLSX conversion": 0.245758
+        }
+      },
+      {
+        "mode": "web",
+        "seconds": 4.812000000005355,
+        "exit_code": 0,
+        "successful": 8,
+        "phase_seconds": {
+          "closing workbook": 0.20719269999999998,
+          "full calculation rebuild": 0.0773884,
+          "opening workbook": 1.0530662,
+          "saving XLSX conversion": 0.259085
+        }
+      },
+      {
+        "mode": "cli",
+        "seconds": 4.6560000000026776,
+        "exit_code": 0,
+        "successful": 8,
+        "phase_seconds": {
+          "closing workbook": 0.2043594,
+          "full calculation rebuild": 0.06592709999999999,
+          "opening workbook": 0.9788704,
+          "saving XLSX conversion": 0.2435038
+        }
+      },
+      {
+        "mode": "cli",
+        "seconds": 4.546999999991385,
+        "exit_code": 0,
+        "successful": 8,
+        "phase_seconds": {
+          "closing workbook": 0.19374280000000002,
+          "full calculation rebuild": 0.0936325,
+          "opening workbook": 0.9759274,
+          "saving XLSX conversion": 0.24833799999999998
+        }
+      },
+      {
+        "mode": "web",
+        "seconds": 4.60899999999674,
+        "exit_code": 0,
+        "successful": 8,
+        "phase_seconds": {
+          "closing workbook": 0.19378909999999996,
+          "full calculation rebuild": 0.0839724,
+          "opening workbook": 0.9930277999999999,
+          "saving XLSX conversion": 0.25139330000000004
+        }
+      }
+    ]
+  }
+}
