@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "protocol": {
+    "schema": 1,
+    "synthetic": true,
+    "cases": [
+      {
+        "case": "error-value",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\error-controls-20261111\\error-value\\original.xlsx",
+            "sha256": "d0c38eaff371403a787c71f1614a434b215ad46b3f9febb1a51616fe6fefc4d4",
+            "formula": "1/0",
+            "cached_error": "#DIV/0!"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\error-controls-20261111\\error-value\\candidate.xlsx",
+            "sha256": "43adf25cf124c9c213720d8dbe2e14c30273677d63cee7cd5d9b1674784acf21",
+            "formula": "NA()",
+            "cached_error": "#N/A"
+          }
+        },
+        "expected": "A1 displays different formula errors after native rebuild."
+      },
+      {
+        "case": "broken-reference",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\error-controls-20261111\\broken-reference\\original.xlsx",
+            "sha256": "c3f5dd3b93315702457100999650c775b4df987efda77786a870286164e550c7",
+            "formula": "#REF!",
+            "cached_error": "#REF!"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\error-controls-20261111\\broken-reference\\candidate.xlsx",
+            "sha256": "d0c38eaff371403a787c71f1614a434b215ad46b3f9febb1a51616fe6fefc4d4",
+            "formula": "1/0",
+            "cached_error": "#DIV/0!"
+          }
+        },
+        "expected": "A1 displays different formula errors after native rebuild."
+      }
+    ],
+    "native_status": "pending"
+  },
+  "cases": [
+    {
+      "case": "error-value",
+      "reference_status": "completed",
+      "targeted_status": "completed_with_limitations",
+      "selected_area": "A1:D3",
+      "reference_area": "Data!A1:N30",
+      "changed_reference_rgba_pixels": 366,
+      "changed_targeted_rgba_pixels": 366,
+      "exact_changed_mask_equality": true,
+      "mapping": "Both areas start at Data!A1 with equal native scale; target mask is zero-extended over the independently fixed reference canvas.",
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "images": [
+        {
+          "file": "error-value-reference\\reference-0-O.png",
+          "sha256": "86da8ea68374362a97bd66874c4e3bf02122a53f67c667bbe4190cf6c5005062",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "error-value-reference\\reference-0-SD.png",
+          "sha256": "0c764c25f8be6d92d00346806bde95a1ded4f2abf77010afd6fd7497755cdec4",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "error-value-targeted\\evidence-OR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "7fa519be3e3a8d7b30036a890463a7e02bf07ddec21dd9d6f8240662446b6b7b",
+          "dimensions": [
+            277,
+            61
+          ]
+        },
+        {
+          "file": "error-value-targeted\\evidence-SDR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "3827c1d7ac52b7fe9ca219dd3d933e0dfae59119c78d0af01754cc3733fd6b3e",
+          "dimensions": [
+            277,
+            61
+          ]
+        }
+      ]
+    },
+    {
+      "case": "broken-reference",
+      "reference_status": "completed",
+      "targeted_status": "completed_with_limitations",
+      "selected_area": "A1:D3",
+      "reference_area": "Data!A1:N30",
+      "changed_reference_rgba_pixels": 358,
+      "changed_targeted_rgba_pixels": 358,
+      "exact_changed_mask_equality": true,
+      "mapping": "Both areas start at Data!A1 with equal native scale; target mask is zero-extended over the independently fixed reference canvas.",
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "images": [
+        {
+          "file": "broken-reference-reference\\reference-0-O.png",
+          "sha256": "4aed288df5f0375774bdf50efc9536ebd0cfb04c1f1f236cb78e91e05a6e3a3e",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "broken-reference-reference\\reference-0-SD.png",
+          "sha256": "86da8ea68374362a97bd66874c4e3bf02122a53f67c667bbe4190cf6c5005062",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "broken-reference-targeted\\evidence-OR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "0f4e75e487faac8c443b4f1ffd31669606bc5f7dba4a3806fef125204e2e8b53",
+          "dimensions": [
+            277,
+            61
+          ]
+        },
+        {
+          "file": "broken-reference-targeted\\evidence-SDR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "7fa519be3e3a8d7b30036a890463a7e02bf07ddec21dd9d6f8240662446b6b7b",
+          "dimensions": [
+            277,
+            61
+          ]
+        }
+      ]
+    }
+  ],
+  "scope": "Two formula-error controls with explicit independent references. Does not establish support for all unresolved dependencies or population recall."
+}

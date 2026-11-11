@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 from fixtures import CHART, SHEET, create
+from error_controls import create as create_error_controls
 
 
 def read_xml(path, member):
@@ -19,6 +20,35 @@ def cell_value(sheet, address):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_error_controls_change_only_the_declared_formula_cell(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            create_error_controls(root / "first")
+            create_error_controls(root / "second")
+            for case in ("error-value", "broken-reference"):
+                first = root / "first" / case
+                second = root / "second" / case
+                for lane in ("original", "candidate"):
+                    self.assertEqual((first / f"{lane}.xlsx").read_bytes(),
+                                     (second / f"{lane}.xlsx").read_bytes())
+                with zipfile.ZipFile(first / "original.xlsx") as original, \
+                        zipfile.ZipFile(first / "candidate.xlsx") as candidate:
+                    self.assertEqual(original.namelist(), candidate.namelist())
+                    for member in original.namelist():
+                        if member != "xl/worksheets/sheet1.xml":
+                            self.assertEqual(original.read(member), candidate.read(member))
+                    sheets = [ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+                              for archive in (original, candidate)]
+                    formulas = []
+                    for sheet in sheets:
+                        row = sheet.find(f'.//{{{SHEET}}}row[@r="1"]')
+                        cell = row.find(f'{{{SHEET}}}c[@r="A1"]')
+                        self.assertEqual(cell.get("t"), "e")
+                        formulas.append(cell.find(f'{{{SHEET}}}f').text)
+                        row.remove(cell)
+                    self.assertNotEqual(formulas[0], formulas[1])
+                    self.assertEqual(ET.tostring(sheets[0]), ET.tostring(sheets[1]))
+
     def test_repeatable_packages_and_exact_mutations(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

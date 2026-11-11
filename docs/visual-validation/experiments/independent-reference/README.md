@@ -312,3 +312,17 @@ preflight. It retained zero reference image pairs and an unsuccessful receipt,
 as expected. Both tests positively closed their owned Excel processes. A later
 PID check found none of those four processes still present. The four-group Enron
 target was restored, and its completed count continued increasing afterward.
+
+## Formula-error controls on 2026-11-11
+
+`../comparator-pilot/error_controls.py` freezes two pairs before native execution.
+Only Data!A1 changes. The first replaces `1/0` with `NA()`, and the second replaces
+the broken-reference formula `#REF!` with `1/0`. Both states are independently
+rebuilt and saved. Each explicit reference covers Data!A1:N30, while the ordinary
+selector chooses A1:D3. Reference images contain 366 and 358 changed RGBA pixels,
+respectively. Zero-extending the selected masks from their shared A1 origin
+produces exact equality with each complete reference mask. Geometry is equal.
+The receipt `error-controls-20261111.json` retains input, producer and image
+identities. Two fixture tests verify repeatable packages and that all other
+cells and package parts remain unchanged. These two controls do not establish
+general unresolved-dependency support or corpus recall.
