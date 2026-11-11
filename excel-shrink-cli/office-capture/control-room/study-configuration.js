@@ -1,6 +1,10 @@
 /* Archive-study configuration and a verified handoff to its own Observatory. */
 import { acquisitionStatus } from './corpus-acquisition.js';
 
+export function hasPrefilledStudy(application, defaults) {
+  return application === 'sheetshrink' && Boolean(defaults?.output_root);
+}
+
 export async function prepareStudySource(api, configuration, onStatus) {
   if (!configuration.corpus_profile) return;
   const accepted = await api('/api/corpora/start', {

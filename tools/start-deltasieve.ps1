@@ -11,6 +11,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($StudyConfig -and $Application -ne 'sheetshrink') {
+    throw 'Use -Application sheetshrink for an archive-study configuration.'
+}
 $packaged = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'release-manifest.json')
 $repo = if ($packaged) { $PSScriptRoot } else {
     [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))

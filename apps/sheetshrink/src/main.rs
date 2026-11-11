@@ -1,5 +1,10 @@
 //! SheetShrink owns its application entry point and shares the existing execution engine.
 fn main() -> anyhow::Result<()> {
+    // Archive studies use the validation configurator; ordinary cleanup keeps
+    // the workbook/sheet/chunk Observatory.
+    if opens_corpus_configuration(std::env::args_os().skip(1)) {
+        return excel_shrink_cli::run_sheetshrink();
+    }
     #[cfg(windows)]
     if std::env::args_os().len() == 1
         || std::env::args_os().any(|argument| argument == "--web")
@@ -8,6 +13,46 @@ fn main() -> anyhow::Result<()> {
         return web();
     }
     excel_shrink_cli::run_sheetshrink()
+}
+
+fn opens_corpus_configuration(mut arguments: impl Iterator<Item = std::ffi::OsString>) -> bool {
+    arguments.next().as_deref() == Some(std::ffi::OsStr::new("observatory"))
+        && arguments.any(|argument| {
+            argument.to_str().is_some_and(|value| {
+                value == "--study-config" || value.starts_with("--study-config=")
+            })
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::opens_corpus_configuration;
+
+    #[test]
+    fn explicit_archive_configuration_uses_the_corpus_form() {
+        for arguments in [
+            vec!["observatory", "--study-config", "study config.json"],
+            vec!["observatory", "--study-config=study config.json"],
+        ] {
+            assert!(opens_corpus_configuration(
+                arguments.into_iter().map(Into::into)
+            ));
+        }
+    }
+
+    #[test]
+    fn cleanup_entry_points_keep_the_detailed_observatory() {
+        for arguments in [
+            vec![],
+            vec!["observatory"],
+            vec!["--web"],
+            vec!["input", "output"],
+        ] {
+            assert!(!opens_corpus_configuration(
+                arguments.into_iter().map(Into::into)
+            ));
+        }
+    }
 }
 
 #[cfg(windows)]

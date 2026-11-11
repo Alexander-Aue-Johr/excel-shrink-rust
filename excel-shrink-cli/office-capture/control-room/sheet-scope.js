@@ -3,7 +3,7 @@
 
 import { createTargetedPanel } from '/observatory-assets/targeted-panel.js';
 import { optionValue, setOption } from '/observatory-assets/processor-options.js';
-import { installStudyConfiguration } from '/observatory-assets/study-configuration.js';
+import { hasPrefilledStudy, installStudyConfiguration } from '/observatory-assets/study-configuration.js';
 import { installPreparationPackages } from '/observatory-assets/preparation-packages.js';
 import { installPerformancePreparation, installPreparationSources } from '/observatory-assets/performance-preparation.js';
 import { installCorpusAcquisition } from '/observatory-assets/corpus-acquisition.js';
@@ -669,6 +669,10 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
     workingDirectory = session.working_directory;
     browseDirectoryDefault = session.browse_directory || workingDirectory;
     populate(session.config);
+    if (hasPrefilledStudy(session.application, session.study_defaults)) {
+      document.querySelector('input[name="mode"][value="new-study"]').checked = true;
+      showSections();
+    }
     byId('parallel-help').textContent = `${logicalProcessors} logical processors. This limits external programs; --rayon-threads controls threads inside each Excel Shrink process.`;
     await poll();
     byId('configuration-panel').showModal();

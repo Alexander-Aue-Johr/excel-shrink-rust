@@ -32,3 +32,27 @@ and are excluded from public source. This check verifies configuration handoff,
 HTTP service identity and port-conflict behavior. Browser rendering, a native
 study start, relocation and receipt-based native resume require their separate
 acceptance checks.
+
+## Browser finding and correction
+
+The subsequent browser check exposed an application-routing gap. The DeltaSieve
+shell received study defaults but hid its SheetShrink-only study modes. The
+SheetShrink application's newer cleanup Observatory also intercepted
+`observatory --study-config` and rejected the option. Successful HTTP prefill
+alone had not established a usable corpus form.
+
+The corrected starter requires `-Application sheetshrink` for archive-study
+prefill. The SheetShrink application now routes this explicit command to its
+shared corpus configurator. The configurator selects the new-study form when
+that application has a supplied nonempty study output root. Unconfigured cleanup
+continues through the detailed cleanup Observatory.
+
+A guarded release build and two application-routing tests completed. Two
+PowerShell starter tests, five study-configuration JavaScript tests and six
+runtime-package tests passed. The tested SheetShrink executable SHA-256 is
+`b29a46ce04ab55d4e3b52cedc395d4f3c6cd1b5de53cafc32e88c8713dc12ea5`.
+The browser displayed the selected new-study workflow, partition 4 of 6,
+two conversion workers, three shrink processes, one thread per process and
+two visual groups. Check Performance remained unchecked, and the Start corpus
+study button was available. No Start action was performed. Native execution
+and resume remain outside this check.

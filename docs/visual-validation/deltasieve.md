@@ -102,11 +102,12 @@ another drive. The starter places builds, temporary files, and logs beneath
 that root. `-BinaryPath` uses an existing build, and `-Config` loads a saved
 standalone comparison configuration. `-StudyConfig` forwards a saved archive-study
 configuration to `observatory --study-config`, prepopulating the corpus form.
+Use `-Application sheetshrink` and its executable for this SheetShrink workflow.
 Both options leave the configuration page open for review before Start.
 For example, with an existing executable:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\start-deltasieve.ps1 -BinaryPath 'V:\runtime\deltasieve.exe' -StudyConfig 'V:\profiles\study.json'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\start-deltasieve.ps1 -Application sheetshrink -BinaryPath 'V:\runtime\sheetshrink.exe' -StudyConfig 'V:\profiles\study.json'
 ```
 
 The starter handoff test uses an inert script to check argument boundaries,

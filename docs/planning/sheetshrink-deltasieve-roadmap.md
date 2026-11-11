@@ -1140,6 +1140,14 @@ start failed while the first listener stayed available. Details and test scope
 are in `../visual-validation/experiments/ordinary-start-prefill-20261111.md`.
 Native start/resume and browser rendering remain separate acceptance work.
 
+The browser follow-up found and corrected a real dispatch gap: DeltaSieve hid
+the SheetShrink-only study form, while the standalone SheetShrink cleanup app
+intercepted the corpus option. Explicit SheetShrink archive-study startup now
+uses the shared corpus configurator and selects its prefilled form. Browser
+inspection verified partition 4/6 and all four supplied worker settings, with
+Start awaiting user action. Two routing, two starter, five form and six package
+tests pass. Guarded release compilation completed. Native resume remains open.
+
 ## 05 Add stable local service names
 
 - [ ] Expose understandable local addresses using the DeltaSieve name.

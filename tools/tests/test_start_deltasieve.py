@@ -34,6 +34,7 @@ class StarterTests(unittest.TestCase):
                 [
                     "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
                     "-File", str(STARTER), "-BinaryPath", str(binary),
+                    "-Application", "sheetshrink",
                     "-DataRoot", str(data), "-Config", str(configuration),
                     "-StudyConfig", str(study), "-Port", "18884", "-NoOpen",
                 ],
@@ -52,6 +53,15 @@ class StarterTests(unittest.TestCase):
             self.assertEqual(configuration.read_text(encoding="utf-8"), "{}")
             self.assertEqual(study.read_text(encoding="utf-8"), "{}")
             self.assertFalse((data / "launch.json").exists())
+
+    def test_archive_study_requires_the_sheetshrink_application(self):
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", str(STARTER), "-StudyConfig", "unused.json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Use -Application sheetshrink", result.stderr)
 
 
 if __name__ == "__main__":

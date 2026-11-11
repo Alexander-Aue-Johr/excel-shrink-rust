@@ -13,6 +13,13 @@ the archive-study form through their respective CLI options. Configuration
 prefill waits for the web Start action. Direct `run` and `study` commands retain
 their explicit execution behavior.
 
+Archive-study prefill uses `-Application sheetshrink` and the SheetShrink
+executable. The starter rejects that option in the DeltaSieve application shell.
+SheetShrink dispatches `observatory --study-config` to the corpus configuration
+UI. The supplied nonempty study output root selects the prefilled corpus form.
+Unconfigured cleanup keeps the workbook/sheet/chunk Observatory, and ordinary
+DeltaSieve startup keeps supplied-source comparison as its initial workflow.
+
 The starter accepts an existing executable through `-BinaryPath`, an explicit
 working root through `-DataRoot`, an optional port and browser suppression.
 Argument boundaries must preserve configuration paths containing spaces.

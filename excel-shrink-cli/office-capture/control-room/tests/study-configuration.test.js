@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { configurationFromForm, partitionChoices, prepareStudySource } from '../study-configuration.js';
+import { configurationFromForm, hasPrefilledStudy, partitionChoices, prepareStudySource } from '../study-configuration.js';
+
+test('only an explicitly prefilled SheetShrink study selects the corpus form', () => {
+  assert.equal(hasPrefilledStudy('sheetshrink', { output_root: 'G:\\study' }), true);
+  assert.equal(hasPrefilledStudy('sheetshrink', { output_root: '' }), false);
+  assert.equal(hasPrefilledStudy('deltasieve', { output_root: 'G:\\study' }), false);
+  assert.equal(hasPrefilledStudy('sheetshrink', undefined), false);
+});
 
 test('study fields retain independent typed worker and capture settings', () => {
   const defaults = {
