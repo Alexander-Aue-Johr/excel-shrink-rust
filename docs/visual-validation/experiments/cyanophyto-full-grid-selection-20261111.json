@@ -99,8 +99,49 @@
   "interpretation": [
     "All seventeen qPCR_Data_Second merge rectangles are unchanged but reordered. Merge normalization alone leaves a whole-grid layout range because a row thickTop hint also changed.",
     "Policy v19 routes valid row border-height hints to the live height checks. Its read-only layout selection retains A341:XFD445 instead of A1:XFD1048576.",
-    "This is a layout-candidate reduction. Ordinary cell candidates and conditional-formatting areas remain independently selected. The output does not yet include live geometry partitioning or a pixel verdict.",
-    "The earlier native failure and its full-grid planning remain historical evidence. A new native comparison is pending."
+    "The read-only diagnostic measures layout-candidate reduction. Ordinary cell candidates and conditional-formatting areas remain independently selected. The subsequent native observation is recorded separately below.",
+    "The earlier native failure and full-grid planning remain historical evidence. The full-grid baseline did not complete."
   ],
-  "visual_verdict": "not_observed"
+  "visual_verdict": "Native comparison completed with limitations and retained differences",
+  "native_followup": {
+    "status": "completed_with_limitations",
+    "capture_policy": "targeted-content-grid-v19",
+    "runtime_sha256": "ebe7c16172c5126bbfd5a65c5ebf962a63eb123aeaeca3ba122fbdd5f3d30ba8",
+    "report_sha256": "b41381ace4517d4d72f62f8058655d30e1d00d206434810ebbb1cf3db4fa23d0",
+    "elapsed_seconds": 245.218,
+    "selected_cell_regions": 525,
+    "selected_charts": 49,
+    "successful_individual_images": 1148,
+    "capture_counts": {
+      "OR": 525,
+      "OR:charts": 49,
+      "SDR": 525,
+      "SDR:charts": 49
+    },
+    "reported_different_regions": 556,
+    "cell_pixel_differences": 518,
+    "cell_geometry_differences": 5,
+    "chart_pixel_differences": 14,
+    "chart_geometry_differences": 36,
+    "memory_interventions": 0,
+    "peak_job_committed_bytes": 2217684992,
+    "timings_ms": {
+      "capture_selection_and_transport": 169768,
+      "image_comparisons": 24019
+    },
+    "interpretation": "All selected native observations completed. Differences belong to Original versus Check Performance. Counts are observations, not independent defects. Geometry changes were measured; individual causal classifications remain under review. This successful reduced-plan observation does not establish exhaustive whole-grid pixel equality."
+  },
+  "packaging_failure": "An earlier separate v19 private package omitted src/regression/archive_processes.ps1 and failed before Excel opened. The corrected runtime includes those packaged cleanup dependencies. The failed attempt remains retained.",
+  "illustrative_full_grid_projection": {
+    "observed_same_sheet_band_tiles_per_state": 511,
+    "band_covered_columns": 16352,
+    "tile_columns": 32,
+    "tile_rows": 256,
+    "projected_two_state_images": 4194304,
+    "observed_complete_capture_transport_images_per_second": 6.762169549031619,
+    "projected_seconds_at_constant_tiles_and_rate": 620260.1058118467,
+    "projected_days_at_constant_tiles_and_rate": 7.178936409859337,
+    "measured_native_elapsed_seconds": 245.218,
+    "interpretation": "Uniform-repeat scenario with unchanged tile shape and throughput. The full-grid run was not completed. Adaptive partitioning, blank-tail compression, cache behavior and concurrency can change actual cost. This is not an observed baseline runtime or a measured speedup."
+  }
 }
