@@ -1,5 +1,29 @@
 # Explicit native reference comparisons
 
+## Isolated layout controls on 2026-11-11
+
+`../comparator-pilot/layout_controls.py` freezes two synthetic pairs and the
+independent `Data!A1:N30` reference before native execution. One changes only
+the first cell style's wrapping alignment with a fixed 90-point row. The other
+adds an A1:D1 merge, including initially populated B1 and C1 cells. The merge
+therefore exercises Excel's native handling of those values as well as layout.
+
+Both references completed with unchanged image dimensions. Wrapping changed
+1,775 RGBA pixels and merging changed 3,873. The v15 selector captured A1:D3
+for each pair and reported differences. Independently decoded image masks agree
+exactly with the reference masks at their common A1 origin, with no changed
+reference pixels outside the targeted image. Raw references measured 917 by
+701 and 917 by 601 pixels, compared with 277 by 161 and 277 by 61 targeted.
+
+`layout-controls-20261111.json` retains source, producer, report and image hashes.
+Raw inputs, receipts and images remain in
+`G:\deltasieve-work\layout-controls-20261111`. These are two designed controls
+under a frozen supplied area. Broader mutation coverage and corpus recall remain
+open. The first targeted wrapping attempt failed before Excel because its required
+group directory was absent. Its logs remain retained and a new output path was
+used after creating that directory. All four successful native runs were bounded,
+sequential private-desktop attempts while production captures continued.
+
 ## Enron Tables cross-tool development control on 2026-11-10
 
 After inspecting an initial Check Performance finding, a separate reference plan

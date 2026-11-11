@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "protocol": {
+    "schema": 1,
+    "cases": [
+      {
+        "case": "wrap-text",
+        "expected": "Long A1 text wraps within the fixed-height row.",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\layout-controls-20261111\\wrap-text\\original.xlsx",
+            "sha256": "bdef405327e10915182644521835b181eb5cf0f74f159190b416210833083c3a"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\layout-controls-20261111\\wrap-text\\candidate.xlsx",
+            "sha256": "2d81156e72c26950db4a2485a6d44ded8994b260bc4a86d9bea6cd197977f8e9"
+          }
+        }
+      },
+      {
+        "case": "merge-cells",
+        "expected": "Merging A1:D1 changes the visible first-row presentation.",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\layout-controls-20261111\\merge-cells\\original.xlsx",
+            "sha256": "5466f0cd3c8e3a82013b15acafb2dc753b3848593ddca8c1f09ffb55e29a8eb4"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\layout-controls-20261111\\merge-cells\\candidate.xlsx",
+            "sha256": "95322c053cfbf706dffc86003972c1713f27bb874e80ccbe507312b3322b7414"
+          }
+        }
+      }
+    ],
+    "native_status": "pending"
+  },
+  "plan": [
+    {
+      "sheet": "Data",
+      "range": "A1:N30"
+    }
+  ],
+  "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "cases": [
+    {
+      "case": "wrap-text",
+      "reference": {
+        "dimensions": [
+          917,
+          701
+        ],
+        "changed_rgba_pixels": 1775,
+        "images": [
+          {
+            "file": "wrap-reference\\reference-0-O.png",
+            "sha256": "1b54a7ff48e6bbcd62e01d467549d2a6cd66752ddeb51972e9a74ffdddee529e"
+          },
+          {
+            "file": "wrap-reference\\reference-0-SD.png",
+            "sha256": "d7820af8f7c8e4daec62408e41d9780193ceaa819fc7e3c717e2ccadd60a6fe1"
+          }
+        ]
+      },
+      "targeted": {
+        "dimensions": [
+          277,
+          161
+        ],
+        "changed_rgba_pixels": 1775,
+        "images": [
+          {
+            "file": "wrap-targeted-retry\\evidence-OR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+            "sha256": "4fe7102710ea0937ae2ea13f3d59fb56515d8654a5fbc29c99e381aeba7d2fc6"
+          },
+          {
+            "file": "wrap-targeted-retry\\evidence-SDR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+            "sha256": "c3f06b7ed76af879004a6cf97c29e935b1cf056949235d0c8b04918f0c8cc933"
+          }
+        ]
+      },
+      "selected_range": "A1:D3",
+      "candidate_count": 1,
+      "targeted_status": "completed_with_limitations",
+      "reference_elapsed_seconds": 9.33917,
+      "reference_receipt_sha256": "7eef46cfec7363b1c94925dc384e161f79f80b03b470d110666d32bce32269e6",
+      "targeted_receipt_sha256": "0d21b55d99c8b36dce0280471a8a08cc0cf5af4c7000bc227dea172ac4c7a766",
+      "changed_pixel_mask_equal_in_common_A1_origin": true
+    },
+    {
+      "case": "merge-cells",
+      "reference": {
+        "dimensions": [
+          917,
+          601
+        ],
+        "changed_rgba_pixels": 3873,
+        "images": [
+          {
+            "file": "merge-reference\\reference-0-O.png",
+            "sha256": "fb1e8c751c3611564f7d8d6f125803b8dd10f0883a91204f336e04ca8467f3fd"
+          },
+          {
+            "file": "merge-reference\\reference-0-SD.png",
+            "sha256": "c52e830790ed6db5df0d3af10df5e6e3d3af905de34998df1fe2963b44383251"
+          }
+        ]
+      },
+      "targeted": {
+        "dimensions": [
+          277,
+          61
+        ],
+        "changed_rgba_pixels": 3873,
+        "images": [
+          {
+            "file": "merge-targeted\\evidence-OR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+            "sha256": "14a40c3746de59e4e4a797460d9d59ad469d962275bb0207a94e334fce2b9c98"
+          },
+          {
+            "file": "merge-targeted\\evidence-SDR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+            "sha256": "de440050b445d76c6bf226e00bc72ef5dd40a535c6982d7d88af5814c7a9f136"
+          }
+        ]
+      },
+      "selected_range": "A1:D3",
+      "candidate_count": 1,
+      "targeted_status": "completed_with_limitations",
+      "reference_elapsed_seconds": 8.3109759,
+      "reference_receipt_sha256": "f798425e2d5c5294180e45cd6198f16c52c3fccbf00d8099122be6bff044001c",
+      "targeted_receipt_sha256": "aeaabfc97baf4125f174209df9ba6f91e61bfc52eb79e2d0d51e253cd9f9ff9d",
+      "changed_pixel_mask_equal_in_common_A1_origin": true
+    }
+  ],
+  "limitations": [
+    "Two developer-designed mutations over one fixed rectangle per pair; no corpus recall or independent holdout claim.",
+    "Merged A1:D1 includes originally populated B1 and C1; the case measures native merge behavior as well as cell display.",
+    "First wrap targeted attempt failed before Excel because the required group directory was missing. Retained logs; retry used a new output directory.",
+    "References and targeted comparisons ran sequentially on owned private desktops with concurrent production jobs."
+  ]
+}
