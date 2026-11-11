@@ -70,6 +70,19 @@ any Enron image or detail page.
 - [EDRM Enron v2 XML acquisition](https://archive.org/details/edrm.enron.email.data.set.v2.xml)
 - [EDRM announcement of the privacy-cleansed PST release](https://edrm.net/2013/05/nuix-and-edrm-republish-enron-data-set-cleansed-of-more-than-10000-items-containing-private-health-and-financial-information/)
 
+The Adage Fixed Factor example in the DeltaSieve opening figure comes
+from the EPA catalogue record for dataset DOI `10.23719/1529164`. That
+record lists the fixed-factor workbook by name and links to EPA's
+non-EPA-generated-data disclaimer. The notice directs questions to the
+data owner and supplies no explicit reuse grant for the workbook.
+The companion article has its own publication license. Record the
+workbook's applicable reuse terms separately from that article license
+when preparing the interactive release.
+
+- [ADAGE source dataset and workbook listing](https://doi.org/10.23719/1529164)
+- [EPA notice for non-EPA-generated data](https://pasteur.epa.gov/license/sciencehub-license-non-epa-generated.html)
+- [Companion article](https://doi.org/10.1016/j.eneco.2023.106710)
+
 ## Serve and inspect the approved snapshot
 
 For a reviewer-facing export of a completed static Atlas, generate the
