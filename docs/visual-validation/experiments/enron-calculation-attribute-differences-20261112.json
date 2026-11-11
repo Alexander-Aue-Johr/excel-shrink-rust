@@ -1,0 +1,18 @@
+{
+  "case": 20310,
+  "workbook": "ac15d7276c22f3e1ea17777f8b4b16d9599e16aa70dee5f4b55981e0f79db600.xlsx",
+  "formula_records": 146,
+  "after_rebuild": {
+    "same_text_and_other_attributes_only_ca_changed": 146
+  },
+  "before_rebuild": {
+    "identical_formula_xml_before_rebuild": 146
+  },
+  "raw_difference_records": 234,
+  "interpretation": "Calculation attribute differences retained explicitly. Formula text and all other formula attributes match in the compared rebuilt states. Input comparison distinguishes pre-existing changes from rebuild-state changes.",
+  "schema": 1,
+  "calculated_value_difference_records": 88,
+  "calculated_value_records_with_random_time_paths": 88,
+  "all234_records_examined": true,
+  "limits": "All146 formula texts and non-ca attributes match after rebuild and the corresponding input formula XML was identical before rebuild. Retain raw metadata differences. No exclusive causal claim for cached value differences."
+}

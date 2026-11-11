@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "scope": "Remaining2850 complete local pairs from the original local assignment. Source and output receipt hashes verified. Combined with the preceding5000 local pairs, all7850 completed local pairs are now audited. Failed or unpaired inputs remain exceptions.",
+  "pairs": 2850,
+  "equal_cell_contents": 2609,
+  "differences_found": 241,
+  "difference_kinds": {
+    "changed": 83910
+  },
+  "formula_xml_difference_records": 146,
+  "audit_seconds": 444.54792250000173,
+  "summary_sha256": "5c5be7a270626b0e4658caaf7f00e560b57df8ff723996e00c2b1d936ed345df",
+  "cumulative_enron_partial_audit": {
+    "pairs": 13641,
+    "equal_cell_contents": 12435,
+    "differences_found": 1206
+  },
+  "limits": "Completed-pair selections are not representative and do not cover every Enron input. Newly differing pairs require their own diagnostic review."
+}

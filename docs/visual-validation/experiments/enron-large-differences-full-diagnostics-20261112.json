@@ -1,0 +1,330 @@
+{
+  "schema": 1,
+  "scope": "All changed-cell records in the35 cases that exceeded the previous32-record sample limit among the first965 differing Enron pairs.",
+  "pairs": 35,
+  "changed_records": 54495,
+  "examined_records": 54495,
+  "random_time_paths": 53910,
+  "environment_paths": 585,
+  "unsupported_records": 0,
+  "all_records_examined": true,
+  "audit_seconds": 21.020279699994717,
+  "cases": [
+    {
+      "label": "enron/desktop-0002/case-001625",
+      "difference_records": 1082,
+      "examined": 1082,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-001322",
+      "difference_records": 309,
+      "examined": 309,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-010188",
+      "difference_records": 21906,
+      "examined": 21906,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-000230",
+      "difference_records": 66,
+      "examined": 66,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-001172",
+      "difference_records": 124,
+      "examined": 124,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-001353",
+      "difference_records": 38,
+      "examined": 38,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-001962",
+      "difference_records": 57,
+      "examined": 57,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-002446",
+      "difference_records": 114,
+      "examined": 114,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-002452",
+      "difference_records": 35,
+      "examined": 35,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-002638",
+      "difference_records": 184,
+      "examined": 184,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-002751",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-002899",
+      "difference_records": 35,
+      "examined": 35,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-012130",
+      "difference_records": 3418,
+      "examined": 3418,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-013008",
+      "difference_records": 184,
+      "examined": 184,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-014830",
+      "difference_records": 88,
+      "examined": 88,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-015305",
+      "difference_records": 108,
+      "examined": 108,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-016307",
+      "difference_records": 885,
+      "examined": 885,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-016421",
+      "difference_records": 108,
+      "examined": 108,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-016445",
+      "difference_records": 184,
+      "examined": 184,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-016941",
+      "difference_records": 854,
+      "examined": 854,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-017266",
+      "difference_records": 62,
+      "examined": 62,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-018812",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-007717",
+      "difference_records": 72,
+      "examined": 72,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-007975",
+      "difference_records": 108,
+      "examined": 108,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-008916",
+      "difference_records": 114,
+      "examined": 114,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-008959",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-009179",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-010248",
+      "difference_records": 58,
+      "examined": 58,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-011106",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-003973",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-004197",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-004228",
+      "difference_records": 108,
+      "examined": 108,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-006166",
+      "difference_records": 120,
+      "examined": 120,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/local/case-007161",
+      "difference_records": 3000,
+      "examined": 3000,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    },
+    {
+      "label": "enron/susann-0002/case-004999",
+      "difference_records": 74,
+      "examined": 74,
+      "all_records_examined": true,
+      "without_supported_path": 0,
+      "diagnostic_status": "diagnostic_samples",
+      "reason": null
+    }
+  ],
+  "limits": "Supported formula paths do not establish exclusive causation. Raw differences are retained. This followup does not cover the241 newly differing pairs in the latest local block."
+}
