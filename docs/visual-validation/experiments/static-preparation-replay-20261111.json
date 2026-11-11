@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "date": "2026-11-11",
+  "implementation_revision": "3d79011a",
+  "recordings": [
+    {
+      "corpus": "destatis",
+      "events": 136630,
+      "events_sha256": "16b8e261b47b0ff03dd8bacb298695baab44c0c3bb3d684d355c4303566cb3ce",
+      "export_inventory": [
+        {
+          "file": ".nojekyll",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "app.css",
+          "bytes": 42856,
+          "sha256": "a367dd86bb7a58da26eb32a19a3bae66f1941d0683ece75770b10b50b0a62ace"
+        },
+        {
+          "file": "app.js",
+          "bytes": 971876,
+          "sha256": "2c9ab1feda489401d43d578cdc1ef2577b7b99dd665e81b5b18d4efda7748ac0"
+        },
+        {
+          "file": "events.jsonl.gz",
+          "bytes": 3371930,
+          "sha256": "16b8e261b47b0ff03dd8bacb298695baab44c0c3bb3d684d355c4303566cb3ce"
+        },
+        {
+          "file": "index.html",
+          "bytes": 477,
+          "sha256": "9bd2aca45db4f59220a2474aaa1a43c761383a1762ec3cb209600012fe8de4b8"
+        },
+        {
+          "file": "recording.json",
+          "bytes": 1340,
+          "sha256": "f17a15d2bced4966964cb783a2131cb8bb98b28eb206ebc7b4a10993964e401d"
+        }
+      ]
+    },
+    {
+      "corpus": "datagov",
+      "events": 228685,
+      "events_sha256": "cba00e2d24c8ec7029d6f2dcf6866ee6affc4a3cc731003fe4523994e1481000",
+      "export_inventory": [
+        {
+          "file": ".nojekyll",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "app.css",
+          "bytes": 42856,
+          "sha256": "a367dd86bb7a58da26eb32a19a3bae66f1941d0683ece75770b10b50b0a62ace"
+        },
+        {
+          "file": "app.js",
+          "bytes": 971876,
+          "sha256": "2c9ab1feda489401d43d578cdc1ef2577b7b99dd665e81b5b18d4efda7748ac0"
+        },
+        {
+          "file": "events.jsonl.gz",
+          "bytes": 6360070,
+          "sha256": "cba00e2d24c8ec7029d6f2dcf6866ee6affc4a3cc731003fe4523994e1481000"
+        },
+        {
+          "file": "index.html",
+          "bytes": 477,
+          "sha256": "9bd2aca45db4f59220a2474aaa1a43c761383a1762ec3cb209600012fe8de4b8"
+        },
+        {
+          "file": "recording.json",
+          "bytes": 1337,
+          "sha256": "7fae553c86f13dcb61321cc386c9bcdbae4c0bbd7a47f511b638de9028d5df41"
+        }
+      ]
+    },
+    {
+      "corpus": "enron",
+      "events": 574159,
+      "events_sha256": "bdb0029c1473f8c528c0c6394e3571d0eac35b7edc95272d169d09771b9d99f3",
+      "export_inventory": [
+        {
+          "file": ".nojekyll",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "app.css",
+          "bytes": 42856,
+          "sha256": "a367dd86bb7a58da26eb32a19a3bae66f1941d0683ece75770b10b50b0a62ace"
+        },
+        {
+          "file": "app.js",
+          "bytes": 971876,
+          "sha256": "2c9ab1feda489401d43d578cdc1ef2577b7b99dd665e81b5b18d4efda7748ac0"
+        },
+        {
+          "file": "events.jsonl.gz",
+          "bytes": 15899549,
+          "sha256": "bdb0029c1473f8c528c0c6394e3571d0eac35b7edc95272d169d09771b9d99f3"
+        },
+        {
+          "file": "index.html",
+          "bytes": 477,
+          "sha256": "9bd2aca45db4f59220a2474aaa1a43c761383a1762ec3cb209600012fe8de4b8"
+        },
+        {
+          "file": "recording.json",
+          "bytes": 1339,
+          "sha256": "c1f4cf6317f6b9dffedb72b1fbfbad6d53b8b8a7e64387e0cf8da835b8603adf"
+        }
+      ]
+    }
+  ],
+  "browser_observations": {
+    "destatis": [
+      "Standalone load",
+      "Rewind to zero",
+      "Replay playback",
+      "Seek to end"
+    ],
+    "datagov": [
+      "Relative-subdirectory load",
+      "Retained aggregate of 494 unsuccessful events",
+      "No console errors",
+      "HTTP log contains only static assets and recording requests"
+    ],
+    "enron": [
+      "30301 recorded jobs",
+      "120741 worksheets",
+      "241627 work items",
+      "Jobs page 2 of 119",
+      "Rewind clears future jobs and tasks",
+      "Seek to final recorded position",
+      "1000x playback reaches final position",
+      "No console errors after geometry batching correction"
+    ]
+  },
+  "retained_failure": "Initial Enron rendering exceeded the JavaScript argument limit when spreading a large vertex array. Appending vertices individually corrected that reproduced failure.",
+  "automated_verification": {
+    "ui_tests_passed": 17,
+    "python_export_tests_passed": 1,
+    "typescript_check": "passed"
+  },
+  "limitations": [
+    "Entire event history remains in browser memory.",
+    "No browser heap or isolated playback latency claim.",
+    "Public hosting and recorded-content publication review remain pending.",
+    "These are preparation work replays. Detailed validation process/capture/heartbeat replay acceptance remains separate."
+  ]
+}
