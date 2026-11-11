@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "scope": "292 complete pairs returned before the remote memory guard stopped the mixed VM-recovery assignment. Each source and output hash verified. These are completed-pair selections, not representative samples.",
+  "pairs": 292,
+  "equal_cell_contents": 292,
+  "differences_found": 0,
+  "summary_sha256": "7cf0b8b6922da2ea06637abae8b6bfeec16e0a7f5457d96abcb3ebb7758d7ed8",
+  "recovery": {
+    "remote_physical_available_mib_at_guard": 216,
+    "required_reserve_mib": 512,
+    "completed_single_outputs": 585,
+    "unfinished_sheetshrink_files_reassigned": 708,
+    "local_reassigned_sheetshrink_successful": 708,
+    "new_original_rebuilds_deferred_by_author": true
+  },
+  "cumulative_enron_partial_audit": {
+    "pairs": 10791,
+    "equal_cell_contents": 9826,
+    "differences_found": 965
+  }
+}

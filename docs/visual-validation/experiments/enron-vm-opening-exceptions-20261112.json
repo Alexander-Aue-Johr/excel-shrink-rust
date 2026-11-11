@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "scope": "Two explicit SheetShrink opening failures in the local VM-recovery assignment.",
+  "error": "Unable to get the Open property of the Workbooks class",
+  "known_original_failure_case": 18797,
+  "cases": [
+    {
+      "case": 18797,
+      "workbook": "9f205b7ee2f8656ed6873131f7d1ddf8a1ba05e11f9c3d1c1b468024e35611b3.xlsx",
+      "sides": {
+        "original": {
+          "defined_names": 0,
+          "duplicate_name_scopes": []
+        },
+        "sheetshrink": {
+          "defined_names": 0,
+          "duplicate_name_scopes": []
+        }
+      }
+    },
+    {
+      "case": 25819,
+      "workbook": "d9f6ee7dbba385bcd5aa77d98a3c334c51764e82452cf51cf99907ba8158d43d.xlsx",
+      "sides": {
+        "original": {
+          "defined_names": 0,
+          "duplicate_name_scopes": []
+        },
+        "sheetshrink": {
+          "defined_names": 0,
+          "duplicate_name_scopes": []
+        }
+      }
+    }
+  ],
+  "limits": "No duplicate defined-name scopes found. Root cause remains unresolved. No new original rebuild requested under the current one-sided priority."
+}
