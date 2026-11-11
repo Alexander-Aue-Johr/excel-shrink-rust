@@ -106,6 +106,17 @@ GitHub Pages budget. A larger release requires a static host with sufficient
 capacity. Verify the complete directory on the intended host so that both
 the overview and its linked native image evidence remain available.
 
+For an image-heavy export, run `python tools/compact-public-atlas.py SOURCE DESTINATION`
+with a Pillow build that supports lossless WebP. Use a completed
+`public-atlas` directory as the source and a new directory as the destination.
+The compact projection keeps report JSON unchanged. It pools presentation
+images by encoded hash and verifies each WebP encoding against the original
+RGBA channels. Oversized captures use lossless WebP tiles embedded in an SVG.
+The exporter retains PNG when the derived image is larger. Keep the native
+evidence and use `image-derivation.json.gz` to trace presentation assets
+to their source PNG hashes. Check the overview, thumbnails, direct links
+and per-comparison detail pages over static HTTP after conversion.
+
 ```powershell
 python -m http.server 18890 --bind 127.0.0.1 `
     --directory 'G:\deltasieve-releases\enron-2026-11-08-buildid'
