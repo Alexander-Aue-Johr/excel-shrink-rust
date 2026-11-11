@@ -1,5 +1,16 @@
 # Targeted visual validation behavior
 
+## Full-grid requests before native partitioning
+
+A request covering A1:XFD1048576 stays one rectangle before adaptive native
+partitioning. The selector preserves its full cell union and the logical count
+of 8,388,608 grid tiles, while avoiding that many temporary set entries before
+coalescing. Clipping still happens first, so a full-grid request against a finite
+content envelope retains the ordinary finite grid. Later overlapping requests
+on the same worksheet do not duplicate the union. Existing unbounded-plan guards
+and native image-size limits retain their behavior. This changes intermediate
+allocation, with no claim of reduced final capture work.
+
 ## Formula explanations in the comparison viewer
 
 Live and exported viewers show formula dependency explanations only when retained

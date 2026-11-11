@@ -232,6 +232,13 @@ impl ContentBounds {
     ) -> Result<(BTreeSet<Candidate>, Vec<Coverage>)> {
         let mut selected = BTreeSet::new();
         let mut coverage = BTreeMap::new();
+        let mut whole_sheets = BTreeSet::new();
+        let worksheet = Rectangle {
+            top: 1,
+            left: 1,
+            bottom: 1_048_576,
+            right: 16_384,
+        };
         for candidate in requested {
             let bounds = self
                 .bounds
@@ -261,6 +268,24 @@ impl ContentBounds {
                 continue;
             };
             entry.clipped_to_content += usize::from(region != clipped);
+            if whole_sheets.contains(candidate.sheet.as_str()) {
+                continue;
+            }
+            if clipped == worksheet {
+                // The next planner coalesces these tiles back into this rectangle.
+                // Preserve that union without allocating millions of temporary keys.
+                selected.retain(|previous: &Candidate| previous.sheet != candidate.sheet);
+                selected.insert(Candidate {
+                    sheet: candidate.sheet.clone(),
+                    cell: worksheet.address(),
+                });
+                whole_sheets.insert(candidate.sheet.as_str());
+                entry.selected_capture_regions = 1;
+                entry.selected_grid_tiles = ((worksheet.bottom / super::CAPTURE_ROWS)
+                    * (worksheet.right / super::CAPTURE_COLUMNS))
+                    as usize;
+                continue;
+            }
             for tile in clipped.capture_tiles() {
                 let tile = tile
                     .intersection(bounds.expect("clipped region has content bounds"))
@@ -295,6 +320,45 @@ mod tests {
             bounds: BTreeMap::from([("Data".into(), Rectangle::parse(address)?)]),
             ..Default::default()
         })
+    }
+
+    #[test]
+    fn full_grid_union_does_not_materialize_millions_of_tiles() -> Result<()> {
+        let content = bounds("A1:XFD1048576")?;
+        let requested = BTreeSet::from([
+            Candidate {
+                sheet: "Data".into(),
+                cell: "A1:A1048576".into(),
+            },
+            Candidate {
+                sheet: "Data".into(),
+                cell: "A1:XFD1048576".into(),
+            },
+            Candidate {
+                sheet: "Data".into(),
+                cell: "B2".into(),
+            },
+        ]);
+        let (selected, coverage) = content.select(&requested)?;
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected.first().unwrap().cell, "A1:XFD1048576");
+        assert_eq!(coverage[0].requested_candidates, 3);
+        assert_eq!(coverage[0].selected_grid_tiles, 8_388_608);
+        assert_eq!(super::super::capture_layout::coalesce(&selected)?, selected);
+        Ok(())
+    }
+
+    #[test]
+    fn full_grid_request_is_clipped_before_compaction() -> Result<()> {
+        let content = bounds("A1:C3")?;
+        let requested = BTreeSet::from([Candidate {
+            sheet: "Data".into(),
+            cell: "A1:XFD1048576".into(),
+        }]);
+        let (selected, coverage) = content.select(&requested)?;
+        assert_eq!(selected.first().unwrap().cell, "A1:D3");
+        assert_eq!(coverage[0].selected_grid_tiles, 1);
+        Ok(())
     }
 
     #[test]
@@ -355,8 +419,12 @@ mod tests {
             let content = bounds(&format!("A1:XFD{last_content_row}"))?;
             let (selected, _) = content.select(&requested)?;
             assert!(!selected.is_empty());
-            assert!(selected.iter().all(|candidate|
-                Rectangle::parse(&candidate.cell).unwrap().bottom == expected_bottom));
+            assert!(selected
+                .iter()
+                .all(
+                    |candidate| Rectangle::parse(&candidate.cell).unwrap().bottom
+                        == expected_bottom
+                ));
         }
         Ok(())
     }
