@@ -2,6 +2,30 @@
 
 ## Current governing scope on 2026-11-10
 
+### Highest priority on 2026-11-11: complete the 7x7 comparison Atlas
+
+Complete the frozen 49-workbook selection for each of Destatis, Data.gov and
+Enron, including the prepared SheetShrink, Check Performance, Inquire,
+XLStylesTool and NXPowerLite variants. Preserve completed observations and
+document unavailable variants, failures, partial coverage and normalized
+baselines explicitly. Extend the existing static Atlas to these selections.
+The 7x7 layout motivates the demonstration size; the frozen ranking selects
+large absolute SheetShrink byte reductions and is a targeted stress selection.
+
+The laptop, work laptop and Computer Susann now own manuscript work. This agent
+handles red editorial markers addressed to it and otherwise prioritizes native
+validation and Atlas delivery. Preserve the rest of this roadmap as deferred
+work rather than declaring it completed.
+
+Measure throughput before increasing parallelism. Increase the live worker
+target by one, observe a bounded measurement window and verify continued
+progress, RAM and commit headroom, errors and system stability. Add another
+worker only when the observed gain and stability justify it. Stop increasing
+or return to the preceding setting when the extra worker provides no useful
+throughput gain or causes resource pressure. Keep memory guards active and
+retain trial settings, timing windows and observed work counts. Existing
+in-flight comparisons and their evidence remain intact.
+
 ### Submission-scope correction on 2026-11-11
 
 The author is shortening both manuscripts and now prioritizes verification of
