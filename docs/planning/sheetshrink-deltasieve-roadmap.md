@@ -43,6 +43,30 @@ catalog, UI revision and scope. The DeltaSieve opening caption includes an
 actual PDF link annotation to this site. Source and both manuscript PDFs were
 rebased above concurrent paper changes and pushed in `7743a1c7`.
 
+### Evaluation evidence checkpoint on 2026-11-11
+
+The controlled single-thread memchr-dispatch ablation is retained in
+`../visual-validation/experiments/memchr-dispatch-ablation-20261111.json` with
+the isolated override helper and execution recipe. All eighteen cleanup outputs
+match their case's full uncompressed member manifest. Native AVX2 and portable
+Two-Way probes each pass 161 search controls and nine focused XML tests.
+Selected-case wall-time effects are small and have explicit concurrent-work
+context. This isolates dependency architecture dispatch. Logical-core-count
+measurements and broader performance attribution remain open. Core evidence
+was pushed in `a4eaa1e5`; SheetShrink method, evaluation and both rebuilt PDFs
+were pushed in paper commit `761def5f` after rebase.
+
+The four-case native evidence inventory covers twenty case/tool slots in
+`../visual-validation/experiments/opening-memory-native-case-audit-20261111.json`.
+Retained same-origin rectangles have exact RGBA D/N observations, while missing
+images, unmatched origins and zero-capture plans keep explicit coverage states.
+All checked same-dimension pixel flags agree with the source verdicts. Different
+tool plans prevent using these quotients as a preservation-quality ranking.
+Migration's fresh resource-study output matches the retained native candidate's
+138 uncompressed members, with its normalized-baseline qualification preserved.
+The full profile/resource-output join and dedicated case-study Atlas remain
+open. The bounded 4/24 GiB library follow-up and native QT/RR comparisons continue.
+
 ### Urgent complete-corpus distributions on 2026-11-11
 
 The user's latest priority places three fresh normal-policy SheetShrink runs

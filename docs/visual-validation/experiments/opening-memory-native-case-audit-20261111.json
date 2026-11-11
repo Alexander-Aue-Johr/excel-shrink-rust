@@ -1,0 +1,1264 @@
+{
+  "kind": "opening-memory-case-native-evidence-audit",
+  "cases": 4,
+  "tools_per_case": 5,
+  "pairs": [
+    {
+      "corpus": "destatis",
+      "name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "tool": "sheetshrink",
+      "original_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+      "prepared_variant_sha256": "6d0b0a99a0c171e7cce06929c87aa884fef0b655785bea69b39303dfa0997892",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "24cf33c03ecb130c1d670f181e13af266f3b58e8b2fde046c10787c0e36bcf7c",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "56cbd07dc1fbf8dc7dfe0d23f62dd558c25baafdffd66a5f5e8f349168f95308",
+          "all_members_uncompressed_bytes": 955411843,
+          "worksheet_xml_uncompressed_bytes": 953486690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "6343cd819d026a6b76c358c345136b6e56e99f13df3cccd5820a774eca3c239a",
+          "all_members_uncompressed_bytes": 34504559,
+          "worksheet_xml_uncompressed_bytes": 32579406
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v14",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 128,
+          "measured_regions": 128,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [
+            "71717-01",
+            "71717-02",
+            "71717-03",
+            "71717-04",
+            "71717-05",
+            "71717-06",
+            "71717-07",
+            "71717-08",
+            "71717-13",
+            "71717-14",
+            "71717-15",
+            "71717-19",
+            "71717-20",
+            "71717-21",
+            "71717-22",
+            "71717-29",
+            "71717-30",
+            "71717-31",
+            "71717-32",
+            "71717-33",
+            "71717-34",
+            "71717-35",
+            "71717-36",
+            "71717-37",
+            "71717-38",
+            "71717-39",
+            "71717-40",
+            "71717-41",
+            "71717-42",
+            "71717-43",
+            "71717-45",
+            "71717-47",
+            "71717-48",
+            "71717-49",
+            "71717-50",
+            "71717-52",
+            "Erl\u00e4uterung zu CSV-Tabellen",
+            "GENESIS-Online",
+            "Impressum",
+            "Informationen zur Statistik",
+            "Inhalts\u00fcbersicht",
+            "csv-71717-01",
+            "csv-71717-02",
+            "csv-71717-03",
+            "csv-71717-04",
+            "csv-71717-06",
+            "csv-71717-07",
+            "csv-71717-08",
+            "csv-71717-09",
+            "csv-71717-10",
+            "csv-71717-11",
+            "csv-71717-12",
+            "csv-71717-13",
+            "csv-71717-14",
+            "csv-71717-15",
+            "csv-71717-16",
+            "csv-71717-17",
+            "csv-71717-18",
+            "csv-71717-19",
+            "csv-71717-20",
+            "csv-71717-21",
+            "csv-71717-22",
+            "csv-71717-23",
+            "csv-71717-24",
+            "csv-71717-25",
+            "csv-71717-26",
+            "csv-71717-27",
+            "csv-71717-28",
+            "csv-71717-29",
+            "csv-71717-30",
+            "csv-71717-31",
+            "csv-71717-32",
+            "csv-71717-33",
+            "csv-71717-34"
+          ],
+          "D": 0,
+          "N": 981903430,
+          "D_over_N": 0.0,
+          "pixel_evidence_status": "measured_retained_scope"
+        }
+      ],
+      "report_sha256": "47b7081646d7e226dff37b5f7a2e1d89f9521a9a8602329bb0b002f0b2a0ab78",
+      "candidate_count": 128,
+      "capture_counts": {
+        "OR": 128,
+        "OR:charts": 0,
+        "SDR": 128,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "destatis",
+      "name": "wanderungen-2010120217005.xlsx",
+      "tool": "sheetshrink",
+      "original_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712",
+      "prepared_variant_sha256": "5f7fa5d6b1607434ee44de49daec26943e680341bf3e0200ae7d6e70f0a54c54",
+      "status": "completed_with_limitations",
+      "baseline_scope": "documented_normalized_baseline",
+      "identity_file_sha256": "a2f8c0c8d4dca9475a4bc70920e439d15e0d5a536cd69282035a336843d9912b",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "2db429eebd52414767107ae5d2b0a710cf4ee81db9c3795f9ca653010e663813",
+          "all_members_uncompressed_bytes": 248393005,
+          "worksheet_xml_uncompressed_bytes": 243242776
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+          "all_members_uncompressed_bytes": 16458013,
+          "worksheet_xml_uncompressed_bytes": 11309909
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v14",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": {
+        "control_input_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712",
+        "binary_sha256": "67837e2ed823a925a8321339a25a5875ab8ca280d0b6f3d2215cfb62b16cada4",
+        "fresh_output_sha256": "148dc2796aeae1794b8afb4c69e179293112192b9285c93a06716a2323f17475",
+        "canonical_manifest_sha256": "224a74393824aa2dfabbdad214fdc6e96fa00b188ef5dc8c0deff4d4b7fb8429",
+        "all_members_equal_native_candidate": true,
+        "baseline_scope_still_applies": "documented_normalized_baseline"
+      },
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 38,
+          "measured_regions": 37,
+          "missing_retained_image_pairs": 1,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 5,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [
+            " Tabelle 3.2 ",
+            " Tabelle 3.6 ",
+            "Anhang",
+            "Inhalt",
+            "Tabelle 1.1 ",
+            "Tabelle 1.2.1",
+            "Tabelle 1.2.2",
+            "Tabelle 1.2.3",
+            "Tabelle 1.4 ",
+            "Tabelle 1.5",
+            "Tabelle 1.6",
+            "Tabelle 1.7",
+            "Tabelle 2.1.1",
+            "Tabelle 2.1.2",
+            "Tabelle 2.1.3",
+            "Tabelle 2.2",
+            "Tabelle 2.3",
+            "Tabelle 2.4",
+            "Tabelle 2.5",
+            "Tabelle 2.6.1",
+            "Tabelle 2.6.2",
+            "Tabelle 2.6.3",
+            "Tabelle 2.6.4",
+            "Tabelle 2.6.5",
+            "Tabelle 2.6.6",
+            "Tabelle 2.7",
+            "Tabelle 2.8",
+            "Tabelle 3.1  ",
+            "Tabelle 3.3",
+            "Tabelle 3.4 ",
+            "Tabelle 3.5 Fortgezogene",
+            "Tabelle 3.5 Zugezogene  ",
+            "Titelseite",
+            "Vorbemerkung"
+          ],
+          "D": 0,
+          "N": 101874379,
+          "D_over_N": 0.0,
+          "pixel_evidence_status": "measured_retained_scope"
+        }
+      ],
+      "report_sha256": "6924da7ae6651e67b5836e7e777bf864a3665626c9da1c612cb4e5402a81782b",
+      "candidate_count": 38,
+      "capture_counts": {
+        "OR": 37,
+        "OR:charts": 0,
+        "SDR": 37,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "destatis",
+      "name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "tool": "check_performance",
+      "original_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+      "prepared_variant_sha256": "67c19dc1371b38bdeed607881e67aa545beadc46cab92daf9b6f505dd1995b88",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "a5c3bbb2fbd40d3c46627af1ae1ec5d849b4a39b91f286ff49734086e67b8e14",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "56cbd07dc1fbf8dc7dfe0d23f62dd558c25baafdffd66a5f5e8f349168f95308",
+          "all_members_uncompressed_bytes": 955411843,
+          "worksheet_xml_uncompressed_bytes": 953486690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "babfe82733532fbd96917df8818fc65438b64c13a25f7f239fada0b21fe91cfb",
+          "all_members_uncompressed_bytes": 21194028,
+          "worksheet_xml_uncompressed_bytes": 19317127
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 455,
+          "measured_regions": 454,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 1,
+          "different_dimensions_in_measured_regions": 286,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [
+            "71717-01",
+            "71717-02",
+            "71717-03",
+            "71717-04",
+            "71717-05",
+            "71717-06",
+            "71717-07",
+            "71717-08",
+            "71717-09",
+            "71717-10",
+            "71717-11",
+            "71717-12",
+            "71717-13",
+            "71717-14",
+            "71717-15",
+            "71717-16",
+            "71717-17",
+            "71717-18",
+            "71717-19",
+            "71717-20",
+            "71717-21",
+            "71717-22",
+            "71717-23",
+            "71717-24",
+            "71717-25",
+            "71717-26",
+            "71717-27",
+            "71717-28",
+            "71717-29",
+            "71717-30",
+            "71717-31",
+            "71717-32",
+            "71717-33",
+            "71717-34",
+            "71717-35",
+            "71717-36",
+            "71717-37",
+            "71717-38",
+            "71717-39",
+            "71717-40",
+            "71717-41",
+            "71717-42",
+            "71717-43",
+            "71717-44",
+            "71717-45",
+            "71717-46",
+            "71717-47",
+            "71717-48",
+            "71717-49",
+            "71717-50",
+            "71717-52",
+            "71717-53",
+            "Erl\u00e4uterung zu CSV-Tabellen",
+            "GENESIS-Online",
+            "Impressum",
+            "Informationen zur Statistik",
+            "Inhalts\u00fcbersicht",
+            "Titel",
+            "csv-71717-01",
+            "csv-71717-02",
+            "csv-71717-03",
+            "csv-71717-04",
+            "csv-71717-06",
+            "csv-71717-07",
+            "csv-71717-08",
+            "csv-71717-09",
+            "csv-71717-10",
+            "csv-71717-11",
+            "csv-71717-12",
+            "csv-71717-13",
+            "csv-71717-14",
+            "csv-71717-15",
+            "csv-71717-16",
+            "csv-71717-17",
+            "csv-71717-18",
+            "csv-71717-19",
+            "csv-71717-20",
+            "csv-71717-21"
+          ],
+          "D": 399111,
+          "N": 4913343910,
+          "D_over_N": 8.12300150998386e-05,
+          "pixel_evidence_status": "measured_retained_scope"
+        }
+      ],
+      "report_sha256": "c57f23a580220656ed8074ffa98fcb1668e45e355cd932bb44d71e5bee98c1db",
+      "candidate_count": 455,
+      "capture_counts": {
+        "OR": 455,
+        "OR:charts": 0,
+        "SDR": 455,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "destatis",
+      "name": "wanderungen-2010120217005.xlsx",
+      "tool": "check_performance",
+      "original_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712",
+      "prepared_variant_sha256": "5d231cab1c694ce2f32c5e8b8898831c2108d26f4b8bb1fa9dfe34e8b588d90e",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "3a2bc13aea83a295fb5b7b31d3cf1e593ca6e93d5674d3616ce550daa83c4340",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "fbf766ea509e15f839e15b5c0c96f87480e669a1e3bf3781844648724f60d43b",
+          "all_members_uncompressed_bytes": 248392608,
+          "worksheet_xml_uncompressed_bytes": 243242776
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "58c47ab272086764dc1bc3f2c45909458e49949f9ae3fbe7cd75928dd7bfdcb9",
+          "all_members_uncompressed_bytes": 20147912,
+          "worksheet_xml_uncompressed_bytes": 15035876
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "failed"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [],
+      "report_sha256": null
+    },
+    {
+      "corpus": "destatis",
+      "name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "tool": "inquire",
+      "original_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+      "prepared_variant_sha256": "c2b15e09fb70e1a17b4d2780e49ca043666a967b5cac081cf9cbd6f061cedda6",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "f3243615e52b7fe75618c3dc836a8488c445f83020ac47cc504ecc1d0b8934d1",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "56cbd07dc1fbf8dc7dfe0d23f62dd558c25baafdffd66a5f5e8f349168f95308",
+          "all_members_uncompressed_bytes": 955411843,
+          "worksheet_xml_uncompressed_bytes": 953486690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "fe90c0e18b2785242d0a63972db745ee73c017addf6b356779490dc7b2f2713f",
+          "all_members_uncompressed_bytes": 738206586,
+          "worksheet_xml_uncompressed_bytes": 736288935
+        }
+      },
+      "native_policy": {
+        "capture_policy": null,
+        "execution_strategy": null,
+        "chart_capture_mode": null,
+        "status": null
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [],
+      "report_sha256": null
+    },
+    {
+      "corpus": "destatis",
+      "name": "wanderungen-2010120217005.xlsx",
+      "tool": "inquire",
+      "original_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712",
+      "prepared_variant_sha256": "6d42e611ee17f393c2fcc26b6c17d2ca5975689a84c020c4c2db6d0dd26860b7",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "b61c5c8e7508f2b5087af2e24adad75d82aa55439d13b50d9278ae0b54ec4942",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "fbf766ea509e15f839e15b5c0c96f87480e669a1e3bf3781844648724f60d43b",
+          "all_members_uncompressed_bytes": 248392608,
+          "worksheet_xml_uncompressed_bytes": 243242776
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "9dd6ba8eb4f6bf804454bf26190f2b3680167fb1802bacb27edd85cd5a110ee0",
+          "all_members_uncompressed_bytes": 116436675,
+          "worksheet_xml_uncompressed_bytes": 111283921
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "failed"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [],
+      "report_sha256": null
+    },
+    {
+      "corpus": "destatis",
+      "name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "tool": "nxpowerlite",
+      "original_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+      "prepared_variant_sha256": "3c17eb2eaf8e60865df4e17cc63f638fb6bb651a0f6124f2df632403e36b56bc",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "cc0962af661baf660ef4c025ba4621219aad34e3d3cbc90337dc7486f6e64b91",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "56cbd07dc1fbf8dc7dfe0d23f62dd558c25baafdffd66a5f5e8f349168f95308",
+          "all_members_uncompressed_bytes": 955411843,
+          "worksheet_xml_uncompressed_bytes": 953486690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "aa3de7f93eeda012acd51d74b1559a2ab5d2f646b18a568dcadae927fb0113b1",
+          "all_members_uncompressed_bytes": 21601962,
+          "worksheet_xml_uncompressed_bytes": 19675889
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 510,
+          "measured_regions": 509,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 1,
+          "different_dimensions_in_measured_regions": 281,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [
+            "71717-01",
+            "71717-02",
+            "71717-03",
+            "71717-04",
+            "71717-05",
+            "71717-06",
+            "71717-07",
+            "71717-08",
+            "71717-09",
+            "71717-10",
+            "71717-11",
+            "71717-12",
+            "71717-13",
+            "71717-14",
+            "71717-15",
+            "71717-16",
+            "71717-17",
+            "71717-18",
+            "71717-19",
+            "71717-23",
+            "71717-24",
+            "71717-25",
+            "71717-26",
+            "71717-27",
+            "71717-28",
+            "71717-29",
+            "71717-30",
+            "71717-31",
+            "71717-32",
+            "71717-33",
+            "71717-34",
+            "71717-35",
+            "71717-36",
+            "71717-37",
+            "71717-38",
+            "71717-39",
+            "71717-40",
+            "71717-41",
+            "71717-42",
+            "71717-43",
+            "71717-44",
+            "71717-45",
+            "71717-46",
+            "71717-47",
+            "71717-53",
+            "Erl\u00e4uterung zu CSV-Tabellen",
+            "GENESIS-Online",
+            "Inhalts\u00fcbersicht",
+            "Titel",
+            "csv-71717-01",
+            "csv-71717-02",
+            "csv-71717-03",
+            "csv-71717-04",
+            "csv-71717-06",
+            "csv-71717-07",
+            "csv-71717-08",
+            "csv-71717-09",
+            "csv-71717-10",
+            "csv-71717-11",
+            "csv-71717-12",
+            "csv-71717-13",
+            "csv-71717-14",
+            "csv-71717-15",
+            "csv-71717-16",
+            "csv-71717-17",
+            "csv-71717-18",
+            "csv-71717-19",
+            "csv-71717-20",
+            "csv-71717-21",
+            "csv-71717-22",
+            "csv-71717-23",
+            "csv-71717-24",
+            "csv-71717-25",
+            "csv-71717-26",
+            "csv-71717-27",
+            "csv-71717-28",
+            "csv-71717-29",
+            "csv-71717-30",
+            "csv-71717-31",
+            "csv-71717-32",
+            "csv-71717-33",
+            "csv-71717-34"
+          ],
+          "D": 27678,
+          "N": 6017655727,
+          "D_over_N": 4.599465515418975e-06,
+          "pixel_evidence_status": "measured_retained_scope"
+        }
+      ],
+      "report_sha256": "53714812f73b8ebc07ce3b97001bc498ed41468f89c2426a72527f92c2b91e87",
+      "candidate_count": 510,
+      "capture_counts": {
+        "OR": 510,
+        "OR:charts": 0,
+        "SDR": 510,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "destatis",
+      "name": "wanderungen-2010120217005.xlsx",
+      "tool": "nxpowerlite",
+      "original_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712",
+      "prepared_variant_sha256": "c8ccfab74549e6e607fca8c442490b663d074642760a086c7d3f8a4a568317d3",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "50db75c6eed17d57a2bbe53b8462f0ccddcb98f866e9db4266b2631139ec52cc",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "fbf766ea509e15f839e15b5c0c96f87480e669a1e3bf3781844648724f60d43b",
+          "all_members_uncompressed_bytes": 248392608,
+          "worksheet_xml_uncompressed_bytes": 243242776
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "ee646af35d67bbb2a72ccdb767e28425b901b730ce847ad7f14ddbdeb5ffc383",
+          "all_members_uncompressed_bytes": 197483807,
+          "worksheet_xml_uncompressed_bytes": 192333054
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "failed"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [],
+      "report_sha256": null
+    },
+    {
+      "corpus": "destatis",
+      "name": "statistischer-bericht-rechnungsergebnis-kernhaushalt-gemeinden-2140331217005.xlsx",
+      "tool": "xlstyles",
+      "original_sha256": "b4a3dd77023756e06c3b7c9b04a55a8d3fbf4334f8803f44460a8dc8cd4dc603",
+      "prepared_variant_sha256": "9d1811f8c56c4ff874fe5bb7b74af7f3379deb68ae2fc096363d44e01d87a00a",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "e81c821cb488521477e08ae18dadf611868feb834b31b8618369cdfaebc16f02",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "56cbd07dc1fbf8dc7dfe0d23f62dd558c25baafdffd66a5f5e8f349168f95308",
+          "all_members_uncompressed_bytes": 955411843,
+          "worksheet_xml_uncompressed_bytes": 953486690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "c7a9309a1e61ea443fb9d92b0bf836c2b104fa7db0dfd369a1b2ccfcb6af0d6d",
+          "all_members_uncompressed_bytes": 955395970,
+          "worksheet_xml_uncompressed_bytes": 953486690
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 0,
+          "measured_regions": 0,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [],
+          "D": 0,
+          "N": 0,
+          "D_over_N": null,
+          "pixel_evidence_status": "no_measured_pixel_denominator"
+        }
+      ],
+      "report_sha256": "42d42c55a9d01f527480eb25aae5af1de6bf55d1507669566a76cfa9c809a2df",
+      "candidate_count": 0,
+      "capture_counts": {
+        "OR:charts": 0,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "destatis",
+      "name": "wanderungen-2010120217005.xlsx",
+      "tool": "xlstyles",
+      "original_sha256": "bedf8677328fb15ffd967d03ebdf860ae4b1d0942d38091b4b4bef90e574f712",
+      "prepared_variant_sha256": "aac5759f51696c9eedc950c55c01b65d84bc1e21de9dfe6624a7a8bf0b74aa61",
+      "status": "failed",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "044ed5f2af18e4a250eb1ac629ce85fb2210d8bfb6e846b041649723816f5556",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "fbf766ea509e15f839e15b5c0c96f87480e669a1e3bf3781844648724f60d43b",
+          "all_members_uncompressed_bytes": 248392608,
+          "worksheet_xml_uncompressed_bytes": 243242776
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "b7e239d8f87ae2b0e20cf1f346ab461341b80c476276c48240d9de0aad683ff3",
+          "all_members_uncompressed_bytes": 248416091,
+          "worksheet_xml_uncompressed_bytes": 243242776
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "failed"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [],
+      "report_sha256": null
+    },
+    {
+      "corpus": "datagov",
+      "name": "QT_RR data_dobutamine challenge test_Hazari_Dec 2015_84eb838fbc46.xlsx",
+      "tool": "sheetshrink",
+      "original_sha256": "84eb838fbc4627fb2ca1dd8461e8a05493a0b31ade8e27c66b437a22d932a577",
+      "prepared_variant_sha256": "8f85cad6199f31e61dc78e90468fe881c5dff2e975fa99779fb8f850873ea3d1",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "642db8441c0530fbfaf8b81e9fc01095554d9e8e900ee7ed5509527e360ab5b6",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "229e826c0cc5f59e1961eba97595b3d6d661c8c454162b443e1b710783317798",
+          "all_members_uncompressed_bytes": 1350765186,
+          "worksheet_xml_uncompressed_bytes": 1349243690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "d6bcf5ebe0e1de921a25adac61090cf69781aac4e0c96266a870298ae1ffb082",
+          "all_members_uncompressed_bytes": 29907542,
+          "worksheet_xml_uncompressed_bytes": 28386046
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v13",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 0,
+          "measured_regions": 0,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [],
+          "D": 0,
+          "N": 0,
+          "D_over_N": null,
+          "pixel_evidence_status": "no_measured_pixel_denominator"
+        }
+      ],
+      "report_sha256": "47baa2755966ec9c2532860ee5cb5a489631db2250670417909709105a41257e",
+      "candidate_count": 0,
+      "capture_counts": {
+        "OR:charts": 0,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "datagov",
+      "name": "QT_RR data_dobutamine challenge test_Hazari_Dec 2015_84eb838fbc46.xlsx",
+      "tool": "check_performance",
+      "original_sha256": "84eb838fbc4627fb2ca1dd8461e8a05493a0b31ade8e27c66b437a22d932a577",
+      "prepared_variant_sha256": "e74ec092e53e3b11aeaf6f34fb2e93c8dd0f379bd51a9ecb07c351149118d869",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "31256f0724d1e6f427a52b54b8caeb4ac9af3701cc30508dcf957a96f83e772b",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "229e826c0cc5f59e1961eba97595b3d6d661c8c454162b443e1b710783317798",
+          "all_members_uncompressed_bytes": 1350765186,
+          "worksheet_xml_uncompressed_bytes": 1349243690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "babebbb07189a580625edbabdd159ea70549f4652f939bd47edeb9fa251581d9",
+          "all_members_uncompressed_bytes": 25594480,
+          "worksheet_xml_uncompressed_bytes": 24075558
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 0,
+          "measured_regions": 0,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [],
+          "D": 0,
+          "N": 0,
+          "D_over_N": null,
+          "pixel_evidence_status": "no_measured_pixel_denominator"
+        }
+      ],
+      "report_sha256": "3a781fd29761858d5637d05430521cc3b8dec7398fe466ff41abe429ced79669",
+      "candidate_count": 0,
+      "capture_counts": {
+        "OR:charts": 0,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "datagov",
+      "name": "QT_RR data_dobutamine challenge test_Hazari_Dec 2015_84eb838fbc46.xlsx",
+      "tool": "inquire",
+      "original_sha256": "84eb838fbc4627fb2ca1dd8461e8a05493a0b31ade8e27c66b437a22d932a577",
+      "prepared_variant_sha256": "236ef931ee0123022701729b4ba95087c3bd303fb7682ce8729268c2f8578bea",
+      "status": "running",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": null,
+      "member_manifests": {
+        "original": null,
+        "candidate": null
+      },
+      "native_policy": {
+        "capture_policy": null,
+        "execution_strategy": null,
+        "chart_capture_mode": null,
+        "status": null
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [],
+      "report_sha256": null
+    },
+    {
+      "corpus": "datagov",
+      "name": "QT_RR data_dobutamine challenge test_Hazari_Dec 2015_84eb838fbc46.xlsx",
+      "tool": "nxpowerlite",
+      "original_sha256": "84eb838fbc4627fb2ca1dd8461e8a05493a0b31ade8e27c66b437a22d932a577",
+      "prepared_variant_sha256": "e01f2fd59547cd627e2882415ef7b2f5bae0fc35fb135cbf0ea5b9648a286612",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "a97d5ad508a1bd54a08e1464f7035bcc34dd1ff7b63e528579d90829e389d903",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "229e826c0cc5f59e1961eba97595b3d6d661c8c454162b443e1b710783317798",
+          "all_members_uncompressed_bytes": 1350765186,
+          "worksheet_xml_uncompressed_bytes": 1349243690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "b1fee84aca0c0abcfa6d0fdae7bbb69e4aa3e4d54d512fad1a47d3a836953530",
+          "all_members_uncompressed_bytes": 29984617,
+          "worksheet_xml_uncompressed_bytes": 28462201
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 0,
+          "measured_regions": 0,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [],
+          "D": 0,
+          "N": 0,
+          "D_over_N": null,
+          "pixel_evidence_status": "no_measured_pixel_denominator"
+        }
+      ],
+      "report_sha256": "e8dc4d011e283534e3fe1d78aa1e398e5d3fa0eb1a1cffc49c052fbf492a8b0c",
+      "candidate_count": 0,
+      "capture_counts": {
+        "OR:charts": 0,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "datagov",
+      "name": "QT_RR data_dobutamine challenge test_Hazari_Dec 2015_84eb838fbc46.xlsx",
+      "tool": "xlstyles",
+      "original_sha256": "84eb838fbc4627fb2ca1dd8461e8a05493a0b31ade8e27c66b437a22d932a577",
+      "prepared_variant_sha256": "937630e298b0aec5f92232b2fc744b6dc41f815bac3af8b8927490f9cc1bad60",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "02357f157c5f4bc6d78b26d5a9cea6918b3f838f731f6648c5f44184bcdf0bb7",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "229e826c0cc5f59e1961eba97595b3d6d661c8c454162b443e1b710783317798",
+          "all_members_uncompressed_bytes": 1350765186,
+          "worksheet_xml_uncompressed_bytes": 1349243690
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "04a0ae2f71eaece2f04dd883894fe3730d8ea7c461b8c71937b42c66b7e15451",
+          "all_members_uncompressed_bytes": 1350766246,
+          "worksheet_xml_uncompressed_bytes": 1349243690
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 0,
+          "measured_regions": 0,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [],
+          "D": 0,
+          "N": 0,
+          "D_over_N": null,
+          "pixel_evidence_status": "no_measured_pixel_denominator"
+        }
+      ],
+      "report_sha256": "f12cc28a57dc2a5cbee348b5314d20164f1ce28b5563561a98efa667ab8eb079",
+      "candidate_count": 0,
+      "capture_counts": {
+        "OR:charts": 0,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "enron",
+      "name": "b2d0dfef6a1ce21cf3896241052a4a28ffdad659b6bbb6b1ea44f47e4d589c86.xlsx",
+      "tool": "sheetshrink",
+      "original_sha256": "7298df9a6a76d0b69599c21d1653287adc863a5c7dbb9b5eaca275ea23ffada0",
+      "prepared_variant_sha256": "7ff4759dda003947b6633779d5c69e7c606805d8006d2a2490afd124aac86639",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "247906499c90a42b7bace71d3758093a378ddbc83e4d0d565bfae0c86772ee2e",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "994655c5bd2dff12d36834a920e5f51daa8216a7ad32f5bbe819dac034727498",
+          "all_members_uncompressed_bytes": 353151842,
+          "worksheet_xml_uncompressed_bytes": 353099661
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "c061e36be050b0266d0fb70853cdb79551897ad082d6c97dbb92724dc6afaf0b",
+          "all_members_uncompressed_bytes": 2581673,
+          "worksheet_xml_uncompressed_bytes": 2529492
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v13",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 2824,
+          "measured_regions": 0,
+          "missing_retained_image_pairs": 2824,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [],
+          "D": 0,
+          "N": 0,
+          "D_over_N": null,
+          "pixel_evidence_status": "no_measured_pixel_denominator"
+        }
+      ],
+      "report_sha256": "dfde7e8e6b5a70eef81f81cfcd5daf0bfddf8926d7249bb371e9e42ef42ed72f",
+      "candidate_count": 2824,
+      "capture_counts": {
+        "OR": 2824,
+        "OR:charts": 0,
+        "SDR": 2824,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "enron",
+      "name": "b2d0dfef6a1ce21cf3896241052a4a28ffdad659b6bbb6b1ea44f47e4d589c86.xlsx",
+      "tool": "check_performance",
+      "original_sha256": "7298df9a6a76d0b69599c21d1653287adc863a5c7dbb9b5eaca275ea23ffada0",
+      "prepared_variant_sha256": "51cc17fd24993dd0ada2ad458118c6f7aea75602efbfc5e0fbc1273d2ce96ce8",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "b445780d9fbf458212d27070d69de06bb6e51cd7be87ced2abff977be4bdbd25",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "994655c5bd2dff12d36834a920e5f51daa8216a7ad32f5bbe819dac034727498",
+          "all_members_uncompressed_bytes": 353151842,
+          "worksheet_xml_uncompressed_bytes": 353099661
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "47db1a8633e2cb76966f857cdcf30ebe812a90e57007818836834da69465e7e9",
+          "all_members_uncompressed_bytes": 2542862,
+          "worksheet_xml_uncompressed_bytes": 2494784
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 1032,
+          "measured_regions": 8,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 1024,
+          "different_dimensions_in_measured_regions": 2,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [
+            "Fin Basis",
+            "GD Options",
+            "INDEX",
+            "NG-Pr",
+            "Ng-PrOptions",
+            "Phys Basis"
+          ],
+          "D": 456503,
+          "N": 46890576,
+          "D_over_N": 0.009735495678278723,
+          "pixel_evidence_status": "measured_retained_scope"
+        }
+      ],
+      "report_sha256": "09a5c859d8f6e1a26b7048d4125002d616368f661a9e69c5f09f0cff6389f008",
+      "candidate_count": 1032,
+      "capture_counts": {
+        "OR": 1032,
+        "OR:charts": 0,
+        "SDR": 1032,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "enron",
+      "name": "b2d0dfef6a1ce21cf3896241052a4a28ffdad659b6bbb6b1ea44f47e4d589c86.xlsx",
+      "tool": "inquire",
+      "original_sha256": "7298df9a6a76d0b69599c21d1653287adc863a5c7dbb9b5eaca275ea23ffada0",
+      "prepared_variant_sha256": "074375d704558c4e317eca6e2fe94e7fa8d080b328623ab399c1a0ba79866b94",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "f1cc40fa0c8e641400dedb279e0ecd9019d2fa182f1a8130f03a47ec8425df79",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "994655c5bd2dff12d36834a920e5f51daa8216a7ad32f5bbe819dac034727498",
+          "all_members_uncompressed_bytes": 353151842,
+          "worksheet_xml_uncompressed_bytes": 353099661
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "df7b554c15adf71bb0a2b4874da6938201a95e4abb2b95639546b61cbd3cb200",
+          "all_members_uncompressed_bytes": 2571356,
+          "worksheet_xml_uncompressed_bytes": 2523483
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 1040,
+          "measured_regions": 1040,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 1040,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [
+            "Fin Basis",
+            "GD Options",
+            "INDEX",
+            "NG-Pr",
+            "Ng-PrOptions",
+            "Phys Basis"
+          ],
+          "D": 9739,
+          "N": 11728328854,
+          "D_over_N": 8.303825823129498e-07,
+          "pixel_evidence_status": "measured_retained_scope"
+        }
+      ],
+      "report_sha256": "18861c5512b8d4a3054db70c91182cff7ef514126e49277f8e0c307f6b0a5757",
+      "candidate_count": 1040,
+      "capture_counts": {
+        "OR": 1040,
+        "OR:charts": 0,
+        "SDR": 1040,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "enron",
+      "name": "b2d0dfef6a1ce21cf3896241052a4a28ffdad659b6bbb6b1ea44f47e4d589c86.xlsx",
+      "tool": "nxpowerlite",
+      "original_sha256": "7298df9a6a76d0b69599c21d1653287adc863a5c7dbb9b5eaca275ea23ffada0",
+      "prepared_variant_sha256": "5ccf9a5d30a8fbb85da2d0ba6e5eb8559e0c54f34b4fa7b814e98d8773090512",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "39ed851bd4f1553b0e827adcf5abfcbdea01a5f48ff58597de6879a5352127c8",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "994655c5bd2dff12d36834a920e5f51daa8216a7ad32f5bbe819dac034727498",
+          "all_members_uncompressed_bytes": 353151842,
+          "worksheet_xml_uncompressed_bytes": 353099661
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "6bb42e1205433c2e28f4a532c7c04372a19932b169ea397da2f70bf298973f1b",
+          "all_members_uncompressed_bytes": 2551781,
+          "worksheet_xml_uncompressed_bytes": 2498681
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 1033,
+          "measured_regions": 1033,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [
+            "Fin Basis",
+            "GD Options",
+            "INDEX",
+            "Ng-PrOptions",
+            "Phys Basis"
+          ],
+          "D": 6437,
+          "N": 11640701446,
+          "D_over_N": 5.529735497350028e-07,
+          "pixel_evidence_status": "measured_retained_scope"
+        }
+      ],
+      "report_sha256": "9f3177c480139d8e515ccaca53980e60adb27e008f40cac2da14f0bbb67bc090",
+      "candidate_count": 1033,
+      "capture_counts": {
+        "OR": 1033,
+        "OR:charts": 0,
+        "SDR": 1033,
+        "SDR:charts": 0
+      }
+    },
+    {
+      "corpus": "enron",
+      "name": "b2d0dfef6a1ce21cf3896241052a4a28ffdad659b6bbb6b1ea44f47e4d589c86.xlsx",
+      "tool": "xlstyles",
+      "original_sha256": "7298df9a6a76d0b69599c21d1653287adc863a5c7dbb9b5eaca275ea23ffada0",
+      "prepared_variant_sha256": "a4223e1064c9ebe2a45b5577764dd8e920d3d4e702d11d76983335a9033223a3",
+      "status": "completed_with_limitations",
+      "baseline_scope": "raw_selected_original",
+      "identity_file_sha256": "eb1a617002143fd4b05ff391d15efa4b4dc8327738e1efe0a377d10868b30ddc",
+      "member_manifests": {
+        "original": {
+          "canonical_manifest_sha256": "994655c5bd2dff12d36834a920e5f51daa8216a7ad32f5bbe819dac034727498",
+          "all_members_uncompressed_bytes": 353151842,
+          "worksheet_xml_uncompressed_bytes": 353099661
+        },
+        "candidate": {
+          "canonical_manifest_sha256": "ee06b1da3abe813a0b670094e448a79f9e4db0f8ee182885d496bc1de61d7591",
+          "all_members_uncompressed_bytes": 353155724,
+          "worksheet_xml_uncompressed_bytes": 353099661
+        }
+      },
+      "native_policy": {
+        "capture_policy": "targeted-content-grid-v15",
+        "execution_strategy": "paired-inplace-rebuild-v1",
+        "chart_capture_mode": "deterministic",
+        "status": "completed_with_limitations"
+      },
+      "cleanup_profile_verified_in_this_audit": false,
+      "fresh_resource_study_output_join": null,
+      "comparisons": [
+        {
+          "left": "OR",
+          "right": "SDR",
+          "recorded_regions": 0,
+          "measured_regions": 0,
+          "missing_retained_image_pairs": 0,
+          "missing_or_unmatched_origins": 0,
+          "different_dimensions_in_measured_regions": 0,
+          "geometry_findings_in_measured_regions": 0,
+          "observed_sheets": [],
+          "D": 0,
+          "N": 0,
+          "D_over_N": null,
+          "pixel_evidence_status": "no_measured_pixel_denominator"
+        }
+      ],
+      "report_sha256": "607f0a0e305ca3d2fe84d9c112138959c3e39e58b84623e87e28bcd2f86a3e06",
+      "candidate_count": 0,
+      "capture_counts": {
+        "OR:charts": 0,
+        "SDR:charts": 0
+      }
+    }
+  ],
+  "metric": "D counts exact RGBA differences; N counts pixels in common top-left image rectangles with equal measured origins",
+  "sampling_unit": "Pixel observations; repeated and overlapping capture rectangles repeat observations",
+  "missingness": "Zero selected regions, discarded equal images, missing images and unmatched origins do not establish a measured denominator",
+  "interpretation": "Tool plans and observed areas differ; D/N is descriptive within retained scope and cannot rank preservation quality across these plans",
+  "remaining_join_gates": [
+    "Tool version and cleanup-profile verification",
+    "Fresh resource-output member identity for remaining cases",
+    "Missing native scopes and live QT/RR Inquire outcome"
+  ],
+  "source_verdicts": "Unchanged; this audit adds measurement metadata without assigning regression causes",
+  "measurement_verification": {
+    "synthetic_rgba_and_common_rectangle_controls": 4,
+    "same_dimension_native_verdict_disagreements": 0,
+    "audit_wall_seconds": 457.5,
+    "audit_peak_job_commit_bytes": 372060160
+  }
+}
