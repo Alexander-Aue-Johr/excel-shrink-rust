@@ -5,7 +5,7 @@ import SheetDetails from "./components/SheetDetails";
 import LinkedScenesPanel from "./components/LinkedScenesPanel";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { presentScene, type Theme } from "./lib/presentation";
-import { replayAt } from "./lib/replay";
+import { createReplay } from "./lib/replay";
 import { downloadSvg, figureSvg } from "./lib/export-scene";
 import type { HitTarget } from "./lib/scene";
 import { buildWorkbookScene, workbookPage } from "./lib/workbook-scene";
@@ -72,12 +72,13 @@ function Observatory() {
   const [replayTime, setReplayTime] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(0.2);
+  const seekReplay = useMemo(
+    () => (recording ? createReplay(recording.source, recording.events) : null),
+    [recording],
+  );
   const replay = useMemo(
-    () =>
-      recording && replayTime !== null
-        ? replayAt(recording.source, recording.events, replayTime)
-        : null,
-    [recording, replayTime],
+    () => (seekReplay && replayTime !== null ? seekReplay(replayTime) : null),
+    [seekReplay, replayTime],
   );
   const update = replay?.update ?? liveUpdate;
   const jobs = replay?.jobs ?? liveJobs;

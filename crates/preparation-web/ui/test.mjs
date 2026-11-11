@@ -46,7 +46,7 @@ test("replay seeking uses recorded events without future metadata or reports", a
     platform: "node",
     format: "esm",
   });
-  const { replayAt } = await import(
+  const { replayAt, createReplay } = await import(
     `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
   );
   const event = (time, type, payload = {}) => ({
@@ -84,6 +84,21 @@ test("replay seeking uses recorded events without future metadata or reports", a
   assert.equal(complete.update.counts.prepared, 1);
   assert.equal(replayAt(base, events, 0).jobs.length, 0);
   assert.equal(events.length, 5);
+  const seek = createReplay(base, events);
+  for (const time of [0, 100, 500, 900, 2000, 500, 500, 0, 2000]) {
+    const actual = seek(time);
+    const expected = replayAt(base, events, time);
+    assert.deepEqual(actual.jobs, expected.jobs);
+    assert.deepEqual(actual.tasks, expected.tasks);
+    assert.deepEqual(actual.update.counts, expected.update.counts);
+  }
+  const completedSnapshot = seek(2000);
+  const unchanged = seek(2000);
+  assert.equal(unchanged.update.events.length, 0);
+  assert.equal(unchanged.jobs, completedSnapshot.jobs);
+  assert.equal(unchanged.tasks, completedSnapshot.tasks);
+  seek(0);
+  assert.equal(completedSnapshot.jobs[0].after.file_bytes, 10);
   const manyTasks = Array.from({ length: 4200 }, (_, index) => [
     event(100, "work.started", {
       task_id: index,

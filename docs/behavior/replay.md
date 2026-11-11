@@ -145,6 +145,15 @@ exercise. The private acceptance receipt is retained under
 
 ## Remaining delivery gates
 
+The preparation Observatory reuses its observed replay state during forward
+playback. Each tick applies only events newly reached by the virtual clock.
+Seeking backward discards that accumulated state and rebuilds through the
+requested timestamp. Repeated timestamps retain the existing job/task snapshots,
+and later seeks do not mutate previously returned snapshots. All recorded jobs
+and tasks remain available for Atlas pagination and inspection. This removes
+repeated event-prefix reconstruction while leaving full-trace loading, retained
+history size and browser scene rendering as separate performance costs.
+
 A [100,000-checkpoint recording experiment](../visual-validation/experiments/replay-cost-20261108.md)
 verified all retained event identities and bounded chunk sizes. It measured
 17.369 seconds of recording wall time and approximately 3.30 MB of logical
