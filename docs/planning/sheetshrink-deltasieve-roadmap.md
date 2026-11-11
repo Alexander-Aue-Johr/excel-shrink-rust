@@ -49,6 +49,15 @@ detail with a working difference mask were checked over public HTTPS. See
 
 ### Submission-scope correction on 2026-11-11
 
+The later interim Atlas refresh retains 413 observations from 43 sources and
+403 byte-exact scientific detail payloads. It includes the completed Data.gov
+XLStyles group and four separately preserved high-memory recovery observations.
+The three raw corpus grids still contain exactly 49 workbooks each. Seven
+normalized baselines remain separately labelled. Both Pages deployments built
+successfully, and the new ScienceHub/NXPowerLite image detail was checked over
+public HTTPS. The two QT/RR comparisons and offline work remain open. See
+`docs/visual-validation/experiments/static-atlas-refresh-20261111.json`.
+
 The author is shortening both manuscripts and now prioritizes verification of
 the retained claims and necessary measurements. Further UI, architecture and
 release extensions are deferred behind that submission work. The author removed

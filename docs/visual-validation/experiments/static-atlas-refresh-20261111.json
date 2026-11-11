@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "snapshot": "interim stage-49 refresh",
+  "url": "https://alexander-aue-johr.github.io/excel-shrink-paper/atlas/stage-49/?theme=light",
+  "paper_pages_commit": "5d0f8e1b366f73d1534e8bf807797660b40c69f9",
+  "image_pages_commit": "d3618a3ea48d1213ce04d26489c146926693dfec",
+  "pages_builds": "Both exact commits reported built without errors",
+  "merged_sources": 43,
+  "merged_observations": 413,
+  "raw_workbooks_per_corpus": 49,
+  "separately_labelled_normalized_baselines": 7,
+  "exact_detail_payloads": 403,
+  "verified_source_png_paths": 19173,
+  "unique_presentation_assets": 15493,
+  "combined_compact_bytes": 1602365088,
+  "published_site_bytes": {
+    "paper": 892350206,
+    "images_including_retained_older_assets": 945739769
+  },
+  "image_encoding": "Full-resolution lossless presentation assets; no downscaling",
+  "publication_order": "Additional image assets built first, then the report site. Existing shared images were retained to keep earlier references available.",
+  "verification": [
+    "All 43 source-run metadata hashes checked after the merge",
+    "All 403 scientific detail payloads remained exact through image compaction",
+    "All 19173 source PNG paths verified against lossless presentation assets",
+    "Partitioned files remained byte-identical except for the generated image URL map",
+    "Public HTTPS image 00080445c310923b7dcea28aade35927de762e64564f0a5af3ddd29beb9f05cf.webp matched its SHA-256 and 422656-byte length",
+    "Browser verified the Data.gov, Destatis and Enron 49-workbook grids",
+    "Browser opened ScienceHub table S4, A1000517:I1001062, Original versus NXPowerLite, and rendered the grey-band versus white image detail"
+  ],
+  "local_correction": "The initial derived catalog was generated before the copied cohort and labels were re-read. It was rebuilt and a separate corrected public export was checked before deployment. The initial unclassified presentation was not published.",
+  "remaining": "The two QT/RR native comparisons and offline first-pass/retry work remain incomplete. This snapshot does not establish completion of every selected comparison or classify every observed difference."
+}
