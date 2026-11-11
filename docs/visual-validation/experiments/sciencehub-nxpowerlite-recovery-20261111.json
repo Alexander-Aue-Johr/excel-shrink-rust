@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-11-11T15:26:06.7104025Z",
+  "case": "Data.gov ScienceHub_Datasets_09182018_ccf094c01b9a.xlsx, Original versus NXPowerLite cell formatting",
+  "runtime_sha256": "5ab5c6140788a96e6a99e5fa604220adb213337369a73490da134736d42da50a",
+  "report_sha256": "2b4192c9990fa70d585f3c3c1de12f61876b514467824ac7eb235cd77bd09ba3",
+  "status": "completed_with_limitations",
+  "capture_counts": {
+    "OR": 2177,
+    "OR:charts": 0,
+    "SDR": 2177,
+    "SDR:charts": 0
+  },
+  "compared_regions": 2177,
+  "pixel_differences": 2175,
+  "geometry_differences": 0,
+  "rendering_presence_differences": 0,
+  "unique_image_pairs": 10,
+  "example": {
+    "sheet": "table S4",
+    "range": "A1000517:I1001062",
+    "images": [
+      {
+        "side": "left_png",
+        "relative": "evidence/68dcab6550e70578d029474cebcc2be41445930d71894bffd4a066104a104c77.png",
+        "sha256": "68dcab6550e70578d029474cebcc2be41445930d71894bffd4a066104a104c77",
+        "bytes": 227212
+      },
+      {
+        "side": "right_png",
+        "relative": "evidence/6a8c1e7cc187b6c3264c5d633c77044e70f207db9158d86ed74b9473c278a89d.png",
+        "sha256": "6a8c1e7cc187b6c3264c5d633c77044e70f207db9158d86ed74b9473c278a89d",
+        "bytes": 207877
+      }
+    ],
+    "visual_observation": "The inspected Original image has repeated grey horizontal bands. The matched NXPowerLite image appears white. Both images have the same dimensions. This observation is specific to this pair, not a review of every differing region."
+  },
+  "interpretation": "Retain the 2175 pixel-difference findings as observed tool outcomes. Region count is not a count of independent defects; the report contains ten unique image pairs across 2177 compared regions. No SheetShrink regression is inferred. The selected-region method and its limitations remain those in the native report."
+}
