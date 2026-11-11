@@ -176,6 +176,9 @@ python tools/package-validation.py `
   --binary-directory "$env:CARGO_TARGET_DIR\release" `
   --output 'V:\releases\deltasieve-candidate'
 python tools/package-validation.py --verify 'V:\releases\deltasieve-candidate'
+python tools/check-runtime-web.py `
+  --runtime 'V:\releases\deltasieve-candidate' `
+  --work 'V:\release-checks\deltasieve-candidate-web'
 ```
 
 The parent output directory must already exist. The tool rejects an existing
@@ -199,6 +202,16 @@ binary hashes. The packager does not infer which source revision produced an
 executable. Preserve the actual build receipt when freezing a scientific
 release. A verified package proves byte integrity against its local manifest,
 with no claim of independent signature-based authenticity.
+
+The separate web check starts only the DeltaSieve configuration server, suppresses
+browser opening and sends GET requests. It compares embedded `sheet-scope.js`
+and `sheet-scope.css` bytes with the packaged files, checks the idle application
+state and stops its server. Startup has a 30-second bound. Its new working
+directory must be outside the package. Logs and `web-check.json` remain there
+on failure. It verifies package integrity before and after the test. This check
+catches older executables mixed with newer web assets even when all copied
+files match the package manifest. Native Excel execution and the other web
+assets require their separate acceptance checks.
 
 Run `deltasieve.exe` to open the standalone configurator. Keep the complete
 directory layout when moving it. Use a working drive for TEMP, TMP,

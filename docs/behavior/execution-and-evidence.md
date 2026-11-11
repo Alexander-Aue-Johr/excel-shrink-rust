@@ -72,6 +72,14 @@ This resolver change is one release prerequisite. Relocation of the complete
 study runner, regression repository-root assumptions and packaged dependency
 verification still need end-to-end acceptance.
 
+Release verification also compares the configuration server's embedded
+`sheet-scope.js` and `sheet-scope.css` with the corresponding packaged assets.
+The explicit `tools/check-runtime-web.py` check starts a bounded configuration
+host, uses GET requests and requires an idle state. It preserves diagnostics
+outside the package and verifies the manifest again after server shutdown.
+Byte-integrity verification alone cannot detect an old binary paired with
+newer assets when both were deliberately entered in the manifest.
+
 ## E1. Corpus and workbook identities
 
 Selected-OOXML observation fingerprints and their comparison rules are owned by

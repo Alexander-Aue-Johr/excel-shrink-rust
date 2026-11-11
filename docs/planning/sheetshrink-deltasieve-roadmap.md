@@ -1617,6 +1617,15 @@ Initial acceptance requires a reviewed profile, representative nested-container 
 
 - [ ] Freeze the paper artifacts, validate the ordinary start and resume instructions, and evaluate the value of a SheetShrink scheduling replay.
 
+A 132-member package was copied from G: to a spaced directory on V: and
+verified before/after both application configuration starts. Default working
+data stayed outside the package. An initial older-binary/newer-JavaScript mix
+passed manifest integrity but failed served-asset equality. A fresh CLI build
+corrected it. `tools/check-runtime-web.py` now provides this bounded release
+check and passes/rejects the two retained packages respectively. Evidence is
+in `../visual-validation/experiments/runtime-relocation-20261111.md`.
+Full native relocation and distributed recovery acceptance remain open.
+
 Create versioned manifests and checksums for code, profiles, evaluation scripts, results, and static reports. Verify existing publication links and artifact storage boundaries, and record deployment status for prepared exports. Retain useful Perfetto traces and figures that explain scheduling.
 
 For a possible shrinker Observatory, determine whether existing traces can support a small useful demonstration of workbook, sheet, and chunk scheduling with slowed playback. Record the decision and remaining work. Give paper evidence and the delivered results explorer priority when scheduling that extension.
