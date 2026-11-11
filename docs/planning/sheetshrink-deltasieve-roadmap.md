@@ -56,7 +56,8 @@ The 94.0% selected-case reduction concerns emitted-result retention. One real
 attribution. The 4 GiB owned-job and 8 GiB system guards remained satisfied.
 Exact receipts and limitations are in
 `../visual-validation/experiments/cell-stream-ryzen-followup-20261111.json`.
-The earlier Intel/compiler lane stays separate. Manuscript integration follows.
+The earlier Intel/compiler lane stays separate. Paper commit `a0605bf1` includes
+the frozen evidence, qualified manuscript interpretation and rebuilt main PDF.
 
 The Enron fourth-case resource follow-up completed eighteen openpyxl trials.
 Original and XLStylesTool reached the configured 4 GiB limit in all repetitions.
@@ -1122,6 +1123,14 @@ Reuse the standalone branch's working components where their behavior matches th
 Replace the WPF-dependent ordinary launch path, including the VS Code task entry point. Preserve direct CLI operation and saved configurations. Make new-run, resume, and open-existing-results choices explicit.
 
 Acceptance requires equivalent resolved configuration through the ordinary launcher and CLI, a successful resume of a controlled existing run, and documented start commands.
+
+The ordinary PowerShell starter now forwards `-StudyConfig` to the existing
+`observatory --study-config` prefill path. A Windows handoff test checks both
+configuration arguments, paths containing spaces, port, browser suppression and
+working temporary root using an inert runner. Six runtime-package tests also
+pass. Startup documentation identifies the current VS Code task and separates
+the legacy PowerShell configuration path. This verifies argument handoff only.
+Full ordinary-startup and relocated native resume acceptance remains open.
 
 ## 05 Add stable local service names
 
