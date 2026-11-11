@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "case": "Data_PubMed_Submission_b2133fbc1f7b.xlsx, Original versus Check Performance",
+  "runtime_sha256": "5ab5c6140788a96e6a99e5fa604220adb213337369a73490da134736d42da50a",
+  "record_sha256": "f083aea3e0975988b93342ebd39d3e166bf5cc7d79287f9dafdb962b92879818",
+  "status": "failed",
+  "successful_captures": 0,
+  "native_preliminary_candidates": 16733285,
+  "failed_operation": "save",
+  "failed_lane": "O",
+  "diagnostic_code": "AccessDenied",
+  "diagnostic_message": "You don't have sufficient permissions for this action.",
+  "original_metadata": {
+    "mark_as_final": true,
+    "file_sharing_element_present": false,
+    "workbook_protection_element_present": false,
+    "filesystem_readonly_attribute": false
+  },
+  "hypothesis": "The advisory Mark as Final property prevents saving the Original copy. This remains a hypothesis until the separate editable-copy native probe is executed.",
+  "probe_preparation": {
+    "original_source_sha256": "b2133fbc1f7b5f591ac68bb4941ecec7c6e58e10b10f68fdc6f1ec422237c4ee",
+    "original_editable_copy_sha256": "d27635e1862d62fffd67ebf3a85fdef107dede1b4a754fe882080da9e5132d0a",
+    "variant_sha256": "a3dcf9b3e4951ba447f6f790d04c414fdc2bb4ae12f37da88e462a2d7ea2359e",
+    "changed_zip_members": [
+      "docProps/custom.xml"
+    ],
+    "other_zip_member_sha256_unchanged": true,
+    "other_custom_property_values_and_attributes_unchanged": true,
+    "variant_byte_identical": true,
+    "native_started": false,
+    "admission": "Deferred by existing 32-GiB job plus 8-GiB reserve admission requirement"
+  },
+  "interpretation": "The raw failed observation is retained. An editable-copy probe would be a separately labelled normalized baseline, without replacing the raw Original or its failure. No pixel-equality or confirmed causal claim is made."
+}
