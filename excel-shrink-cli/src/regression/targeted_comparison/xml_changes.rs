@@ -649,8 +649,12 @@ fn read_sheet<const INCLUDE_CELLS: bool>(
                                 b"s",
                                 b"customFormat",
                                 b"x14ac:dyDescent",
+                                b"thickTop",
+                                b"thickBot",
                             ]
                             .contains(&key)
+                                && (!matches!(key, b"thickTop" | b"thickBot")
+                                    || matches!(value, b"0" | b"1" | b"false" | b"true"))
                             {
                                 attributes.insert(
                                     String::from_utf8(key.to_vec())?,
@@ -1070,6 +1074,32 @@ mod tests {
         let changed = model(changed_xml.as_bytes(), &right_styles)?;
         left.cells.changes(&changed.cells, |_| { differences += 1; Ok(()) })?;
         assert_eq!(differences, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn border_height_hints_use_row_checks_and_unknown_values_keep_layout_fallback() -> Result<()> {
+        use std::io::Write;
+        let identity = super::super::style_identity::StyleIdentity::read(b"")?;
+        let path = std::env::temp_dir().join(format!("row-hint-{}.zip", uuid::Uuid::new_v4()));
+        let mut models = Vec::new();
+        for hint in ["", "thickTop=\"1\"", "thickBot=\"true\"", "thickTop=\"unknown\""] {
+            let mut zip = zip::ZipWriter::new(File::create(&path)?);
+            zip.start_file("sheet.xml", zip::write::FileOptions::default())?;
+            write!(zip, "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\" {hint}/></sheetData></worksheet>")?;
+            zip.finish()?;
+            let mut archive = ZipArchive::new(File::open(&path)?)?;
+            models.push(read_sheet::<true>(
+                &mut archive, "sheet.xml", 1, 1, None,
+                &[Default::default()], &identity, &BTreeSet::new(), false,
+            )?);
+        }
+        assert_eq!(models[0].cf_layout, models[1].cf_layout);
+        assert_eq!(models[0].cf_layout, models[2].cf_layout);
+        assert_ne!(models[0].cf_layout, models[3].cf_layout);
+        assert_eq!(models[1].rows[&1]["thickTop"], "1");
+        assert_eq!(models[2].rows[&1]["thickBot"], "true");
+        std::fs::remove_file(path)?;
         Ok(())
     }
 

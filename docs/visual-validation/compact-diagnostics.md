@@ -77,6 +77,15 @@ dependencies continue to select their own areas. A reduced plan requires a
 separate native observation before any visual verdict. Existing v17 reports
 keep their original policy and retained captures.
 
+### Border-related height hints
+
+Policy v19 routes valid `thickTop` and `thickBot` row hints through live
+effective-height checks. A changed hint no longer becomes an unmodeled
+whole-sheet layout change. Even identical fixed `ht` definitions require
+measurement when these hints differ. Missing measurements cannot establish
+equal heights. Invalid boolean values retain the original layout fallback.
+Actual cell/row border styles continue through their existing style selection.
+
 ### Rebuild stage telemetry
 
 Resident heartbeat resource samples include bounded `targeted_progress` evidence with command ID, stage and transition timestamp. Rebuild dispatch, waiting for calculation, saving and successful save are distinct stages. A heartbeat alone does not prove calculation progress. Command deadlines and save/rebuild success requirements are unchanged.

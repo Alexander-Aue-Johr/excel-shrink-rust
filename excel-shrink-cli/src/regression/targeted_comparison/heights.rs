@@ -63,6 +63,10 @@ pub(super) fn selection(
             row <= last_relevant_row
                 && left.fixed_height(row).is_some()
                 && left.fixed_height(row) == right.fixed_height(row)
+                && ["thickTop", "thickBot"].into_iter().all(|attribute| {
+                    left.rows.get(&row).and_then(|attrs| attrs.get(attribute))
+                        == right.rows.get(&row).and_then(|attrs| attrs.get(attribute))
+                })
         })
         .collect();
     if global {
@@ -256,6 +260,16 @@ mod tests {
             selection(&before, &after, "Rows", 1_048_576).unwrap(),
             (vec![(1, 7), (9, 1_048_576)], 1)
         );
+    }
+
+    #[test]
+    fn changed_border_height_hint_is_measured_even_with_equal_fixed_height() {
+        let before = fixture();
+        let mut after = before.clone();
+        std::sync::Arc::make_mut(&mut after.sheets.get_mut("Rows").unwrap().rows)
+            .get_mut(&8).unwrap().insert("thickTop".into(), "1".into());
+        assert_eq!(selection(&before, &after, "Rows", 100).unwrap(), (vec![(8, 8)], 0));
+        assert_eq!(selection(&after, &after, "Rows", 100).unwrap(), (vec![], 0));
     }
 
     #[test]
