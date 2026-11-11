@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "observed_opening_failures": 96,
+  "duplicate_defined_name_cases": 0,
+  "pairs_with_both_original_and_sheetshrink_opening_failure": 48,
+  "representative": {
+    "assignment_name": "case-000091-original.xlsx",
+    "source_sha256": "bdfbaa1d9df53228e183ff4c564ef1f8158b40acb540a5e4ea3031d256c08088",
+    "frozen_source_bytes_match": true,
+    "fresh_excel_normal_open": "Unable to get the Open property of the Workbooks class",
+    "fresh_excel_repair_open": "Unable to get the Open property of the Workbooks class",
+    "macros": "force disabled",
+    "links": "UpdateLinks0",
+    "source_open_mode": "read only",
+    "root_cause": "unresolved"
+  },
+  "scope": "Snapshot of one active assignment. COM opening failures retain concrete attempts and are not evidence of a SheetShrink-only regression. Fresh and repair probes cover one representative input."
+}
