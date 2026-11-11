@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "scope": "Fifth disjoint local completed-pair selection. Source and output hashes independently verified before audit. Completed-pair selection is not representative. Preserve all raw differences and diagnostic limits.",
+  "pairs": 2000,
+  "equal_cell_contents": 1826,
+  "differences_found": 174,
+  "difference_kinds": {
+    "changed": 9689
+  },
+  "formula_prefixed_difference_records": 0,
+  "audit_seconds": 258.1514906999946,
+  "summary_sha256": "0a6f05ef9da00748fa4e11143f74e245fad922d026a9a8f92b470eaa9e941163",
+  "manifest_sha256": "d0895ba1df3768c75831b386bafe8998910193572a4325205295dd2b9dd1d641",
+  "cumulative_enron_partial_audit": {
+    "pairs": 8499,
+    "equal_cell_contents": 7767,
+    "differences_found": 732
+  }
+}
