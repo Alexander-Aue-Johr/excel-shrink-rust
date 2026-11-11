@@ -1,0 +1,55 @@
+{
+  "file": "wanderungen-2010120217005.xlsx",
+  "differences": 376573,
+  "kinds": {
+    "missing_right": 376573
+  },
+  "visibility": {
+    "hidden": 376573
+  },
+  "sheets": {
+    "xl/worksheets/sheet13.xml": {
+      "differences": 32740,
+      "hidden_column_ranges": [
+        [
+          15,
+          16384
+        ]
+      ],
+      "examples": [
+        "AA80",
+        "AA81",
+        "AAA80"
+      ]
+    },
+    "xl/worksheets/sheet31.xml": {
+      "differences": 343833,
+      "hidden_column_ranges": [
+        [
+          12,
+          16384
+        ]
+      ],
+      "examples": [
+        "AA11",
+        "AA12",
+        "AA13"
+      ]
+    }
+  },
+  "classification": "saved-cell-content change requiring explicit scope qualification",
+  "raw_equal_pairs": 1017,
+  "normalized_equal_pairs": 164,
+  "normalized_different_pairs": 1,
+  "scope": "Saved values and formulas after Excel full rebuild. Normalized baselines had workbook-only name repair. Hidden constant removals remain reported as differences.",
+  "reports": {
+    "raw": {
+      "sha256": "e0550cc8ceabee9ee624ac8b439ff42381a4438f9caa4be69ddc306acafe0945",
+      "pairs": 1017
+    },
+    "normalized": {
+      "sha256": "e16481313861c537fe9e284a3268544d4331df7915b13214fc0f1afe0ce1ae93",
+      "pairs": 165
+    }
+  }
+}
