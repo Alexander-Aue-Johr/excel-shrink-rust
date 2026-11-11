@@ -398,6 +398,10 @@ fn public_atlas_preserves_images_and_findings_without_exporting_run_configuratio
     assert!(!target.join("pairs/one/bundle.json").exists());
     assert!(!target.join(".incomplete").exists());
     let projected = read_json_file(&target.join("pairs/one/report.json"))?;
+    assert_eq!(
+        fs::read(target.join("pairs/one/report.json"))?,
+        serde_json::to_vec(&projected)?
+    );
     assert_eq!(projected["comparisons"], original["comparisons"]);
     assert!(projected["transitions"][0]["before_file"].is_null());
     assert_eq!(projected["transitions"][0]["change_count"], 7);

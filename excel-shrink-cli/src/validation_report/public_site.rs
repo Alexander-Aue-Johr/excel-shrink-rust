@@ -137,7 +137,9 @@ pub(crate) fn export(source: &Path, destination: &Path) -> Result<()> {
             write(
                 &destination,
                 &report_relative,
-                &serde_json::to_vec_pretty(&detail["report"])?,
+                // Keep generated reports compact so formatting cannot push a
+                // previously readable package over the report-size bound.
+                &serde_json::to_vec(&detail["report"])?,
             )?;
             site::write_pair_page(&destination, &report_relative, &book_name)?;
             provenance.push(json!({"detail":relative,"source_report_sha256":source_sha,"metadata_omissions":omitted}));

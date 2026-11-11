@@ -132,9 +132,12 @@ fn read_failure(directory: &Path) -> Result<Option<Value>> {
 
 fn read_json_file(path: &Path) -> Result<Value> {
     let file = fs::File::open(path).with_context(|| format!("Open report {}", path.display()))?;
+    let bytes = file.metadata()?.len();
     ensure!(
-        file.metadata()?.len() <= MAX_REPORT_BYTES,
-        "Report exceeds the 128 MiB reading bound"
+        bytes <= MAX_REPORT_BYTES,
+        "Report {} ({} bytes) exceeds the 128 MiB reading bound",
+        path.display(),
+        bytes
     );
     serde_json::from_reader(std::io::BufReader::new(file))
         .with_context(|| format!("Read report {}", path.display()))

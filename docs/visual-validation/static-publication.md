@@ -306,6 +306,14 @@ The four-case opening/memory view uses the original identities in
 
 ## Preparation replay path projection
 
+Public comparison JSON uses compact serialization. Pretty-printing the completed
+QT/RR package expanded its roughly 77-MB report to 135,523,855 bytes, exceeding
+the exporter's own 128-MiB reading bound. The compact representation preserves
+the same JSON values and keeps the existing bound. Source packages retain their
+original bytes. The public-export regression checks compact output, retained
+comparison values and images, projected private paths and source immutability.
+Oversized-report errors identify the path and byte length.
+
 `tools/export-preparation-replay.py` preserves the exact compressed event stream
 by default. For a public candidate, pass `--redact-local-paths` to replace
 standalone absolute Windows drive and UNC path values with their final basename.
