@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "case": "Data.gov QT_RR data_dobutamine challenge test_Hazari_Dec 2015, Original versus Inquire, complete recovery",
+  "runtime_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "source_contract_commit": "37b36e43",
+  "control_contract_checks": "passed",
+  "baseline_controls": {
+    "capture_batch_ranges": 8,
+    "capture_batch_megapixels": 256
+  },
+  "trial_controls": {
+    "capture_batch_ranges": 12,
+    "capture_batch_megapixels": 256
+  },
+  "baseline": {
+    "first": {
+      "monotonic": 79040.046,
+      "utc": "2026-11-11T16:18:08Z",
+      "images": 69376,
+      "status": "running",
+      "ram": 58205097984,
+      "commit": 47102447616
+    },
+    "last": {
+      "monotonic": 79130.109,
+      "utc": "2026-11-11T16:19:38Z",
+      "images": 70016,
+      "status": "running",
+      "ram": 61705089024,
+      "commit": 51318054912
+    },
+    "images_per_second": 7.106136815340795
+  },
+  "measurement": {
+    "first": {
+      "monotonic": 79145.109,
+      "utc": "2026-11-11T16:19:53Z",
+      "images": 70128,
+      "status": "running",
+      "ram": 61743034368,
+      "commit": 51202846720
+    },
+    "last": {
+      "monotonic": 79235.171,
+      "utc": "2026-11-11T16:21:23Z",
+      "images": 70768,
+      "status": "running",
+      "ram": 61655777280,
+      "commit": 51235213312
+    },
+    "images_per_second": 7.106215718060469
+  },
+  "throughput_ratio": 1.0000111034619406,
+  "rollback": "original eight-range, 256-MP controls restored",
+  "native_process_restarted": false,
+  "scientific_interpretation": "Both 90-second windows recorded 640 successful individual captures, approximately 7.11 per second. No material throughput gain was observed at twelve ranges with the independent pixel budget fixed at 256 MP. The previous eight-range controls were restored. The separate Lysimeter resource recovery completed during the baseline window, so this is an operational measurement rather than an isolated causal benchmark. QT/RR comparison completion and visual verdict remain pending."
+}
