@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "scope": "Fourth disjoint local completed-pair selection. Independent source and output receipt hashes verified. Targeted completed-pair selection is not representative. Raw changes remain preserved and require causal review.",
+  "pairs": 1000,
+  "equal_cell_contents": 931,
+  "differences_found": 69,
+  "difference_kinds": {
+    "changed": 31548
+  },
+  "formula_prefixed_difference_records": 0,
+  "summary_sha256": "5a6d8faaea861791e2e63da2b96e0ecee0246dc09e06b93c56dcc5c4b591efee",
+  "manifest_sha256": "fc77fe73b1bd07ff4cd41d5c4fb4dc8804c8d4d2bf44ddbc328182ff10d0da62",
+  "cumulative_enron_partial_audit": {
+    "pairs": 6499,
+    "equal_cell_contents": 5941,
+    "differences_found": 558
+  }
+}
