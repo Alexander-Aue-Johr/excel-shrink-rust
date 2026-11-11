@@ -111,7 +111,7 @@ export function buildWorkerScene(
       batches.set(key, batch);
     }
     const offset = batch.positions.length / 3;
-    batch.positions.push(...shape.positions);
+    for (const position of shape.positions) batch.positions.push(position);
     if (batch.indices) {
       if (shape.indices)
         for (const index of shape.indices) batch.indices.push(index + offset);

@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { presentScene, type Theme } from "./lib/presentation";
 import { createReplay } from "./lib/replay";
 import { worksheetOptions } from "./lib/worksheet-options";
+import { loadStaticReplay } from "./lib/static-replay";
 import { downloadSvg, figureSvg } from "./lib/export-scene";
 import type { HitTarget } from "./lib/scene";
 import { buildWorkbookScene, workbookPage } from "./lib/workbook-scene";
@@ -32,6 +33,9 @@ const token = document.querySelector<HTMLMetaElement>(
 )!.content;
 
 const activeStates = new Set(["starting", "running", "stopping"]);
+const staticReplay = document.querySelector<HTMLMetaElement>(
+  'meta[name="observatory-replay"]',
+)?.content;
 
 const names: Record<string, string> = {
   idle: "Ready",
@@ -68,6 +72,7 @@ function Observatory() {
   const [pinnedSheet, setPinnedSheet] = useState<string | null>(null);
   const [sheetQuery, setSheetQuery] = useState("");
   const [sheetPage, setSheetPage] = useState(0);
+  const [jobPage, setJobPage] = useState(0);
   const [recording, setRecording] = useState<{
     source: Update;
     events: NativeEvent[];
@@ -95,6 +100,7 @@ function Observatory() {
   }, [theme]);
 
   useEffect(() => {
+    if (staticReplay) return;
     setRecording(null);
     setReplayTime(null);
     setPlaying(false);
@@ -140,6 +146,23 @@ function Observatory() {
     let stopped = false;
     let timeout = 0;
     const controller = new AbortController();
+    if (staticReplay) {
+      void loadStaticReplay(staticReplay, controller.signal)
+        .then((recorded) => {
+          if (stopped) return;
+          setUpdate(recorded.source);
+          setConfig(recorded.source.defaults);
+          setRecording(recorded);
+          setReplayTime(recorded.source.elapsed_ms);
+        })
+        .catch((failure) => {
+          if (!stopped) setError(String(failure));
+        });
+      return () => {
+        stopped = true;
+        controller.abort();
+      };
+    }
     async function poll() {
       try {
         const { run, after } = cursor.current;
@@ -190,11 +213,12 @@ function Observatory() {
 
   useEffect(() => {
     setAtlasPage(0);
+    setJobPage(0);
     setAtlasHistory(null);
   }, [update?.run_id]);
 
   useEffect(() => {
-    if (atlasView !== "all" || !update || replaying) return;
+    if (staticReplay || atlasView !== "all" || !update || replaying) return;
     const controller = new AbortController();
     let timer = 0;
     async function load() {
@@ -379,6 +403,10 @@ function Observatory() {
       ? "—"
       : `${remainingSeconds >= 60 ? `${Math.floor(remainingSeconds / 60)} min ` : ""}${remainingSeconds % 60} s`;
   const focused = jobs.find((job) => job.id === selected) ?? jobs.at(-1);
+  const jobPages = Math.max(1, Math.ceil(jobs.length / 256));
+  const currentJobPage = Math.min(jobPage, jobPages - 1);
+  const jobEnd = jobs.length - currentJobPage * 256;
+  const pageJobs = jobs.slice(Math.max(0, jobEnd - 256), jobEnd).reverse();
   const activeWorkers = new Set(
     rendering.snapshot.activeJobs.map((job) => job.workerIndex),
   ).size;
@@ -518,7 +546,7 @@ function Observatory() {
                   setPlaybackRate(Number(event.target.value))
                 }
               >
-                {[0.05, 0.1, 0.2, 0.5, 1, 2].map((rate) => (
+                {[0.05, 0.1, 0.2, 0.5, 1, 2, 10, 100, 1000].map((rate) => (
                   <option key={rate} value={rate}>
                     {rate}×
                   </option>
@@ -539,14 +567,16 @@ function Observatory() {
                 Recorded {(replayTime / 1000).toFixed(2)} /{" "}
                 {((recording?.source.elapsed_ms ?? 0) / 1000).toFixed(2)} s
               </span>
-              <button
-                onClick={() => {
-                  setReplayTime(null);
-                  setPlaying(false);
-                }}
-              >
-                Return to live
-              </button>
+              {!staticReplay && (
+                <button
+                  onClick={() => {
+                    setReplayTime(null);
+                    setPlaying(false);
+                  }}
+                >
+                  Return to live
+                </button>
+              )}
             </>
           )}
           {focusSheet && (
@@ -619,188 +649,201 @@ function Observatory() {
                 ? "SHEETSHRINK / RUST PROCESSING"
                 : "NATIVE EXCEL PROCESSING"}
             </div>
-            <h1>{optimizing ? "Optimize. Explore." : "Convert. Explore."}</h1>
-            <p>
-              {detailed
-                ? "Optimize workbooks with SheetShrink and explore parallel sheet and chunk processing."
+            <h1>
+              {staticReplay
+                ? `Recorded ${config.inputs[0]} run`
                 : optimizing
-                  ? "Optimize workbooks in parallel with Excel Check Performance."
-                  : "Save XLS and XLSX inputs as separate XLSX copies using Excel."}
+                  ? "Optimize. Explore."
+                  : "Convert. Explore."}
+            </h1>
+            <p>
+              {staticReplay
+                ? "Explore recorded workbook, worksheet and chunk processing."
+                : detailed
+                  ? "Optimize workbooks with SheetShrink and explore parallel sheet and chunk processing."
+                  : optimizing
+                    ? "Optimize workbooks in parallel with Excel Check Performance."
+                    : "Save XLS and XLSX inputs as separate XLSX copies using Excel."}
             </p>
           </div>
         </section>
-        <form
-          className="panel preparation-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void act("/api/start", config);
-          }}
-        >
-          <label className="wide">
-            Input files or folders · one path per line
-            <textarea
-              aria-label="Input paths"
-              disabled={active}
-              value={config.inputs.join("\n")}
-              onChange={(event) =>
-                change(
-                  "inputs",
-                  event.target.value.split(/\r?\n/).filter(Boolean),
-                )
-              }
-            />
-          </label>
-          <label className="wide">
-            New output directory
-            <input
-              aria-label="Output directory"
-              disabled={active}
-              value={config.output ?? ""}
-              onChange={(event) => change("output", event.target.value || null)}
-            />
-          </label>
-          {optimizing && !detailed && (
-            <>
-              <label>
-                Source manifest · optional
-                <input
-                  disabled={active}
-                  value={config.source_manifest ?? ""}
-                  onChange={(event) =>
-                    change("source_manifest", event.target.value || null)
-                  }
-                />
-              </label>
-              <label>
-                Previous preparation · optional
-                <input
-                  disabled={active}
-                  value={config.reuse_from ?? ""}
-                  onChange={(event) =>
-                    change("reuse_from", event.target.value || null)
-                  }
-                />
-              </label>
-            </>
-          )}
-          <label>
-            {detailed ? "Rayon-Threads" : "Parallel workers"}
-            <input
-              aria-label="Parallel workers"
-              type="number"
-              min="1"
-              max="256"
-              required
-              disabled={detailed && active}
-              value={config.workers}
-              onChange={(event) =>
-                change("workers", Number(event.target.value))
-              }
-            />
-          </label>
-          {detailed && (
-            <>
-              <label>
-                Concurrent workbooks
-                <input
-                  aria-label="Active workbooks"
-                  type="number"
-                  min="1"
-                  disabled={active}
-                  value={config.max_active_workbooks ?? 2}
-                  onChange={(event) =>
-                    change("max_active_workbooks", Number(event.target.value))
-                  }
-                />
-              </label>
-              <label>
-                Maximum chunk size · MiB
-                <input
-                  aria-label="Chunk size"
-                  type="number"
-                  step="any"
-                  min="0"
-                  disabled={active}
-                  value={
-                    (config.parallel_range_chunk_size ?? 16777216) / 1048576
-                  }
-                  onChange={(event) =>
-                    change(
-                      "parallel_range_chunk_size",
-                      Math.round(Number(event.target.value) * 1048576),
-                    )
-                  }
-                />
-                <small>
-                  {(
-                    config.parallel_range_chunk_size ?? 16777216
-                  ).toLocaleString("en-US")}{" "}
-                  bytes · 0 disables chunking
-                </small>
-              </label>
-            </>
-          )}
-          <label>
-            RAM and commit reserve · MiB
-            <input
-              aria-label="Memory reserve"
-              disabled={active}
-              type="number"
-              min="1"
-              placeholder="Automatic"
-              value={config.reserve_mib ?? ""}
-              onChange={(event) =>
-                change(
-                  "reserve_mib",
-                  event.target.value ? Number(event.target.value) : null,
-                )
-              }
-            />
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              disabled={active}
-              checked={config.recursive}
-              onChange={(event) => change("recursive", event.target.checked)}
-            />
-            Include subfolders
-          </label>
-          <div className="form-actions">
-            <button
-              className="button primary"
-              type="submit"
-              disabled={active || busy}
-            >
-              Start
-            </button>
-            <button
-              className="button subtle"
-              type="button"
-              disabled={detailed || update.status !== "running" || busy}
-              onClick={() =>
-                void act("/api/workers", { workers: config.workers })
-              }
-            >
-              Apply workers
-            </button>
-            <button
-              className="button subtle"
-              type="button"
-              disabled={!active || busy}
-              onClick={() => void act("/api/stop")}
-            >
-              Stop
-            </button>
-          </div>
-          <p className="wide form-note">
-            {detailed
-              ? "Outputs and batch report"
-              : "Outputs and source copies"}{" "}
-            are saved in the output directory. The event log is saved alongside
-            it as .events.jsonl. Each new run requires a new output directory.
-          </p>
-        </form>
+        {!staticReplay && (
+          <form
+            className="panel preparation-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void act("/api/start", config);
+            }}
+          >
+            <label className="wide">
+              Input files or folders · one path per line
+              <textarea
+                aria-label="Input paths"
+                disabled={active}
+                value={config.inputs.join("\n")}
+                onChange={(event) =>
+                  change(
+                    "inputs",
+                    event.target.value.split(/\r?\n/).filter(Boolean),
+                  )
+                }
+              />
+            </label>
+            <label className="wide">
+              New output directory
+              <input
+                aria-label="Output directory"
+                disabled={active}
+                value={config.output ?? ""}
+                onChange={(event) =>
+                  change("output", event.target.value || null)
+                }
+              />
+            </label>
+            {optimizing && !detailed && (
+              <>
+                <label>
+                  Source manifest · optional
+                  <input
+                    disabled={active}
+                    value={config.source_manifest ?? ""}
+                    onChange={(event) =>
+                      change("source_manifest", event.target.value || null)
+                    }
+                  />
+                </label>
+                <label>
+                  Previous preparation · optional
+                  <input
+                    disabled={active}
+                    value={config.reuse_from ?? ""}
+                    onChange={(event) =>
+                      change("reuse_from", event.target.value || null)
+                    }
+                  />
+                </label>
+              </>
+            )}
+            <label>
+              {detailed ? "Rayon-Threads" : "Parallel workers"}
+              <input
+                aria-label="Parallel workers"
+                type="number"
+                min="1"
+                max="256"
+                required
+                disabled={detailed && active}
+                value={config.workers}
+                onChange={(event) =>
+                  change("workers", Number(event.target.value))
+                }
+              />
+            </label>
+            {detailed && (
+              <>
+                <label>
+                  Concurrent workbooks
+                  <input
+                    aria-label="Active workbooks"
+                    type="number"
+                    min="1"
+                    disabled={active}
+                    value={config.max_active_workbooks ?? 2}
+                    onChange={(event) =>
+                      change("max_active_workbooks", Number(event.target.value))
+                    }
+                  />
+                </label>
+                <label>
+                  Maximum chunk size · MiB
+                  <input
+                    aria-label="Chunk size"
+                    type="number"
+                    step="any"
+                    min="0"
+                    disabled={active}
+                    value={
+                      (config.parallel_range_chunk_size ?? 16777216) / 1048576
+                    }
+                    onChange={(event) =>
+                      change(
+                        "parallel_range_chunk_size",
+                        Math.round(Number(event.target.value) * 1048576),
+                      )
+                    }
+                  />
+                  <small>
+                    {(
+                      config.parallel_range_chunk_size ?? 16777216
+                    ).toLocaleString("en-US")}{" "}
+                    bytes · 0 disables chunking
+                  </small>
+                </label>
+              </>
+            )}
+            <label>
+              RAM and commit reserve · MiB
+              <input
+                aria-label="Memory reserve"
+                disabled={active}
+                type="number"
+                min="1"
+                placeholder="Automatic"
+                value={config.reserve_mib ?? ""}
+                onChange={(event) =>
+                  change(
+                    "reserve_mib",
+                    event.target.value ? Number(event.target.value) : null,
+                  )
+                }
+              />
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                disabled={active}
+                checked={config.recursive}
+                onChange={(event) => change("recursive", event.target.checked)}
+              />
+              Include subfolders
+            </label>
+            <div className="form-actions">
+              <button
+                className="button primary"
+                type="submit"
+                disabled={active || busy}
+              >
+                Start
+              </button>
+              <button
+                className="button subtle"
+                type="button"
+                disabled={detailed || update.status !== "running" || busy}
+                onClick={() =>
+                  void act("/api/workers", { workers: config.workers })
+                }
+              >
+                Apply workers
+              </button>
+              <button
+                className="button subtle"
+                type="button"
+                disabled={!active || busy}
+                onClick={() => void act("/api/stop")}
+              >
+                Stop
+              </button>
+            </div>
+            <p className="wide form-note">
+              {detailed
+                ? "Outputs and batch report"
+                : "Outputs and source copies"}{" "}
+              are saved in the output directory. The event log is saved
+              alongside it as .events.jsonl. Each new run requires a new output
+              directory.
+            </p>
+          </form>
+        )}
         {(error || update.error) && (
           <p className="error-banner" role="alert">
             {error || update.error}
@@ -1075,7 +1118,23 @@ function Observatory() {
         <section className="panel job-results">
           <div className="panel-header">
             <h2>Jobs</h2>
-            <span>{jobs.length} visible</span>
+            <span>
+              {jobs.length} recorded · page {currentJobPage + 1} / {jobPages}
+            </span>
+            <button
+              aria-label="Newer jobs"
+              disabled={currentJobPage === 0}
+              onClick={() => setJobPage(currentJobPage - 1)}
+            >
+              Newer
+            </button>
+            <button
+              aria-label="Older jobs"
+              disabled={currentJobPage + 1 >= jobPages}
+              onClick={() => setJobPage(currentJobPage + 1)}
+            >
+              Older
+            </button>
           </div>
           <div className="job-table">
             <table>
@@ -1089,7 +1148,7 @@ function Observatory() {
                 </tr>
               </thead>
               <tbody>
-                {[...jobs].reverse().map((job) => (
+                {pageJobs.map((job) => (
                   <tr
                     key={job.id}
                     onClick={() => setSelected(job.id)}

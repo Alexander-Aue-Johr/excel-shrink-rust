@@ -1,6 +1,8 @@
 import { build } from "esbuild";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 
 const result = await build({
   entryPoints: ["live.ts"],
@@ -147,6 +149,119 @@ test("worksheet search pages retain access to every sheet and the pinned selecti
   assert.equal(empty.page, 0);
   assert.equal(empty.pages, 1);
   assert.equal(empty.sheets.length, 0);
+});
+
+test("static replay loads relative compressed events and rejects corrupted history", async () => {
+  const bundle = await build({
+    entryPoints: ["lib/static-replay.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { loadStaticReplay } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
+  );
+  const event = {
+    sequence: 0,
+    elapsed_millis: 10,
+    event_type: "run.completed",
+    payload: {},
+  };
+  let compressed = gzipSync(JSON.stringify(event) + "\n");
+  const manifest = {
+    schema: 1,
+    source: { ...base, operation: "sheet-shrink" },
+    events_file: "events.jsonl.gz",
+    event_count: 1,
+    events_bytes: compressed.length,
+    events_sha256: createHash("sha256").update(compressed).digest("hex"),
+  };
+  const requests = [];
+  const request = async (url) => {
+    requests.push(String(url));
+    const response = String(url).endsWith("recording.json")
+      ? Response.json(manifest)
+      : new Response(compressed);
+    Object.defineProperty(response, "url", {
+      value: "https://example.test/runs/destatis/recording.json",
+    });
+    return response;
+  };
+  const result = await loadStaticReplay(
+    "./recording.json",
+    new AbortController().signal,
+    request,
+  );
+  assert.deepEqual(result.events, [event]);
+  assert.deepEqual(requests, [
+    "./recording.json",
+    "https://example.test/runs/destatis/events.jsonl.gz",
+  ]);
+  manifest.events_sha256 = "0".repeat(64);
+  await assert.rejects(
+    loadStaticReplay("./recording.json", new AbortController().signal, request),
+    /hash mismatch/,
+  );
+  compressed = gzipSync(JSON.stringify({ ...event, sequence: 9 }) + "\n");
+  manifest.events_bytes = compressed.length;
+  manifest.events_sha256 = createHash("sha256")
+    .update(compressed)
+    .digest("hex");
+  await assert.rejects(
+    loadStaticReplay("./recording.json", new AbortController().signal, request),
+    /sequence or clock mismatch/,
+  );
+  manifest.events_bytes = 129 * 1024 * 1024;
+  await assert.rejects(
+    loadStaticReplay("./recording.json", new AbortController().signal, request),
+    /Unsupported static replay size or source/,
+  );
+  manifest.events_file = "https://other.test/events.jsonl.gz";
+  await assert.rejects(
+    loadStaticReplay("./recording.json", new AbortController().signal, request),
+    /Unsupported static replay manifest/,
+  );
+});
+
+test("worker staircase supports a full 30301-workbook recording", async () => {
+  const bundle = await build({
+    entryPoints: ["lib/worker-scene.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { buildWorkerScene } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
+  );
+  const jobs = Array.from({ length: 30301 }, (_, index) => ({
+    id: `workbook-${index}`,
+    name: `book-${index}.xlsx`,
+    worker: 0,
+    started_ms: index,
+    ended_ms: index + 1,
+    status: "prepared",
+    before: packageSize(30, 100),
+    after: packageSize(20, 50),
+    source_bytes: 30,
+    error: null,
+  }));
+  const { snapshot, run } = scenes(
+    { ...base, operation: "sheet-shrink", elapsed_ms: 31000 },
+    jobs,
+    [],
+  );
+  const scene = buildWorkerScene(snapshot, run, {
+    workUnit: "worksheet",
+    stepHeight: 0.001,
+    labelMode: "name",
+    jobStyle: "blocks",
+    windowSeconds: 31,
+    overview: false,
+  });
+  assert.equal(snapshot.workbooks.length, 30301);
+  assert.ok(scene.shapes.some((shape) => shape.positions.length > 300000));
 });
 
 test("vector export preserves worksheet anchors and escapes source labels", async () => {

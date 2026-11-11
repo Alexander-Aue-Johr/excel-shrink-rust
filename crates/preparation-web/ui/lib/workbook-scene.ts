@@ -161,7 +161,7 @@ function batchShapes(shapes: Shape[]): Shape[] {
       batches.set(key, batch);
     }
     const offset = batch.positions.length / 3;
-    batch.positions.push(...shape.positions);
+    for (const position of shape.positions) batch.positions.push(position);
     if (batch.indices) {
       const indices =
         shape.indices ??

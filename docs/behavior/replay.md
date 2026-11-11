@@ -198,5 +198,31 @@ The reproducible command and receipt are in
 Allocator attribution, browser long-run memory and broader recording costs
 still require separate measurements.
 Shared live process-component playback remains open.
+
+## Standalone SheetShrink replay export
+
+`tools/export-preparation-replay.py RUN_DIRECTORY NEW_DESTINATION` exports a
+completed distribution recording with the shared Observatory assets. Serve the
+result through HTTP or HTTPS, including from a GitHub Pages subdirectory. The
+export uses relative URLs and requires no running preparation API. Existing
+export directories are rejected. The original compressed event stream is copied
+byte-for-byte, checked against terminal outcomes, and recorded with its SHA-256.
+The browser verifies the compressed payload before decoding it.
+
+Playback supports pause, backward and forward seeks, and speeds from 0.05 to
+1,000 times. Worksheet search retains paginated access to the complete history.
+The jobs table displays 256 rows per page. The complete Enron browser probe
+loaded 30,301 workbooks, 120,741 worksheets and 241,627 work items. Job pagination,
+rewinding to zero and returning to the end succeeded without console errors.
+That probe exposed and corrected a renderer argument-limit failure when adding
+a large staircase geometry to its vertex batch.
+
+This exporter loads the entire recording into browser memory. Its input limits
+are one million events, 128 MiB compressed and 512 MiB decoded. These limits do
+not establish bounded JavaScript heap use or long-run playback performance.
+The exported publication status remains `review_required`. Workbook labels,
+error messages and dataset redistribution rights require review before public
+hosting. These preparation recordings supplement the validation report and its
+separate chunked replay format.
 Process/sheet/capture/heartbeat recording and long-run memory/cost acceptance
 remain open too. This storage channel alone does not complete roadmap Task 15.
