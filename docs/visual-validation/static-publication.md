@@ -117,6 +117,15 @@ evidence and use `image-derivation.json.gz` to trace presentation assets
 to their source PNG hashes. Check the overview, thumbnails, direct links
 and per-comparison detail pages over static HTTP after conversion.
 
+A retained 573-by-19,981-pixel capture exercises the tiled SVG path beyond
+WebP's single-image height limit. The browser decoded the embedded tiles into
+a full-size canvas. Its SHA-256 over RGBA bytes matched the original PNG's
+decoded pixels exactly. The derived image occupied 189,082 bytes compared with
+1,580,482 bytes for the PNG. The
+[browser receipt](experiments/independent-reference/tall-static-image-browser-20261111.json)
+records both hashes and dimensions. This control qualifies that retained
+capture in Edge, while the full export still requires its own static-HTTP check.
+
 ```powershell
 python -m http.server 18890 --bind 127.0.0.1 `
     --directory 'G:\deltasieve-releases\enron-2026-11-08-buildid'
