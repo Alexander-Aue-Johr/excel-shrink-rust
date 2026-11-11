@@ -13,6 +13,7 @@ use corpus_runner::{package_sizes, telemetry::Operation};
 enum Mode {
     CheckPerformance,
     Conversion,
+    Rebuild,
 }
 
 impl Mode {
@@ -20,6 +21,7 @@ impl Mode {
         match self {
             Self::CheckPerformance => "check-performance",
             Self::Conversion => "xlsx-convert",
+            Self::Rebuild => "excel-rebuild",
         }
     }
 }
@@ -137,6 +139,22 @@ pub(crate) fn run_conversion(
     run_inputs(args, inputs, context, Mode::Conversion)
 }
 
+pub(crate) fn run_rebuild(
+    inputs: Vec<Input>,
+    output: PathBuf,
+    workers: usize,
+    context: RunContext,
+) -> Result<()> {
+    let args = Args {
+        input: Vec::new(),
+        source_manifest: None,
+        output,
+        workers,
+        reuse_from: None,
+    };
+    run_inputs(args, inputs, context, Mode::Rebuild)
+}
+
 fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -> Result<()> {
     anyhow::ensure!(args.workers > 0, "Excel workers must be positive");
     anyhow::ensure!(
@@ -162,8 +180,11 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
     )?;
     let mut pool = match mode {
         Mode::CheckPerformance => Pool::new_performance(output.join("workers"))?,
-        Mode::Conversion => Pool::new(output.join("workers"))?,
+        Mode::Conversion | Mode::Rebuild => Pool::new(output.join("workers"))?,
     };
+    if matches!(mode, Mode::Rebuild) {
+        fs::write(pool.root.join("rebuild-pool"), b"calculate-full-rebuild")?;
+    }
     if let Some(reserve) = context.memory_reserve {
         pool.set_memory_reserve(reserve);
     }
@@ -300,7 +321,7 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
                     let metadata = match mode {
                         Mode::CheckPerformance => package_sizes::inspect(&input.baseline)
                             .map(|sizes| json!({"package": sizes})),
-                        Mode::Conversion => fs::metadata(&input.baseline)
+                        Mode::Conversion | Mode::Rebuild => fs::metadata(&input.baseline)
                             .map(|file| json!({"file_bytes": file.len()}))
                             .map_err(Into::into),
                     };
@@ -315,7 +336,7 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
                     );
                     let result = match mode {
                         Mode::CheckPerformance => prepare(&pool_root, input, &directory, &producer),
-                        Mode::Conversion => prepare_conversion(&pool_root, input, &directory, &producer),
+                        Mode::Conversion | Mode::Rebuild => prepare_conversion(&pool_root, input, &directory, &producer, mode),
                     };
                     if result.is_err() && pool_root.join("error.json").exists() {
                         cancelled.store(true, Ordering::Release);
@@ -464,7 +485,7 @@ fn run_inputs(args: Args, inputs: Vec<Input>, context: RunContext, mode: Mode) -
             "unresolved": inputs.len().saturating_sub(outcomes.len()),
         }),
     );
-    if matches!(mode, Mode::Conversion) {
+    if matches!(mode, Mode::Conversion | Mode::Rebuild) {
         publish_converted_sources(&output, &inputs)?;
     }
     pool_result?;
@@ -580,7 +601,13 @@ fn prepare(root: &Path, source: &Input, directory: &Path, producer_sha256: &str)
 }
 
 /// Freeze source bytes before Excel opens them; never overwrite the user's input.
-fn prepare_conversion(root: &Path, input: &Input, directory: &Path, producer: &str) -> Result<()> {
+fn prepare_conversion(
+    root: &Path,
+    input: &Input,
+    directory: &Path,
+    producer: &str,
+    mode: Mode,
+) -> Result<()> {
     fs::create_dir(directory)?;
     let source_hash = corpus_runner::artifacts::hash_file(&input.baseline)?;
     let extension = input
@@ -604,7 +631,8 @@ fn prepare_conversion(root: &Path, input: &Input, directory: &Path, producer: &s
     write_json(
         &directory.join("prepared.json"),
         &json!({
-            "version": 1, "operation": "xlsx-convert", "source_id": input.source_id,
+            "version": 1, "operation": mode.name(), "source_id": input.source_id,
+            "full_rebuild": matches!(mode, Mode::Rebuild),
             "name": input.name, "source_sha256": source_hash, "producer_sha256": producer,
             "raw_source": {"sha256": source_hash, "format": extension, "member": null},
             "baseline": {"file": "converted.xlsx", "sha256": output_hash, "bytes": fs::metadata(&output)?.len()},
@@ -815,6 +843,15 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("positive"));
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn rebuild_uses_an_independent_operation_identity() {
+        assert_eq!(Mode::Rebuild.name(), "excel-rebuild");
+        assert_ne!(Mode::Rebuild.name(), Mode::Conversion.name());
+        let script = include_str!("worker.ps1");
+        assert!(script.contains("$excel.CalculateFullRebuild()"));
+        assert!(script.contains("while ($excel.CalculationState -ne 0)"));
     }
 
     #[test]

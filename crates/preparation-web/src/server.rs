@@ -395,6 +395,7 @@ async fn index(State(app): State<App>) -> Response {
     let title = match app.operation {
         Operation::SheetShrink => "SheetShrink",
         Operation::XlsxConvert => "XLSX Convert",
+        Operation::ExcelRebuild => "Excel Rebuild",
         Operation::CheckPerformance => "Excel Check Performance",
     };
     let html = include_str!("../assets/index.html")
@@ -763,6 +764,15 @@ fn execute(operation: Operation, defaults: Defaults, context: RunContext) -> Res
             },
             context,
         ),
+        Operation::ExcelRebuild => conversion::rebuild(
+            conversion::Options {
+                inputs: defaults.inputs,
+                output,
+                workers: defaults.workers,
+                recursive: defaults.recursive,
+            },
+            context,
+        ),
         Operation::CheckPerformance => {
             let inputs = if defaults.inputs.is_empty() {
                 Vec::new()
@@ -883,7 +893,7 @@ mod tests {
             writeln!(
                 log,
                 "{}",
-                serde_json::to_string(&event(index, "work.started", "sheet-α")).unwrap()
+                serde_json::to_string(&event(index, "work.started", "sheet-ÃŽÂ±")).unwrap()
             )
             .unwrap();
         }

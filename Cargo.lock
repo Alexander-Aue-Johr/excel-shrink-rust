@@ -513,6 +513,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "excel-rebuild"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "corpus-runner",
+ "excel-automation",
+ "preparation-web",
+]
+
+[[package]]
 name = "excel-shrink-cli"
 version = "0.1.0"
 dependencies = [

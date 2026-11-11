@@ -58,3 +58,27 @@ Keep behavioral changes separate from component moves. Preserve the pinned
 production executable and assets during extraction. A later evaluation release
 requires ordinary start/resume, portable preparation import, report export and
 cross-machine merge acceptance against its frozen binaries.
+
+## Standalone Excel Rebuild
+
+`apps/excel-rebuild` uses the shared Excel automation pool and preparation web
+interface. CLI inputs accept files or folders, with `--recursive`, `--workers`,
+`--reserve-mib` and an independent new `--output` directory. `--open-browser`
+opens the configuration page without starting the workload automatically.
+
+Each input is hash-verified into a separate source copy. Excel opens it read-only
+with link updates disabled, macros forced off, events disabled and manual
+calculation. `CalculateFullRebuild()` rebuilds formula dependencies and calculates
+all formulas. Saving waits until `CalculationState` is done. The output is a
+separate XLSX copy. The original bytes are checked again before publishing the
+receipt. Worker sessions are reused and shared RAM/commit guards remain active.
+Rebuild phases have a 900-second minimum stall allowance. Errors retain their
+per-input diagnostics and do not publish successful prepared receipts.
+
+Receipts identify the `excel-rebuild` operation, full-rebuild request, source and
+output hashes, producer hash, native phase timings and package sizes. Outputs use
+`input-NNNNNN/converted.xlsx` and a `sources.json` index. Source files remain
+available alongside the output. Calculation uses each machine's Excel environment
+and cached external links. Volatile functions and unavailable external references
+can change calculated values and require separate attribution. This operation
+alone establishes neither cell-value preservation nor visual equivalence.

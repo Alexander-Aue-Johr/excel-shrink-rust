@@ -12,6 +12,17 @@ pub struct Options {
 }
 
 pub fn run(options: Options, context: RunContext) -> Result<()> {
+    let inputs = collect_inputs(&options)?;
+    performance::run_conversion(inputs, options.output, options.workers, context)
+}
+
+/// Rebuild dependency trees and save copies without modifying the source files.
+pub fn rebuild(options: Options, context: RunContext) -> Result<()> {
+    let inputs = collect_inputs(&options)?;
+    performance::run_rebuild(inputs, options.output, options.workers, context)
+}
+
+fn collect_inputs(options: &Options) -> Result<Vec<Input>> {
     ensure!(
         !options.inputs.is_empty(),
         "Choose at least one XLS or XLSX input"
@@ -49,5 +60,5 @@ pub fn run(options: Options, context: RunContext) -> Result<()> {
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    performance::run_conversion(inputs, options.output, options.workers, context)
+    Ok(inputs)
 }

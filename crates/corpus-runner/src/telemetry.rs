@@ -14,6 +14,7 @@ use std::{
 #[serde(rename_all = "kebab-case")]
 pub enum Operation {
     XlsxConvert,
+    ExcelRebuild,
     CheckPerformance,
     SheetShrink,
 }

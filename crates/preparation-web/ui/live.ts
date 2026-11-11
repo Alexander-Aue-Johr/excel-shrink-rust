@@ -85,7 +85,7 @@ export interface NativeEvent {
 
 export interface Update {
   run_id: string;
-  operation: "xlsx-convert" | "check-performance" | "sheet-shrink";
+  operation: "xlsx-convert" | "excel-rebuild" | "check-performance" | "sheet-shrink";
   status: string;
   error: string | null;
   defaults: Configuration;

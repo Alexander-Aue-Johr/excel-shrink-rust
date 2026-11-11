@@ -105,6 +105,9 @@ pub(super) fn run_request(root: &Path, session: &Path, request: &Request) -> Res
     if request.performance {
         timeout = timeout.max(Duration::from_secs(180));
     }
+    if root.join("rebuild-pool").exists() {
+        timeout = timeout.max(Duration::from_secs(900));
+    }
     let mut last_phase = Value::Null;
     let mut last_progress = Instant::now();
     loop {

@@ -385,12 +385,13 @@ function Observatory() {
     pinnedSheet,
   );
   const detailed = update.operation === "sheet-shrink";
-  const optimizing = update.operation !== "xlsx-convert";
+  const rebuilding = update.operation === "excel-rebuild";
+  const optimizing = detailed || update.operation === "check-performance";
   const title = detailed
     ? "SheetShrink"
     : optimizing
       ? "Excel Check Performance"
-      : "XLSX Convert";
+      : rebuilding ? "Excel Rebuild" : "XLSX Convert";
   const active = activeStates.has(update.status);
   const completed = update.counts.prepared + update.counts.failed;
   const seconds = update.elapsed_ms / 1000;
@@ -654,7 +655,7 @@ function Observatory() {
                 ? `Recorded ${config.inputs[0]} run`
                 : optimizing
                   ? "Optimize. Explore."
-                  : "Convert. Explore."}
+                  : rebuilding ? "Rebuild. Explore." : "Convert. Explore."}
             </h1>
             <p>
               {staticReplay
@@ -663,7 +664,9 @@ function Observatory() {
                   ? "Optimize workbooks with SheetShrink and explore parallel sheet and chunk processing."
                   : optimizing
                     ? "Optimize workbooks in parallel with Excel Check Performance."
-                    : "Save XLS and XLSX inputs as separate XLSX copies using Excel."}
+                    : rebuilding
+                      ? "Fully rebuild calculation dependencies and save separate XLSX copies."
+                      : "Save XLS and XLSX inputs as separate XLSX copies using Excel."}
             </p>
           </div>
         </section>

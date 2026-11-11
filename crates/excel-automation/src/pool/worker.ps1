@@ -149,6 +149,17 @@ try {
                 worker_session_id=[IO.Path]::GetFileName($Session)
                 excel_pid=$excelPid;workbooks_converted=($convertedCount + 1)
             }
+            if ([IO.File]::Exists((Join-Path $PSScriptRoot 'rebuild-pool'))) {
+                $phase = 'full calculation rebuild'
+                Set-Phase $request.directory $phase
+                $phaseClock.Restart()
+                $excel.CalculateFullRebuild()
+                while ($excel.CalculationState -ne 0) {
+                    Start-Sleep -Milliseconds 100
+                }
+                $phaseTimes[$phase] = $phaseClock.Elapsed.TotalSeconds
+                $excel.CalculateBeforeSave = $false
+            }
             $phase = if ($request.performance) { 'optimizing workbook performance' } else { 'saving XLSX conversion' }
             Set-Phase $request.directory $phase
             $phaseClock.Restart()
