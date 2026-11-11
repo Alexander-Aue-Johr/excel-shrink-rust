@@ -106,6 +106,23 @@ and distinguish their explicit reference controls from the unfinished
 ordinary outcomes. The second pair has insufficient steady-state
 timing to commit to completion before the manuscript review guard.
 
+### First-stage handoff on 2026-11-11 at 01:39 CET
+
+The locally served three-corpus Atlas contains the nine frozen ranks
+and all five transformation choices for each corpus. The 135 ordinary
+slots comprise 102 completed reports with coverage limits, 21 failures
+and 12 slots without an observation in this snapshot. Explicit native
+controls and normalized-baseline observations remain separate. The HTTP
+browser checks passed for all three corpus views and the matched Adage
+comparison. The byte-exact static export totals 3,459,453,724 bytes.
+The opening figure in the DeltaSieve manuscript now uses this snapshot.
+The public hosting URL and publication review remain open.
+
+The live QT/RR jobs reached 27,146 and 14,754 individual captures.
+Extrapolating their observed average rates gives 11.2 and 12.3 hours
+remaining before packaging. Keep the 16-workbook expansion deferred
+and continue manuscript evaluation against timestamped evidence.
+
 ### Static-report checkpoint on 2026-11-10 evening
 
 The third combined preview contains 76 observations from 19 source reports.
