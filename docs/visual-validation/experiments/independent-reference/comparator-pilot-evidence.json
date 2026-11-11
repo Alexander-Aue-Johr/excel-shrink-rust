@@ -1,0 +1,541 @@
+{
+  "schema": 1,
+  "coverage": "Declared reference rectangles only. Pixel counts compare overlapping RGBA without resizing.",
+  "cases": [
+    {
+      "case": "identical",
+      "expected_changes": [],
+      "input_sha256": {
+        "original.xlsx": "5466f0cd3c8e3a82013b15acafb2dc753b3848593ddca8c1f09ffb55e29a8eb4",
+        "candidate.xlsx": "5466f0cd3c8e3a82013b15acafb2dc753b3848593ddca8c1f09ffb55e29a8eb4"
+      },
+      "plan_sha256": "399618d37b58e86cee64fbc2ec3a7481808e8bc10617d9fcee847ff0e70b3dc2",
+      "producer_sha256": "7fdcbfbbbd625069e01f2a236d467d9598041688afa6cf10c90edfa14deb9473",
+      "elapsed_seconds": 10.9177858,
+      "tiles": [
+        {
+          "range": "A1:N30",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              601
+            ],
+            [
+              917,
+              601
+            ]
+          ],
+          "png_sha256": [
+            "fb1e8c751c3611564f7d8d6f125803b8dd10f0883a91204f336e04ca8467f3fd",
+            "fb1e8c751c3611564f7d8d6f125803b8dd10f0883a91204f336e04ca8467f3fd"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        }
+      ]
+    },
+    {
+      "case": "offscreen-hidden",
+      "expected_changes": [
+        "Data!B2000 value 7 to 9",
+        "Data!B3000 hidden value 7 to 9"
+      ],
+      "input_sha256": {
+        "original.xlsx": "08f53f94877f8799b88c69044dcacaf3fbff0036c06379e635d55caad4abfdc9",
+        "candidate.xlsx": "e808b9307a2d2a420913fdafca7689a705d07a9b722e975eb0385679bba0d4cb"
+      },
+      "plan_sha256": "9813e32d6622970f047ee21e86c1216ff749e6ec16ce87b7177ea2cd18ddf7e4",
+      "producer_sha256": "7fdcbfbbbd625069e01f2a236d467d9598041688afa6cf10c90edfa14deb9473",
+      "elapsed_seconds": 17.886043,
+      "tiles": [
+        {
+          "range": "A1:N256",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "eb08a32afcd3ce0b4f231e02ccb59b6a3787fede141bec0a4728207be1253a85",
+            "eb08a32afcd3ce0b4f231e02ccb59b6a3787fede141bec0a4728207be1253a85"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A257:N512",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A513:N768",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A769:N1024",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1025:N1280",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1281:N1536",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1537:N1792",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1793:N2048",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "f6e97bd5f9af86ef66f637f926a05daebd5e37d4560fa49f36e4bd0db5d60574",
+            "620937492a1ef2dc54e5c76a5927c9bc4ca1842d9a7f3193518d401c6ef55461"
+          ],
+          "changed_overlapping_rgba_pixels": 47
+        },
+        {
+          "range": "A2049:N2304",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A2305:N2560",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A2561:N2816",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5121
+            ],
+            [
+              917,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db",
+            "16e1c206021be2561ccc641ddcae73b6f82db1e49a8ac27c19d9665742ea01db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A2817:N3072",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              5101
+            ],
+            [
+              917,
+              5101
+            ]
+          ],
+          "png_sha256": [
+            "ea76e615e81792fe90a24a5c20927602d8a4c06b2c0688810813da69bfde6da6",
+            "ea76e615e81792fe90a24a5c20927602d8a4c06b2c0688810813da69bfde6da6"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        }
+      ]
+    },
+    {
+      "case": "direct-presentation",
+      "expected_changes": [
+        "Data!A1 fill",
+        "Data!C1 bottom border",
+        "row 1 height",
+        "column A width"
+      ],
+      "input_sha256": {
+        "original.xlsx": "5466f0cd3c8e3a82013b15acafb2dc753b3848593ddca8c1f09ffb55e29a8eb4",
+        "candidate.xlsx": "4f26afe87f5ee7d8fa13bab16efcf76da9628b060150960108e363c54302db6c"
+      },
+      "plan_sha256": "399618d37b58e86cee64fbc2ec3a7481808e8bc10617d9fcee847ff0e70b3dc2",
+      "producer_sha256": "7fdcbfbbbd625069e01f2a236d467d9598041688afa6cf10c90edfa14deb9473",
+      "elapsed_seconds": 11.1899321,
+      "tiles": [
+        {
+          "range": "A1:N30",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              601
+            ],
+            [
+              1001,
+              621
+            ]
+          ],
+          "png_sha256": [
+            "fb1e8c751c3611564f7d8d6f125803b8dd10f0883a91204f336e04ca8467f3fd",
+            "42cca064c59b092d46d0ec36bf68460519e640ac5a6d08c384d7db81fa26830c"
+          ],
+          "changed_overlapping_rgba_pixels": 7114
+        }
+      ]
+    },
+    {
+      "case": "dependent-presentation",
+      "expected_changes": [
+        "Data!B1 value 1 to 9",
+        "dependent CF D1:D3",
+        "dependent pie chart"
+      ],
+      "input_sha256": {
+        "original.xlsx": "5ca1a117451fc0e0e412861e1cf529ec48da6335c7a2588ffbb2fb3c0092ceed",
+        "candidate.xlsx": "85bc58a033bdb7735755bab8a9defd48fc7e277ce7e5eb7911a60a3c80d44750"
+      },
+      "plan_sha256": "399618d37b58e86cee64fbc2ec3a7481808e8bc10617d9fcee847ff0e70b3dc2",
+      "producer_sha256": "7fdcbfbbbd625069e01f2a236d467d9598041688afa6cf10c90edfa14deb9473",
+      "elapsed_seconds": 12.1580989,
+      "tiles": [
+        {
+          "range": "A1:N30",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              917,
+              601
+            ],
+            [
+              917,
+              601
+            ]
+          ],
+          "png_sha256": [
+            "40a011a78549087eff6faa5948ccb559491f59fffb9a5e356ac93d9fe7124886",
+            "035e09fc63fdbf43ab49e79a0e0a1bf2cd23b9f7d5ee4bd4b346eff19a6c71e2"
+          ],
+          "changed_overlapping_rgba_pixels": 40211
+        }
+      ]
+    },
+    {
+      "case": "sparse-formatting",
+      "expected_changes": [
+        "Data!J2099 blank-cell fill replaced by bottom border"
+      ],
+      "input_sha256": {
+        "original.xlsx": "dcdceacf05828cae0606825c0dff538f5955120664c0604c822ce06ba7a79211",
+        "candidate.xlsx": "23c719cf373a3cdfa18de01de5b6b4e56f5f8181c7a6aedc778b0658c102e306"
+      },
+      "plan_sha256": "2dc09c21e97f180d50da6a0bbe485e115439487015fc9e9337723cf28fe2a6d0",
+      "producer_sha256": "7fdcbfbbbd625069e01f2a236d467d9598041688afa6cf10c90edfa14deb9473",
+      "elapsed_seconds": 16.3719373,
+      "tiles": [
+        {
+          "range": "A1:P256",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "8695d79c7f11fce9c215cb4d1295eb2572078f3688cb8b02c61ecfc98d96e5db",
+            "8695d79c7f11fce9c215cb4d1295eb2572078f3688cb8b02c61ecfc98d96e5db"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A257:P512",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051",
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A513:P768",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051",
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A769:P1024",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051",
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1025:P1280",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051",
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1281:P1536",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051",
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1537:P1792",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051",
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A1793:P2048",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051",
+            "21b13ffa2b12b7cb1b4c5a436b2cbeba6586eee1e2d3b14de341d10110a2d051"
+          ],
+          "changed_overlapping_rgba_pixels": 0
+        },
+        {
+          "range": "A2049:P2304",
+          "sheet": "Data",
+          "dimensions": [
+            [
+              1045,
+              5121
+            ],
+            [
+              1045,
+              5121
+            ]
+          ],
+          "png_sha256": [
+            "e952fd4163d3a3207eab64232cebdb9a37f9fb8cc71633865195a51157ba21a4",
+            "a158338111ef3824039657e8274e54c292489facb2c35559b672e6fea21f1f0d"
+          ],
+          "changed_overlapping_rgba_pixels": 1281
+        }
+      ]
+    }
+  ]
+}

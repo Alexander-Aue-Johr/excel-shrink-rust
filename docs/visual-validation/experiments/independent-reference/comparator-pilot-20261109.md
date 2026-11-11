@@ -66,3 +66,9 @@ The successful optimized reference producer SHA-256 is
 `7fdcbfbbbd625069e01f2a236d467d9598041688afa6cf10c90edfa14deb9473`.
 Its separate runtime contains 113 verified files. The production night queue
 retains its earlier frozen runtime. No corpus verdict was replaced by these tests.
+
+The [per-rectangle evidence](comparator-pilot-evidence.json) records the frozen
+fixture and reference-plan hashes, both image hashes, dimensions and the
+overlapping RGBA count for every rectangle. A separate pixel recheck decoded
+all 48 retained PNGs, matched them against their receipts, and reproduced the
+changed ranges and counts across all 24 rectangles.
