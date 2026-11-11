@@ -232,6 +232,7 @@ pub fn run(options: Options, context: RunContext) -> Result<()> {
     // Keep large workbooks available while smaller sheets fill idle threads.
     cli.largest_first = true;
     cli.batch_report = Some(options.output.join("preparation.json"));
+    cli.analysis_csv = Some(options.output.join("analysis.csv"));
     let pairs: Vec<_> = inputs
         .iter()
         .enumerate()

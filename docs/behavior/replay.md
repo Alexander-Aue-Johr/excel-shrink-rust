@@ -10,6 +10,13 @@ by the selected time, including metadata and completion reports. Playback does
 not invoke cleanup or write workbook outputs. The displayed clock remains the
 recorded elapsed time.
 
+Observed SheetShrink runs also write `analysis.csv` inside their new output
+directory, alongside `preparation.json`. It records per-sheet/per-cause cleanup
+statistics under the normal cleanup policy. Statistics collection does not enable
+the separate tail-pruning-disabled attribution policy. Unchanged inputs and
+unsuccessful preparation outcomes must remain represented in workbook/status
+tables when deriving corpus distributions.
+
 Replay currently belongs to the current native server's run. Browser reloads
 retain access while that server remains open. Reopening an older log in a new
 server is not yet supported. A missing or malformed log produces an error.
