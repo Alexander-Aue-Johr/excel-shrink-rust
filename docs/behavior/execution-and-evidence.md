@@ -4,6 +4,22 @@ These rules complement [the shrinker](shrinker.md) and
 [the targeted comparison](targeted-validation.md). They distinguish scientific
 outcomes, scheduling, diagnostic telemetry and disposable working files.
 
+## Ordinary configuration startup
+
+The VS Code task `DeltaSieve: Configure validation` invokes
+`tools/start-deltasieve.ps1`. The starter opens the `observatory` command.
+`-Config` supplies the standalone comparison form and `-StudyConfig` supplies
+the archive-study form through their respective CLI options. Configuration
+prefill waits for the web Start action. Direct `run` and `study` commands retain
+their explicit execution behavior.
+
+The starter accepts an existing executable through `-BinaryPath`, an explicit
+working root through `-DataRoot`, an optional port and browser suppression.
+Argument boundaries must preserve configuration paths containing spaces.
+This handoff does not migrate saved study identities or establish runtime
+compatibility with a different executable. Receipt-based resume retains its
+separate identity and locking checks.
+
 ## Runtime Office assets
 
 Resident job descriptions retain the transport kind and ID. For a targeted
