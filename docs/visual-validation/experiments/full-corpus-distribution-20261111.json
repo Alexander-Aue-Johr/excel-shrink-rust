@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "status": "Destatis complete; Data.gov running; Enron queued",
+  "code_revision": "e7b91538",
+  "producer_sha256": "85dc6c215006bfe8cdecc3885e3d9646ab743473d2be12e6f30d3e409231e658",
+  "build_profile": "release",
+  "settings": {
+    "logical_processors": 16,
+    "workbook_slots": 16,
+    "rayon_threads": 16,
+    "writer_workers": 16,
+    "chunk_bytes": 16777216,
+    "ram_and_commit_reserve_mib": 8192
+  },
+  "environment": {
+    "cpu": {
+      "Name": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+      "NumberOfCores": 8,
+      "NumberOfLogicalProcessors": 16
+    },
+    "os": {
+      "Caption": "Microsoft Windows 11 Home",
+      "Version": "10.0.26200",
+      "BuildNumber": "26200",
+      "TotalVisibleMemorySize": 99674036
+    }
+  },
+  "destatis": {
+    "summary": {
+      "total": 1182,
+      "processed": 1182,
+      "preserved": 0,
+      "skipped": 0,
+      "failed": 0
+    },
+    "source_profile_sha256": "b9fb2c8eb085f1a7f7b1108c3b848065db262f6195b264f71deeb30e398a828d",
+    "original_bytes": 2364066555,
+    "output_bytes": 1998084298,
+    "elapsed_ms": 119746,
+    "verified_source_and_output_hash_rows": 1182,
+    "replay": {
+      "schema": 1,
+      "corpus": "destatis",
+      "events": 136630,
+      "counts": {
+        "run.started": 1,
+        "job.started": 1182,
+        "workbook.metadata": 1182,
+        "work.started": 66541,
+        "work.finished": 66541,
+        "job.completed": 1182,
+        "run.completed": 1
+      },
+      "monotonic_microseconds": true,
+      "contiguous_sequences": true,
+      "unclosed_workbooks": 0,
+      "unclosed_tasks": 0,
+      "maximum_active_workbooks": 16,
+      "maximum_active_rayon_workers": 16,
+      "terminal_elapsed_ms": 119796,
+      "replay_gzip_sha256": "16b8e261b47b0ff03dd8bacb298695baab44c0c3bb3d684d355c4303566cb3ce",
+      "scope": "Complete saved event stream, excluding browser rendering and later static replay publication"
+    },
+    "workbook_csv_sha256": "1c8c50510f5d065164fecebf0c5f8767141653dcfa87fb813ed67b6d89d9bfad",
+    "analysis_gzip_sha256": "011c4489741618881d5646201d7df4c77e1723f68b28e657652c7b59606aa002",
+    "archive_sha256": "0855989e010ae6a0a44698ea6b92c1db22dcc84a59e287edd218ed2cdefc9e8e",
+    "remote_verified_files": 6
+  },
+  "limitations": [
+    "Normal cleanup with analysis and detailed events under concurrent native validation load; no isolated throughput claim.",
+    "Stopped debug pilot and preliminary handover excluded from the release series.",
+    "Full status accounting is per XLSX input; unavailable raw Enron preparations are a separate population.",
+    "Saved events and native Observatory playback do not complete static GitHub Pages replay publication."
+  ]
+}
