@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "behavior": "cell-audit accepts --formula-sample-limit from1 through65536, default32. All cell differences are retained independently of this diagnostic limit.",
+  "native_verification": {
+    "binary_sha256": "9adca6994a0c880611e479dbc5375335eabea2525ec862976e02c5fc6c6e8f7f",
+    "results": [
+      {
+        "case": "default",
+        "examined": 2,
+        "all_records_examined": true
+      },
+      {
+        "case": "one",
+        "examined": 1,
+        "all_records_examined": false
+      },
+      {
+        "case": "two",
+        "examined": 2,
+        "all_records_examined": true
+      },
+      {
+        "invalid_limit": "0",
+        "rejected": true
+      },
+      {
+        "invalid_limit": "65537",
+        "rejected": true
+      }
+    ]
+  },
+  "limits": "all_records_examined describes diagnostic record coverage. It does not certify a dependency path for every record or exclusive causation. all_differences_explained remains false."
+}

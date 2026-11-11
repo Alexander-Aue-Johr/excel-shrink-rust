@@ -22,6 +22,9 @@ pub struct Args {
     /// JSON array of objects containing label, left and right paths.
     #[arg(long, conflicts_with_all = ["left", "right"])]
     manifest: Option<PathBuf>,
+    /// Maximum changed-cell records examined for diagnostic dependency paths.
+    #[arg(long, default_value_t = 32, value_parser = clap::value_parser!(u32).range(1..=65_536))]
+    formula_sample_limit: u32,
     /// A new directory for per-pair evidence and the summary.
     #[arg(long)]
     output: PathBuf,
@@ -50,7 +53,7 @@ pub fn run(args: Args) -> Result<()> {
     let mut failures = 0;
     for (index, pair) in pairs.iter().enumerate() {
         let started = Instant::now();
-        let result = inspect(pair);
+        let result = inspect(pair, args.formula_sample_limit as usize);
         let record = match result {
             Ok(report) => report,
             Err(error) => json!({"status":"failed", "error":format!("{error:#}")}),
@@ -84,7 +87,7 @@ pub fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn inspect(pair: &Pair) -> Result<Value> {
+fn inspect(pair: &Pair, sample_limit: usize) -> Result<Value> {
     let left_hash = artifact_cache::hash_file(&pair.left)?;
     let right_hash = artifact_cache::hash_file(&pair.right)?;
     let mut left_archive = zip::ZipArchive::new(File::open(&pair.left)?)?;
@@ -98,7 +101,7 @@ fn inspect(pair: &Pair) -> Result<Value> {
     let diagnostics = if report.differences.is_empty() {
         json!({"status":"not_needed"})
     } else {
-        explain(pair, &report)
+        explain(pair, &report, sample_limit)
             .unwrap_or_else(|error| json!({"status":"unavailable", "reason":format!("{error:#}")}))
     };
     ensure!(
@@ -116,7 +119,11 @@ fn inspect(pair: &Pair) -> Result<Value> {
     }))
 }
 
-fn explain(pair: &Pair, report: &xlsx_value_compare::WorkbookComparisonReport) -> Result<Value> {
+fn explain(
+    pair: &Pair,
+    report: &xlsx_value_compare::WorkbookComparisonReport,
+    sample_limit: usize,
+) -> Result<Value> {
     let mut archive = zip::ZipArchive::new(File::open(&pair.left)?)?;
     let names: BTreeMap<_, _> = office_plan::formula_worksheet_parts(&mut archive)?
         .into_iter()
@@ -125,7 +132,7 @@ fn explain(pair: &Pair, report: &xlsx_value_compare::WorkbookComparisonReport) -
     let targets = report
         .differences
         .iter()
-        .take(32)
+        .take(sample_limit)
         .map(|difference| {
             let sheet = names
                 .get(&difference.sheet_file)
@@ -136,7 +143,7 @@ fn explain(pair: &Pair, report: &xlsx_value_compare::WorkbookComparisonReport) -
     let left = formula_trace::read_for_cells(&pair.left, &targets)?;
     let right = formula_trace::read_for_cells(&pair.right, &targets)?;
     let mut examples = Vec::new();
-    for difference in report.differences.iter().take(32) {
+    for difference in report.differences.iter().take(sample_limit) {
         let sheet = names
             .get(&difference.sheet_file)
             .context("Unknown worksheet identity")?;
@@ -149,7 +156,9 @@ fn explain(pair: &Pair, report: &xlsx_value_compare::WorkbookComparisonReport) -
     }
     Ok(json!({
         "status":"diagnostic_samples", "examples":examples,
-        "sample_limit":32, "difference_records":report.difference_count,
+        "sample_limit":sample_limit, "difference_records":report.difference_count,
+        "all_records_examined":report.difference_count <= sample_limit
+            && report.differences.len() == report.difference_count,
         "all_differences_explained":false,
     }))
 }
