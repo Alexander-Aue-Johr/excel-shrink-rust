@@ -17,9 +17,13 @@ Source commit `133a3db2` provides the theme, outcome symbols and retained
 per-sheet coverage/conditional-formatting/chart decisions. Eleven JavaScript
 tests and four Rust Atlas contract tests pass. The opening figure draft uses
 the Data.gov nine-workbook overview and the matched Adage title-band control.
-The first full-width layout currently moves the no-reference manuscript to
-thirteen pages. Restore the manuscript budget during layout review before
-calling this paper deliverable complete. Native comparisons remain active.
+The first full-width layout has thirteen pages in the reading variant that
+also omits Related Work. The complete main text, including Related Work, ends
+on page fourteen. On 2026-11-11 the user explicitly took responsibility for
+shortening the manuscript. Do not spend agent work on page-count reductions.
+The uncommitted evaluation condensation was restored to its pre-edit text.
+Continue scientific evidence, implementation and validation while preserving
+the complete draft for the author's editing. Native comparisons remain active.
 
 Detailed per-candidate direct/indirect XML provenance and explicit whole-sheet
 fallback scope are not consistently present in existing public report indexes.
