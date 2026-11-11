@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "audited_pairs": 13641,
+  "differing_pairs": 1206,
+  "difference_records": 141295,
+  "diagnostic_record_categories": {
+    "supported_random_time": 139253,
+    "supported_environment": 1887,
+    "manual_unchanged_now_or_direct_reference": 6,
+    "calculation_ca_attribute_only": 146,
+    "manual_verified_random_time_prefix": 3
+  },
+  "unclassified_records": 0,
+  "limits": [
+    "All raw differences remain retained.",
+    "Supported dependency paths do not prove exclusive causation.",
+    "Calculation attributes are retained as metadata differences.",
+    "Selections are completed-pair subsets, not representative whole-corpus samples."
+  ]
+}

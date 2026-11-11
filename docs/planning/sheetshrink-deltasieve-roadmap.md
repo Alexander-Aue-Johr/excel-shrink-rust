@@ -54,6 +54,13 @@ remote environment. Their earlier failed attempts remain preserved. Selection
 follows small original ZIP sizes and cannot establish whole-corpus preservation.
 See the Data.gov packet and final-retry ledgers.
 
+The first13,641 Enron pairs contain141,295 retained difference records.
+Full diagnostic followups now cover every record:139,253 supported random/time
+paths,1,887 environment paths,146 calculation-attribute differences and nine
+explicitly checked formula-path records. Preserve the supporting ledgers and
+all earlier budget failures. A supported path does not establish exclusive
+causation or whole-corpus preservation. No raw finding is suppressed.
+
 Native rebuild workers now enable automatic calculation during full rebuild and
 restore manual calculation before saving. Three formerly stalled cases completed
 in a bounded four-input reused-worker test. Other requests can still remain

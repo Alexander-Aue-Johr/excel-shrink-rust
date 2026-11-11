@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "label": "enron/local/case-024028",
+  "scope": "Three range-search-budget exceptions checked with explicit unchanged formula prefixes and the retained supported S23 path. S23 lies in S23:S1022 for AVERAGE and STDEV. H15 directly references K13.",
+  "native_report_sha256": "928e666b815a09e8791cbb4b17fb1b2c7854b27564104381ff76ec9b5f63fb7a",
+  "paths": [
+    {
+      "cell": "H14",
+      "path": [
+        {
+          "sheet": "5d. 7.6",
+          "cell": "H14",
+          "formula": "AVERAGE(S23:S1022)",
+          "left_formula": "AVERAGE(S23:S1022)",
+          "left_value": "0.99510984720181894",
+          "right_value": "0.87528610496244841"
+        },
+        {
+          "cell": "S23",
+          "environment_span": null,
+          "formula": "MAX(0,1/4*(SUM(O23:R23)-4*$D$5))*$H$9",
+          "left_formula": "MAX(0,1/4*(SUM(O23:R23)-4*$D$5))*$H$9",
+          "left_value": "2.4724449462712106",
+          "right_value": "0",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "O23",
+          "environment_span": null,
+          "formula": "EXP(($H$10*LN(N23))+(1-$H$10)*$H$5+(($D$9^2)/(4*$D$6))*(1-$H$10^2))",
+          "left_formula": "EXP(($H$10*LN(N23))+(1-$H$10)*$H$5+(($D$9^2)/(4*$D$6))*(1-$H$10^2))",
+          "left_value": "27.641481360504162",
+          "right_value": "23.169526151079275",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "N23",
+          "environment_span": null,
+          "formula": "EXP(M23)",
+          "left_formula": "EXP(M23)",
+          "left_value": "30.823839181737139",
+          "right_value": "24.651415462683637",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "M23",
+          "environment_span": null,
+          "formula": "L23+$D$6*($H$5-L23)*$H$8+$D$9*($H$8^0.5)*(NORMINV(RAND(),0,1))",
+          "left_formula": "L23+$D$6*($H$5-L23)*$H$8+$D$9*($H$8^0.5)*(NORMINV(RAND(),0,1))",
+          "left_value": "3.4282883900035093",
+          "right_value": "3.2048343212613379",
+          "shared_anchor": "D23",
+          "sheet": "5d. 7.6",
+          "volatile_span": [
+            50,
+            56
+          ]
+        }
+      ],
+      "dependency_kind": "random_time",
+      "exclusive_cause_proven": false
+    },
+    {
+      "cell": "K13",
+      "path": [
+        {
+          "sheet": "5d. 7.6",
+          "cell": "K13",
+          "formula": "STDEV(S23:S1022)",
+          "left_formula": "STDEV(S23:S1022)",
+          "left_value": "1.7824871487440075",
+          "right_value": "1.5586808095116853"
+        },
+        {
+          "cell": "S23",
+          "environment_span": null,
+          "formula": "MAX(0,1/4*(SUM(O23:R23)-4*$D$5))*$H$9",
+          "left_formula": "MAX(0,1/4*(SUM(O23:R23)-4*$D$5))*$H$9",
+          "left_value": "2.4724449462712106",
+          "right_value": "0",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "O23",
+          "environment_span": null,
+          "formula": "EXP(($H$10*LN(N23))+(1-$H$10)*$H$5+(($D$9^2)/(4*$D$6))*(1-$H$10^2))",
+          "left_formula": "EXP(($H$10*LN(N23))+(1-$H$10)*$H$5+(($D$9^2)/(4*$D$6))*(1-$H$10^2))",
+          "left_value": "27.641481360504162",
+          "right_value": "23.169526151079275",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "N23",
+          "environment_span": null,
+          "formula": "EXP(M23)",
+          "left_formula": "EXP(M23)",
+          "left_value": "30.823839181737139",
+          "right_value": "24.651415462683637",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "M23",
+          "environment_span": null,
+          "formula": "L23+$D$6*($H$5-L23)*$H$8+$D$9*($H$8^0.5)*(NORMINV(RAND(),0,1))",
+          "left_formula": "L23+$D$6*($H$5-L23)*$H$8+$D$9*($H$8^0.5)*(NORMINV(RAND(),0,1))",
+          "left_value": "3.4282883900035093",
+          "right_value": "3.2048343212613379",
+          "shared_anchor": "D23",
+          "sheet": "5d. 7.6",
+          "volatile_span": [
+            50,
+            56
+          ]
+        }
+      ],
+      "dependency_kind": "random_time",
+      "exclusive_cause_proven": false
+    },
+    {
+      "cell": "H15",
+      "path": [
+        {
+          "sheet": "5d. 7.6",
+          "cell": "H15",
+          "formula": "K13/(H16^0.5)",
+          "left_formula": "K13/(H16^0.5)",
+          "left_value": "5.6367192900104057E-2",
+          "right_value": "4.9289815032519675E-2"
+        },
+        {
+          "sheet": "5d. 7.6",
+          "cell": "K13",
+          "formula": "STDEV(S23:S1022)",
+          "left_formula": "STDEV(S23:S1022)",
+          "left_value": "1.7824871487440075",
+          "right_value": "1.5586808095116853"
+        },
+        {
+          "cell": "S23",
+          "environment_span": null,
+          "formula": "MAX(0,1/4*(SUM(O23:R23)-4*$D$5))*$H$9",
+          "left_formula": "MAX(0,1/4*(SUM(O23:R23)-4*$D$5))*$H$9",
+          "left_value": "2.4724449462712106",
+          "right_value": "0",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "O23",
+          "environment_span": null,
+          "formula": "EXP(($H$10*LN(N23))+(1-$H$10)*$H$5+(($D$9^2)/(4*$D$6))*(1-$H$10^2))",
+          "left_formula": "EXP(($H$10*LN(N23))+(1-$H$10)*$H$5+(($D$9^2)/(4*$D$6))*(1-$H$10^2))",
+          "left_value": "27.641481360504162",
+          "right_value": "23.169526151079275",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "N23",
+          "environment_span": null,
+          "formula": "EXP(M23)",
+          "left_formula": "EXP(M23)",
+          "left_value": "30.823839181737139",
+          "right_value": "24.651415462683637",
+          "shared_anchor": null,
+          "sheet": "5d. 7.6",
+          "volatile_span": null
+        },
+        {
+          "cell": "M23",
+          "environment_span": null,
+          "formula": "L23+$D$6*($H$5-L23)*$H$8+$D$9*($H$8^0.5)*(NORMINV(RAND(),0,1))",
+          "left_formula": "L23+$D$6*($H$5-L23)*$H$8+$D$9*($H$8^0.5)*(NORMINV(RAND(),0,1))",
+          "left_value": "3.4282883900035093",
+          "right_value": "3.2048343212613379",
+          "shared_anchor": "D23",
+          "sheet": "5d. 7.6",
+          "volatile_span": [
+            50,
+            56
+          ]
+        }
+      ],
+      "dependency_kind": "random_time",
+      "exclusive_cause_proven": false
+    }
+  ],
+  "limits": "Original budget-exceeded diagnostics remain retained. A supported path does not prove exclusive causation."
+}
