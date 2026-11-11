@@ -39,7 +39,7 @@ configured observation interval. Such entries remain prioritized in the bounded
 summary. A historical completed attempt does not trigger this observation for a
 newer replacement.
 
-## Inspect CF selection without Excel
+## Inspect CF and layout selection without Excel
 
 ```powershell
 excel-shrink-cli.exe regression inspect-candidates --left before.xlsx --right after.xlsx --sample-limit 8
@@ -48,6 +48,13 @@ excel-shrink-cli.exe regression inspect-candidates --left before.xlsx --right af
 The command uses the live pipeline's XML snapshots and CF dependency selector.
 It reports reason counts, potential cell-input changes and the count of logical
 CF regions, with bounded decision/region examples. `--sample-limit` accepts 0–100.
+The `layout` section reuses the live layout selector and reports its logical
+region count, selected-sheet count, shared layout-context changes and bounded
+sheet examples. Each example identifies changed sheet defaults or unmodeled
+layout metadata, the visible-content envelope and background-tail sampling.
+Both region and sheet examples respect the sample limit, including zero.
+Logical layout ranges are reported before grid expansion, so a range ending
+at XFD can be investigated without allocating its capture tiles.
 It leaves the input workbooks unchanged and releases its temporary fingerprints.
 It does not open Excel, measure effective heights, capture charts or issue a
 visual verdict. The reported logical regions precede live geometry partitioning.
