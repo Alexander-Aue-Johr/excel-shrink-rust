@@ -326,3 +326,23 @@ The receipt `error-controls-20261111.json` retains input, producer and image
 identities. Two fixture tests verify repeatable packages and that all other
 cells and package parts remain unchanged. These two controls do not establish
 general unresolved-dependency support or corpus recall.
+
+## Conditional-format and defined-name controls on 2026-11-11
+
+`../comparator-pilot/formatting_controls.py` freezes three additional pairs.
+Two change only the color of a two-color scale or data bar over Data!A1:C3.
+The third changes only SourceValues from Data!B1:B2 to B1:B3. Its unchanged
+SUM(SourceValues) formula rebuilds from 3 to 6. Fixture tests verify deterministic
+packages and that only the declared rule or defined-name member changes.
+
+Each native reference independently covers Data!A1:N30. The ordinary selector
+chooses A1:D3 in all three cases. Reference masks contain 5,727, 4,304 and 53
+changed RGBA pixels respectively. The zero-extended selected mask exactly equals
+the full reference mask in every case, with equal paired geometry. The receipt
+`formatting-controls-20261111.json` retains input, producer and image hashes.
+These cases test changed rules and one changed name binding. They do not
+establish coverage of every conditional-format or name dependency.
+
+The bounded reference and targeted methods completed under an 8 GiB RAM and
+commit-headroom watcher, with minima above 51 GiB. All six targeted Excel PIDs
+were confirmed exited afterward. Existing native corpus captures continued.

@@ -8,6 +8,7 @@ import zipfile
 
 from fixtures import CHART, SHEET, create
 from error_controls import create as create_error_controls
+from formatting_controls import create as create_formatting_controls
 
 
 def read_xml(path, member):
@@ -20,6 +21,42 @@ def cell_value(sheet, address):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_formatting_controls_change_only_the_declared_rule_or_name(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            create_formatting_controls(root / "first")
+            create_formatting_controls(root / "second")
+            for case in ("color-scale", "data-bar", "defined-name"):
+                first = root / "first" / case
+                second = root / "second" / case
+                for lane in ("original", "candidate"):
+                    self.assertEqual(
+                        (first / f"{lane}.xlsx").read_bytes(),
+                        (second / f"{lane}.xlsx").read_bytes(),
+                    )
+                with zipfile.ZipFile(first / "original.xlsx") as original, \
+                        zipfile.ZipFile(first / "candidate.xlsx") as candidate:
+                    changed = [
+                        name for name in original.namelist()
+                        if original.read(name) != candidate.read(name)
+                    ]
+                    member = (
+                        "xl/workbook.xml" if case == "defined-name"
+                        else "xl/worksheets/sheet1.xml"
+                    )
+                    self.assertEqual(changed, [member])
+                    before = original.read(member)
+                    after = candidate.read(member)
+                    if case == "defined-name":
+                        self.assertEqual(
+                            before.replace(b"Data!$B$1:$B$2", b"Data!$B$1:$B$3"),
+                            after,
+                        )
+                    else:
+                        self.assertEqual(
+                            before.replace(b"FFFF0000", b"FF0000FF"), after,
+                        )
+
     def test_error_controls_change_only_the_declared_formula_cell(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

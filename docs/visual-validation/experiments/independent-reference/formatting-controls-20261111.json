@@ -1,0 +1,229 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "protocol": {
+    "schema": 1,
+    "synthetic": true,
+    "cases": [
+      {
+        "case": "color-scale",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\formatting-controls-20261111\\color-scale\\original.xlsx",
+            "sha256": "8db725e2853f9afd94d92f8245ee1a0f50db6fea105c0baef08a728570463ae2"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\formatting-controls-20261111\\color-scale\\candidate.xlsx",
+            "sha256": "f33bba6d74c2fe043e5c1bf9f50628d411419eda8efbef4dc5f0ac917dacaca7"
+          }
+        },
+        "expected": "The conditional-format colors visibly change in A1:C3."
+      },
+      {
+        "case": "data-bar",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\formatting-controls-20261111\\data-bar\\original.xlsx",
+            "sha256": "1df379165cbabbfe6f96f4eee42ecb156378f174959be103f698a13713647863"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\formatting-controls-20261111\\data-bar\\candidate.xlsx",
+            "sha256": "3d2ff0b767280edf05a84c18e1eb6ec26b8bccf9a8ec3ea9346d01db5b5a8b7b"
+          }
+        },
+        "expected": "The conditional-format colors visibly change in A1:C3."
+      },
+      {
+        "case": "defined-name",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\formatting-controls-20261111\\defined-name\\original.xlsx",
+            "sha256": "ce7c4ee551aab2648975f0cb5463085183b14892520a89d3605cbfcfe9bf9307"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\formatting-controls-20261111\\defined-name\\candidate.xlsx",
+            "sha256": "b5e7ad7931f776c4feaa857863d497a9d6565e889c335fb721ef11b07ad2aa3a"
+          }
+        },
+        "expected": "A1 changes from 3 to 6 after native rebuild."
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case": "color-scale",
+      "reference_status": "completed",
+      "targeted_status": "completed_with_limitations",
+      "selected_area": "A1:D3",
+      "reference_area": "Data!A1:N30",
+      "changed_reference_rgba_pixels": 5727,
+      "changed_targeted_rgba_pixels": 5727,
+      "exact_changed_mask_equality": true,
+      "mapping": "Both areas start at Data!A1 with equal native scale; target mask is zero-extended over the independently fixed reference canvas.",
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "images": [
+        {
+          "file": "color-scale-reference\\reference-0-O.png",
+          "sha256": "6f92778498558c184819c09ba4e4c4a60892584dc1fc8d4982844ae1d0b8ad41",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "color-scale-reference\\reference-0-SD.png",
+          "sha256": "040000372e74e17534a40f39f3a8369e8583bd627f59b3319e6206c12bb3d0d6",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "color-scale-targeted\\evidence-OR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "01b7572bb5fa2ec04e835422a4c964abff4b38542fec5cbd269664610c748dd1",
+          "dimensions": [
+            277,
+            61
+          ]
+        },
+        {
+          "file": "color-scale-targeted\\evidence-SDR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "28faffa6850f0e46a0ec5bbd2519837914a881e267482857df3f60d749f41478",
+          "dimensions": [
+            277,
+            61
+          ]
+        }
+      ]
+    },
+    {
+      "case": "data-bar",
+      "reference_status": "completed",
+      "targeted_status": "completed_with_limitations",
+      "selected_area": "A1:D3",
+      "reference_area": "Data!A1:N30",
+      "changed_reference_rgba_pixels": 4304,
+      "changed_targeted_rgba_pixels": 4304,
+      "exact_changed_mask_equality": true,
+      "mapping": "Both areas start at Data!A1 with equal native scale; target mask is zero-extended over the independently fixed reference canvas.",
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "images": [
+        {
+          "file": "data-bar-reference\\reference-0-O.png",
+          "sha256": "1e59411b1d877b0e9469bdc0d08db3a200cbb70ba169b63f763d02c0bf76e0f7",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "data-bar-reference\\reference-0-SD.png",
+          "sha256": "d2165cb55eacb39468d2ec1ad48b26273c76e45302d3ab0f2bebe93d0f40e895",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "data-bar-targeted\\evidence-OR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "20c7ef51e9c4a4fca197d7681110b4e4cf2b149679bebff93abd2af9585f97a4",
+          "dimensions": [
+            277,
+            61
+          ]
+        },
+        {
+          "file": "data-bar-targeted\\evidence-SDR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "02db60b58532e2cc7352c6674794e17ce7aafd36e1feb5e6db428607270ba8c5",
+          "dimensions": [
+            277,
+            61
+          ]
+        }
+      ]
+    },
+    {
+      "case": "defined-name",
+      "reference_status": "completed",
+      "targeted_status": "completed_with_limitations",
+      "selected_area": "A1:D3",
+      "reference_area": "Data!A1:N30",
+      "changed_reference_rgba_pixels": 53,
+      "changed_targeted_rgba_pixels": 53,
+      "exact_changed_mask_equality": true,
+      "mapping": "Both areas start at Data!A1 with equal native scale; target mask is zero-extended over the independently fixed reference canvas.",
+      "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+      "images": [
+        {
+          "file": "defined-name-reference\\reference-0-O.png",
+          "sha256": "c6c1451f376e958f2246cbcf6c4ca8ba94d30cc39888889a4a41c5a9466649be",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "defined-name-reference\\reference-0-SD.png",
+          "sha256": "727ee35f1ccacdfc635510a508aefb7dd42edd06ca64df060eeebddc3d9309b9",
+          "dimensions": [
+            917,
+            601
+          ]
+        },
+        {
+          "file": "defined-name-targeted\\evidence-OR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "37e5307df4f517b36a283bb3efb85a0d6b6205ea51555a0664331ec576e3374b",
+          "dimensions": [
+            277,
+            61
+          ]
+        },
+        {
+          "file": "defined-name-targeted\\evidence-SDR\\90ebefde99cb12cad48a02a10780936f3e5c0dbe1f6d26bd1a6b96232aad13ee.png",
+          "sha256": "29544421b4f69bc8eaf9365b3044011f39ca1345b3d9a0e6413d942543bb9c05",
+          "dimensions": [
+            277,
+            61
+          ]
+        }
+      ]
+    }
+  ],
+  "scope": "Three conditional-format and defined-name controls with explicit independent references. Does not establish coverage of every rule or name dependency, or population recall.",
+  "defined_name_rebuilt_A1_values": [
+    "3",
+    "6"
+  ],
+  "memory_watch": {
+    "status": "completed",
+    "reserve_bytes": 8589934592,
+    "methods": [
+      {
+        "method": "reference",
+        "pid": 41064,
+        "status": "completed",
+        "minimum_free_ram": 59016548352,
+        "minimum_commit_headroom": 55540932608,
+        "exit_code": 0,
+        "elapsed_seconds": 26.218999999997322
+      },
+      {
+        "method": "targeted",
+        "pid": 44932,
+        "status": "completed",
+        "minimum_free_ram": 59089412096,
+        "minimum_commit_headroom": 55668269056,
+        "exit_code": 0,
+        "elapsed_seconds": 28.014999999999418
+      }
+    ]
+  },
+  "owned_targeted_excel_pids_confirmed_exited": [
+    19048,
+    22404,
+    26152,
+    38352,
+    38620,
+    41596
+  ]
+}
