@@ -59,5 +59,20 @@
     "cell": "AA5",
     "reason": "Formula range search budget exceeded"
   },
-  "scope": "Four formerly budget-unavailable pair diagnostics. Dependency paths remain explanations and do not establish exclusive causation."
+  "scope": "Four formerly budget-unavailable pair diagnostics. Dependency paths remain explanations and do not establish exclusive causation.",
+  "bounded_range_followup": {
+    "sheet": "payout model",
+    "cell": "AA5",
+    "search_policy": "BTreeMap range lookup restricted by worksheet and column interval, followed by exact row bounds. Search-work budget unchanged.",
+    "changed_value_cells": 1,
+    "volatile_paths": 1,
+    "coverage_complete": true,
+    "exclusive_cause_proven": false,
+    "diagnostic_sha256": "43f65c01457be538fd3be404595b5f6e0c7d800aaf977eb153e40cd3c397e66a",
+    "native_probe": "passed",
+    "synthetic_tests": [
+      "unrelated columns cannot exhaust a small target range budget",
+      "row bounds and reversed endpoints preserve dependency selection"
+    ]
+  }
 }

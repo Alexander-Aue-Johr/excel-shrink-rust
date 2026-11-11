@@ -205,12 +205,23 @@ fn find_path(
             match dependency {
                 Dependency::Cell(next) => add(&next),
                 Dependency::Range(a, b) => {
-                    for next in cells.keys().filter(|next| next.sheet == a.sheet) {
+                    let rows = a.row.min(b.row)..=a.row.max(b.row);
+                    // Address order is sheet, column, row. Bound the map lookup
+                    // before applying row bounds to intermediate columns.
+                    let first = Address {
+                        sheet: a.sheet.clone(),
+                        column: a.column.min(b.column),
+                        row: *rows.start(),
+                    };
+                    let last = Address {
+                        sheet: a.sheet.clone(),
+                        column: a.column.max(b.column),
+                        row: *rows.end(),
+                    };
+                    for (next, _) in cells.range(first..=last) {
                         ensure!(*work > 0, "Formula range search budget exceeded");
                         *work -= 1;
-                        if (a.column.min(b.column)..=a.column.max(b.column)).contains(&next.column)
-                            && (a.row.min(b.row)..=a.row.max(b.row)).contains(&next.row)
-                        {
+                        if rows.contains(&next.row) {
                             add(next);
                         }
                     }

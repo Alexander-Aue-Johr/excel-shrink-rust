@@ -275,3 +275,56 @@ fn sparse_audit_index_keeps_targets_and_shared_dependencies_past_constant_cell_b
     assert_eq!(diagnosis["examples"][0]["status"], "no_supported_path");
     Ok(())
 }
+
+
+#[test]
+fn range_dependency_search_skips_unrelated_columns() -> Result<()> {
+    let start = Address::parse("S", "A1")?;
+    let target = Address::parse("S", "C2")?;
+    let mut cells = BTreeMap::from([
+        (start.clone(), cell("SUM(C2:C3)", "10")),
+        (target.clone(), cell("NOW()", "10")),
+    ]);
+    for row in 1..=1000 {
+        cells.insert(Address::parse("S", &format!("Z{row}"))?, cell("1", "1"));
+    }
+    let mut budget = 20;
+    assert_eq!(find_path(&cells, &start, &mut budget)?, Some(vec![start, target]));
+    assert!(budget > 10);
+    Ok(())
+}
+
+#[test]
+#[ignore = "Requires FORMULA_AUDIT_LEFT/RIGHT/OUTPUT pointing to the retained Enron payout-model states"]
+fn range_dependency_search_native_payout_model_has_a_supported_path() -> Result<()> {
+    let targets = [("payout model".into(), "AA5".into())];
+    let left = read_for_cells(Path::new(&std::env::var("FORMULA_AUDIT_LEFT")?), &targets)?;
+    let right = read_for_cells(Path::new(&std::env::var("FORMULA_AUDIT_RIGHT")?), &targets)?;
+    let diagnosis = compare(&left, &right, "payout model", "AA5")?;
+    assert_eq!(diagnosis["changed_value_cells"], 1);
+    assert_eq!(diagnosis["volatile_paths"], 1);
+    assert_eq!(diagnosis["exclusive_cause_proven"], false);
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(std::env::var("FORMULA_AUDIT_OUTPUT")?)?;
+    serde_json::to_writer_pretty(file, &diagnosis)?;
+    Ok(())
+}
+
+
+#[test]
+fn range_dependency_search_preserves_row_bounds_and_reversed_endpoints() -> Result<()> {
+    for formula in ["SUM(C2:E3)", "SUM(E3:C2)"] {
+        let start = Address::parse("S", "A1")?;
+        let mut cells = BTreeMap::from([(start.clone(), cell(formula, "2"))]);
+        for address in ["C1", "C4", "D1", "D99", "E4"] {
+            cells.insert(Address::parse("S", address)?, cell("NOW()", "10"));
+        }
+        for address in ["C2", "E3"] {
+            cells.insert(Address::parse("S", address)?, cell("1", "1"));
+        }
+        assert!(find_path(&cells, &start, &mut 100)?.is_none());
+    }
+    Ok(())
+}

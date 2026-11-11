@@ -145,3 +145,11 @@ full-cell behavior. Existing cell/text/search budgets still apply, and budget
 exhaustion stays explicit. Four previously unavailable native diagnostics now
 produce samples with exactly unchanged raw comparisons. One payout-model range
 search remains unresolved. See the sparse formula-audit experiment ledger.
+
+Dependency-range traversal uses the existing address-ordered map to restrict the
+worksheet/column interval before checking row bounds. Unrelated columns consume
+no range-search work. The original search budget still applies to candidates.
+The retained payout-model AA5 case now finds a supported random-function path.
+The raw value difference remains recorded and exclusive causation remains
+unproven. Synthetic tests cover unrelated columns, exact row bounds and reversed
+endpoints; the retained native case is an opt-in test with external artifacts.
