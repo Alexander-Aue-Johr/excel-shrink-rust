@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "case": "style-permutation",
+      "expected": "Equal native presentation over Data!A1:N30",
+      "inputs": {
+        "original": "5466f0cd3c8e3a82013b15acafb2dc753b3848593ddca8c1f09ffb55e29a8eb4",
+        "candidate": "52dbdc1fb3558f39e88bdef2ceb0a387bcdc2032d374983c8595bb5b77db4acc"
+      },
+      "reference": {
+        "range": "A1:N30",
+        "dimensions": [
+          [
+            917,
+            601
+          ],
+          [
+            917,
+            601
+          ]
+        ],
+        "rgba_sha256": [
+          "279dd4b37451b4bf9f50f8a3a4d85ed33891e7370a1fb668110983ffd2f4bc5e",
+          "279dd4b37451b4bf9f50f8a3a4d85ed33891e7370a1fb668110983ffd2f4bc5e"
+        ],
+        "changed_pixels": 0,
+        "elapsed_seconds": 9.4682911,
+        "receipt_sha256": "d6f4659fde07f6616d7c29b29e06d9fc22e83415d7661467408e4082a89c2146",
+        "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c"
+      },
+      "targeted": {
+        "status": "completed_with_limitations",
+        "capture_policy": "targeted-content-grid-v15",
+        "candidate_count": 0,
+        "capture_counts": {
+          "OR:charts": 0,
+          "SDR:charts": 0
+        },
+        "timings_ms": {
+          "capture_selection_and_transport": 30,
+          "image_comparisons": 10
+        },
+        "report_sha256": "c9d22977904de837c7c5d4a3735eb07e81b026fd4c079cccaa9241ed009279d6"
+      }
+    },
+    {
+      "case": "shared-string-permutation",
+      "expected": "Equal native presentation over Data!A1:N30",
+      "inputs": {
+        "original": "2ac725458ffc6cbb898c32d6f2d123bdc06dade28d77d47cd53533eb49c76fa0",
+        "candidate": "6cd290d7e7d0b615d2267255e580214a086555ad663882e31ccca3fbf13d003f"
+      },
+      "reference": {
+        "range": "A1:N30",
+        "dimensions": [
+          [
+            917,
+            601
+          ],
+          [
+            917,
+            601
+          ]
+        ],
+        "rgba_sha256": [
+          "535ce5eaf91b240554cae051ab25bdece301c0546ecf132efea199c44bc2d9d3",
+          "535ce5eaf91b240554cae051ab25bdece301c0546ecf132efea199c44bc2d9d3"
+        ],
+        "changed_pixels": 0,
+        "elapsed_seconds": 8.8685932,
+        "receipt_sha256": "d06a0f802b8b86e8cee0d058bf76a68fa6e86ccb8c9a226a56709c1294ad260c",
+        "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c"
+      },
+      "targeted": {
+        "status": "completed_with_limitations",
+        "capture_policy": "targeted-content-grid-v15",
+        "candidate_count": 1,
+        "capture_counts": {
+          "OR": 1,
+          "OR:charts": 0,
+          "SDR": 1,
+          "SDR:charts": 0
+        },
+        "timings_ms": {
+          "capture_selection_and_transport": 209,
+          "image_comparisons": 7
+        },
+        "report_sha256": "f97090ce9638db2b479f7e8d9dfd0b4cd4b517bd0733ae535e86997973f45579"
+      }
+    }
+  ],
+  "limits": "Two synthetic equivalence controls over Data!A1:N30. No corpus recall or matched speedup estimate."
+}

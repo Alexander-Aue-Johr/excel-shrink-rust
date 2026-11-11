@@ -72,3 +72,25 @@ fixture and reference-plan hashes, both image hashes, dimensions and the
 overlapping RGBA count for every rectangle. A separate pixel recheck decoded
 all 48 retained PNGs, matched them against their receipts, and reproduced the
 changed ranges and counts across all 24 rectangles.
+
+## Representation controls on 2026-11-11
+
+`../comparator-pilot/representation_controls.py` generates two additional
+synthetic pairs. One swaps cell-XF records 1 and 2 and remaps the cell's style
+index. The other reverses two shared strings and remaps both cell indices.
+The protocol fixes `Data!A1:N30` before native rendering.
+
+Both independent references completed with identical 917-by-601 RGBA images
+within each pair. The style permutation selected zero targeted regions.
+The shared-string permutation selected one equal image pair at `A1:D4`.
+Thus this shared-string case retains unnecessary capture work under policy v15.
+Both targeted runs completed with their ordinary coverage limitations.
+
+The [receipts](representation-controls-20261111.json) record input identities,
+producer, report hashes and the reference image hashes. Each reference used
+a 60-second operation limit and 90-second total limit. Each targeted run used
+a 60-second operation limit and 90-second progress-idle limit. One additional
+private-desktop Excel pair ran at a time while the two production QT/RR jobs
+continued. These are two equivalence controls, with no matched cost or population
+recall estimate. Native raw evidence is retained at
+`G:/deltasieve-work/representation-controls-20261111`.
