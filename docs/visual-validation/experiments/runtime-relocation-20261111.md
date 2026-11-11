@@ -35,3 +35,34 @@ copied fixture directory under `V:\validation-release-tests`.
 Only configuration startup and asset integrity were exercised. No native study
 was created in the relocated package. Complete native relocation and distributed
 interrupted-run recovery remain separate release acceptance work.
+
+## Native SheetShrink study
+
+A subsequent one-workbook native study used the copied package, the ordinary
+SheetShrink starter, the web start endpoint and a new external study directory.
+The first attempt completed its five paired captures but failed during retained
+image publication. Ordinary image paths and a verbatim-prefixed attempt root
+referred to the same files, while the retention check compared their prefixes
+lexically. The same attempt exposed a checkout-only report-opener path.
+
+Retention now uses the existing resolved owned-image guard, retaining rejection
+of symlinks and outside files. The report opener resolves both supported runtime
+layouts. Twelve focused retention tests passed, including canonical-root and
+outside-image preservation controls. One explicitly native-chart-dependent test
+remained ignored. Four visual-report tests passed, including both launcher
+layouts. An initial test invocation targeted the thin executable wrapper and
+ran zero tests; it supplies no correctness evidence. The effective retention
+test invocation used `cargo test --release -p excel-shrink-cli --lib retention`.
+
+After a guarded release rebuild, a new 132-member package and new study output
+completed in 21.188 seconds. Original and SheetShrink each produced five native
+images over the five planned regions, with no reported differences under the
+targeted methodology. Equal-image retention produced ten integrity records and
+five encoded-image deduplications. The package hashes stayed unchanged. The
+4 GiB owned-job cap and 8 GiB system reserve remained satisfied. The raw failed
+attempt is retained separately. The path-free result receipt is in
+[`runtime-native-relocation-20261111.json`](runtime-native-relocation-20261111.json).
+
+This extends acceptance to a small native SheetShrink study. Legacy conversion,
+Check Performance, distributed interrupted-phase recovery and final release
+inventory remain separate requirements.

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub(super) fn open_visual_report(path: &Path) -> anyhow::Result<()> {
-    let launcher = super::repo_root().join("excel-shrink-cli/src/regression/open_report.ps1");
+    let launcher = report_launcher(&super::repo_root())?;
     let result = Command::new("powershell.exe")
         .args([
             "-NoLogo",
@@ -27,6 +27,19 @@ pub(super) fn open_visual_report(path: &Path) -> anyhow::Result<()> {
         String::from_utf8_lossy(&result.stderr)
     );
     Ok(())
+}
+
+fn report_launcher(root: &Path) -> anyhow::Result<PathBuf> {
+    for relative in [
+        "excel-shrink-cli/src/regression/open_report.ps1",
+        "src/regression/open_report.ps1",
+    ] {
+        let launcher = root.join(relative);
+        if launcher.is_file() {
+            return Ok(launcher);
+        }
+    }
+    anyhow::bail!("Missing visual report launcher under {}", root.display())
 }
 
 pub(super) fn write_visual_report(output_dir: &Path, report: &Value) -> anyhow::Result<PathBuf> {
@@ -423,6 +436,25 @@ pub(super) fn escape_html(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn report_launcher_supports_checkout_and_packaged_layouts() -> anyhow::Result<()> {
+        let root = std::env::temp_dir().join(format!("report-launcher-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root)?;
+        assert!(report_launcher(&root).is_err());
+        for relative in [
+            "excel-shrink-cli/src/regression/open_report.ps1",
+            "src/regression/open_report.ps1",
+        ] {
+            let launcher = root.join(relative);
+            fs::create_dir_all(launcher.parent().unwrap())?;
+            fs::write(&launcher, "# inert launcher fixture")?;
+            assert_eq!(report_launcher(&root)?, launcher);
+            fs::remove_file(launcher)?;
+        }
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn omitted_ranges_are_not_reported_as_visually_unchanged() -> anyhow::Result<()> {

@@ -378,6 +378,13 @@ otherwise absent neighbor screenshots. Equal regions can use the configured
 preview width; zero preserves full resolution. Encoded duplicate images can share
 one retained file without collapsing distinct verdicts.
 
+Before retaining or discarding an image, resolve its existing filesystem path
+and the attempt root to validate ownership. Windows verbatim and ordinary path
+prefixes may identify the same owned file. Symlinks and resolved paths outside
+the attempt remain rejected. The report-opening helper supports both the
+source checkout's `excel-shrink-cli/src/regression` layout and the runtime
+package's `src/regression` layout.
+
 Persist original image hashes, original/retained dimensions, mappings and verdicts.
 First publish the completed and portable reports referencing durable retained
 files; only then delete superseded images. Charts keep their separate evidence.

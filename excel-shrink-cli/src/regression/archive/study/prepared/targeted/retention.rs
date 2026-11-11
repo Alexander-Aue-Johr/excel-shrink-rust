@@ -74,10 +74,7 @@ pub(super) fn apply(
                         .as_str()
                         .context("Missing captured image path")?,
                 );
-                ensure!(
-                    path.starts_with(directory),
-                    "Image is outside this comparison's evidence directory"
-                );
+                discard_equal::validate_owned_image(directory, &path)?;
                 paths.insert(path);
             }
         }
@@ -500,21 +497,39 @@ mod tests {
     }
 
     #[test]
+    fn canonical_attempt_root_accepts_its_existing_image_paths() -> Result<()> {
+        let (directory, mut report) = fixture(&[("A1:P128", false)])?;
+        let canonical = fs::canonicalize(&directory)?;
+        let obsolete = apply(&mut report, &canonical, 16)?;
+        discard_originals(&canonical, &obsolete)?;
+        let retained = report["comparisons"][0]["findings"][0]["left_png"]
+            .as_str()
+            .unwrap();
+        assert!(Path::new(retained).is_file());
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
     fn paths_outside_the_attempt_are_never_resized_or_discarded() -> Result<()> {
         let (directory, mut report) = fixture(&[("A1:P128", false)])?;
-        let outside = directory.parent().unwrap().join("not-owned.png");
+        let outside = directory.with_extension("outside.png");
+        image::RgbaImage::from_pixel(64, 32, image::Rgba([10, 20, 30, 255]))
+            .save(&outside)?;
         report["comparisons"][0]["findings"][0]["left_png"] = json!(outside);
         assert!(apply(&mut report, &directory, 16)
             .err()
             .unwrap()
             .to_string()
             .contains("outside"));
-        assert!(discard_originals(&directory, &[outside]).is_err());
+        assert!(discard_originals(&directory, std::slice::from_ref(&outside)).is_err());
+        assert_eq!(image::image_dimensions(&outside)?, (64, 32));
         assert_eq!(
             image::image_dimensions(directory.join("0-original.png"))?,
             (256, 128)
         );
         fs::remove_dir_all(directory)?;
+        fs::remove_file(outside)?;
         Ok(())
     }
 }

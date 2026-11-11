@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-11",
+  "scope": "One SheetShrink-only native archive study launched from a copied 132-member runtime package",
+  "status": "passed",
+  "fixture_zip_sha256": "c275c0c79eee8539f4359049efabd16085e4e713c7f5ce3a8a65a43031b13aaa",
+  "sheetshrink_binary_sha256": "0cca995332f9faf67bc30a007b30988eaa7496fb132cb1856b62d8ba57a805cb",
+  "deltasieve_binary_sha256": "5ab5c6140788a96e6a99e5fa604220adb213337369a73490da134736d42da50a",
+  "native_portable_report_sha256": "235013d1fdbc47be7b1c27b1d678c71770ca19e9803d781a8db2d2012c28fc40",
+  "capture_policy": "targeted-content-grid-v17",
+  "record_status": "unchanged",
+  "comparison_status": "completed_with_limitations",
+  "candidate_regions": 5,
+  "native_images": {"original_rebuilt": 5, "sheetshrink_rebuilt": 5},
+  "image_retention_receipts": 10,
+  "deduplicated_images": 5,
+  "retain_equal_images": true,
+  "warm_workers": true,
+  "comparison_groups": 1,
+  "elapsed_seconds": 21.187999999994645,
+  "deadline_seconds": 240,
+  "job_commit_limit_bytes": 4294967296,
+  "system_reserve_bytes": 8589934592,
+  "minimum_free_ram_bytes": 66429751296,
+  "minimum_commit_headroom_bytes": 48507949056,
+  "peak_job_committed_bytes": 1984888832,
+  "package_hashes_unchanged": true,
+  "preceding_failed_attempt": {
+    "elapsed_seconds": 23.421000000002095,
+    "record_status": "skipped",
+    "primary_error": "Image is outside this comparison's evidence directory",
+    "secondary_error": "Report opener used the checkout-only script path",
+    "raw_evidence_retained": true
+  },
+  "limitations": [
+    "The reference fixture is an XLSX input; legacy conversion and native Check Performance are outside this test.",
+    "The comparison uses the documented targeted coverage and does not establish full-workbook pixel equality.",
+    "A new output preserves the preceding failed attempt instead of rewriting it.",
+    "The process-tree cap and system reserve concern this acceptance test; existing comparison settings were unchanged."
+  ]
+}

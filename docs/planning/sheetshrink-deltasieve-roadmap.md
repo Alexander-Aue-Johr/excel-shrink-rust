@@ -1626,6 +1626,17 @@ check and passes/rejects the two retained packages respectively. Evidence is
 in `../visual-validation/experiments/runtime-relocation-20261111.md`.
 Full native relocation and distributed recovery acceptance remain open.
 
+The following small native relocation check exposed and fixed two concrete
+issues. Retention now validates resolved owned image paths instead of comparing
+Windows prefix spellings, and report opening supports the packaged script path.
+Twelve retention and four visual-report tests pass, with one optional native
+chart test ignored. A fresh copied package completed a five-region SheetShrink
+study in 21.188 seconds with equal images retained and package hashes unchanged.
+The failed attempt remains separate. Evidence is in
+`../visual-validation/experiments/runtime-native-relocation-20261111.json`.
+Legacy conversion, Check Performance and distributed interrupted-phase recovery
+still require their own relocated-release acceptance.
+
 Create versioned manifests and checksums for code, profiles, evaluation scripts, results, and static reports. Verify existing publication links and artifact storage boundaries, and record deployment status for prepared exports. Retain useful Perfetto traces and figures that explain scheduling.
 
 For a possible shrinker Observatory, determine whether existing traces can support a small useful demonstration of workbook, sheet, and chunk scheduling with slowed playback. Record the decision and remaining work. Give paper evidence and the delivered results explorer priority when scheduling that extension.
