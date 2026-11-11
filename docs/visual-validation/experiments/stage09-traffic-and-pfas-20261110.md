@@ -363,12 +363,19 @@ stage or stopping condition:
 | Destatis | 2 | Traffic | The bounded follow-up exceeded ten minutes without a complete visual verdict. |
 | Destatis | 45 | `31122003_Auszug_GV.xlsx` | Neither lane confirmed opening before the 120-second no-progress stop. |
 | Data.gov | 8 | Raspberries | The planner could not bound `By Country!A1:XFD1048576`. The separate finite reference remains a separate observation. |
-| Data.gov | 17 | PubMed | The original save returned `AccessDenied`. An editable follow-up also failed after recording a 16,733,285-candidate plan. |
+| Data.gov | 17 | PubMed | The original save returned `AccessDenied`. A separately normalized follow-up was stopped with 16,733,285 planned candidates and zero completed captures. |
 | Data.gov | 22 | Cookstove LCA | The current planner could not bound `Input Tab!A1:XFD1048576`. The historical 169-region run used a different validation iteration. |
 
 These slots stay unavailable in the version-matched comparison
 denominator. A bounded result or an older run remains evidence for
 its own recorded scope.
+
+The PubMed follow-up changed only the `_MarkAsFinal` custom document
+property in each input package. Both saved workbook copies were retained.
+The run recorded roughly six minutes of progress through save and planning
+before the stop, with no successful capture. This separates the save
+permission issue from the remaining native comparison workload. The
+normalized follow-up supplies no visual verdict for either baseline.
 
 ## Enron SheetShrink chart findings in the top-49 selection
 
