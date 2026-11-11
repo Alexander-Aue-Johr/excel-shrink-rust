@@ -1,6 +1,6 @@
 import { AtlasGallery } from './gallery.js';
 import { ComparisonView } from './comparison.js';
-import { readGzip, assetUrl, loadSheet, comparisonContext, sheetSummary } from './model.js';
+import { readGzip, assetUrl, loadSheet, comparisonContext, sheetSummary, sheetEvidence } from './model.js';
 
 const $ = id => document.getElementById(id);
 const state = { corpus: null, selected: new Set(), book: null, sheet: null, detail: null, compare: false, token: 0 };
@@ -8,6 +8,16 @@ let catalog;
 let gallery;
 let comparison;
 const names = { original: 'Original' };
+const themeButton = $('theme-button');
+function setTheme(light) {
+  document.documentElement.dataset.theme = light ? 'light' : 'dark';
+  themeButton.setAttribute('aria-pressed', String(light));
+  themeButton.textContent = light ? 'Dark mode' : 'Light mode';
+  gallery?.setSelected(state.selected);
+  if (state.sheet && state.detail) gallery.showSheet(state.book, state.sheet, state.detail);
+}
+setTheme(new URLSearchParams(location.search).get('theme') === 'light');
+themeButton.addEventListener('click', () => setTheme(document.documentElement.dataset.theme !== 'light'));
 
 function element(tag, className, text) {
   const result = document.createElement(tag);
@@ -143,7 +153,7 @@ function render() {
     $('gallery-description').textContent = `${books().length} workbooks · ${books().reduce((sum, book) => sum + book.sheets.length, 0)} sheets · ${catalog.variants.length} recorded runs`;
   }
   $('gallery-hint').textContent = state.sheet ? 'Red finding → native comparison' : state.book ? 'Sheet → details' : 'Workbook → all sheets';
-  $('rail-explanation').textContent = 'Every known sheet keeps its position. Red marks recorded changes. Neutral sheets carry the coverage of the source report. Dashed borders mark incomplete observations.';
+  $('rail-explanation').textContent = 'Δ Difference, cause unclassified. = No difference in compared captures. ? No pixel comparison. P Capture plan. I Conditional-formatting dependency candidate. F Conservative rule capture. A rule capture can cover part of a sheet. Full-sheet fallback and causal attribution require separate evidence. Dashed borders mark incomplete runs.';
   renderSidebar();
 }
 
@@ -171,6 +181,10 @@ function renderSidebar() {
       const count = differenceCount(state.book, sheet);
       item.dataset.changed = count > 0;
       item.append(element('small', '', `${count} findings · ${sheet.state}`)); list.append(item);
+      const evidence = sheetEvidence(summaries(state.book, sheet));
+      item.append(element('small', '', evidence.label));
+      if (evidence.indirect) item.append(element('small', '', 'I · Conditional-formatting dependency candidate'));
+      if (evidence.conservative) item.append(element('small', '', 'F · Conservative rule capture'));
     }
     if (!state.book.sheets.length) list.append(element('p', 'atlas-status', 'Sheet inventory is unavailable. This view does not establish visual equality.'));
     for (const observation of state.book.observations.filter(o => !o.detail)) {

@@ -32,3 +32,43 @@
 #publication-status{font-size:9px;overflow-wrap:anywhere}
 @keyframes atlas-fade{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.atlas-preview,.atlas-sheet-meta{transition:none}.atlas-map{animation:none}}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --panel2: #edf2f5;
+  --line: #c9d5dc;
+  --text: #20343d;
+  --muted: #506773;
+  --teal: #17644d;
+  --red: #a62c2c;
+}
+[data-theme="light"] .topbar,
+[data-theme="light"] .contextbar,
+[data-theme="light"] .stage-shell,
+[data-theme="light"] .side-panel,
+[data-theme="light"] .pipeline-options,
+[data-theme="light"] dialog {
+  background: var(--panel);
+  color: var(--text);
+}
+[data-theme="light"] .atlas-sheet,
+[data-theme="light"] .atlas-map {
+  background: #e5edf2;
+  border-color: #819aa8;
+  color: #20343d;
+}
+[data-theme="light"] .atlas-sheet.has-differences {
+  background: #fff0ce;
+  border-color: #956118;
+  color: #744b10;
+}
+[data-theme="light"] .atlas-sheet.has-checked-captures {
+  background: #e3f1eb;
+  border-color: #4c8a73;
+}
+[data-theme="light"] .atlas-book-label { color: #20343d; }
+[data-theme="light"] .atlas-preview { background: #ffffff; }
+[data-theme="light"] .explorer-item:hover,
+[data-theme="light"] .pipeline-option:hover { background: #edf2f5; }

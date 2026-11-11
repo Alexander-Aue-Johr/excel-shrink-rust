@@ -69,6 +69,24 @@ export function sheetSummary(observation, name) {
   return observation.sheets && Object.hasOwn(observation.sheets, name) ? observation.sheets[name] : undefined;
 }
 
+export function sheetEvidence(summaries) {
+  const differences = summaries.reduce((sum, value) => sum + (value.differences || 0), 0);
+  const captures = summaries.reduce((sum, value) => sum + (value.captures || 0), 0);
+  const planned = summaries.some(value => value.planning?.selected_capture_regions > 0);
+  const rules = summaries.flatMap(value => value.conditional_formatting || []);
+  const indirect = rules.some(rule => ['partial', 'capture'].includes(rule.outcome)
+    && (rule.referenced_input_changes > 0 || rule.formula_input_observations > 0));
+  const conservative = rules.some(rule => rule.outcome === 'capture'
+    && rule.reason === 'unsupported-rule-semantics');
+  const outcome = differences ? 'difference' : captures ? 'checked' : 'unknown';
+  const labels = {
+    difference: 'Δ Recorded difference · cause unclassified',
+    checked: '= No difference in compared captures',
+    unknown: '? No pixel comparison retained',
+  };
+  return { outcome, label: labels[outcome], planned, indirect, conservative, captures, differences };
+}
+
 export function loadDetail(observation) {
   if (!observation.detail) return Promise.resolve(null);
   if (!details.has(observation.detail)) {

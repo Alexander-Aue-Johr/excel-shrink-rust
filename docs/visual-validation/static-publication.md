@@ -191,3 +191,57 @@ The live view reuses the Atlas spatial renderer, shows available native states,
 and labels them as received captures without claiming a comparison verdict.
 Recent inspection retains at most 128 receipts per native state. Completed static
 reports and merged reports remain independent of this live inspection window.
+
+## Atlas presentation and evidence categories
+
+The static Atlas offers a light/dark toggle and accepts `?theme=light` for a
+print-oriented initial view. Theme changes affect presentation canvases and UI
+colors. Native capture pixels remain unchanged.
+
+Worksheet tiles combine an outcome symbol with independent planning badges.
+Amber `Δ` means an observed difference with unclassified cause. Green `=` means
+no difference in the retained compared captures. `?` means that no retained
+pixel comparison is available. `P` records a selected capture plan. `I` records
+conditional-formatting capture candidates with observed formula dependencies or
+changed referenced inputs. `F` records the explicit unsupported-rule-semantics
+capture decision. This last badge can concern a small rule range. It does not
+establish a whole-sheet fallback. Dashed borders retain incomplete-run status.
+
+The current source reports retain content envelopes and selection counts,
+native height differences, conditional-formatting decisions, chart dependency
+decisions and workbook-level XML transition counts. New Atlas indexes preserve
+the per-sheet coverage object and the applicable rule/chart decisions.
+Older indexes without these fields keep their unknown status.
+
+The current public reports do not consistently retain a per-candidate chain from
+direct XML change through dependency propagation to the final rectangle. Their
+workbook-level transition counts cannot establish that chain for an individual
+sheet. A future producer extension needs the native state pair, sheet identity,
+changed semantic property, direct source range, dependency target, decision code,
+fallback scope and final selected ranges. A full-sheet fallback must be recorded
+as an explicit decision, separately from clipped or sampled coverage.
+
+Rendering variation, volatile-formula causation and confirmed transformation
+regressions require an additional evidence-backed review record tied to the
+finding and source report digest. Formula presence and pixel difference flags
+alone do not establish these causes. Existing formula diagnostics remain
+explanations. They do not silently reclassify findings.
+
+The presentation uses color together with text/symbols and keeps provenance
+separate from comparison outcome. Relevant published designs include the
+following examples. These examples motivate the display choices and do not
+validate the Atlas's classification accuracy.
+
+- DQProv Explorer uses color for quality-metric types and linked provenance views.
+  [Bors et al., IEEE CG&A / IEEE VIS 2020](https://virtual.ieeevis.org/year/2020/paper_f-cga-11.html).
+- Data Tweening uses visual emphasis to explain data transformations over time.
+  [Khan et al., PVLDB 2017](https://www.vldb.org/pvldb/vol10/p661-khan.pdf).
+- Provenance for Interactive Visualizations connects displayed marks with their
+  source records and interactions.
+  [Psallidas and Wu, ACM HILDA 2018](https://www.cs.columbia.edu/~fotis/pubs/papers/iprov-hilda18.pdf).
+
+For a richer reviewed dataset, direct XML evidence can use a blue square,
+dependency evidence a purple diamond, fallback scope an amber `F`, rendering
+variation a cyan `R`, volatile-formula evidence a purple `V`, and confirmed
+regression a red `!`. These are proposed review encodings. The current Atlas
+does not populate absent causal categories or turn unknown sheets green.

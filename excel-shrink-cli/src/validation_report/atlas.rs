@@ -329,7 +329,10 @@ fn append_observation(
         for coverage in report["content_coverage"].as_array().into_iter().flatten() {
             if let Some(name) = coverage["sheet"].as_str() {
                 let bounds = &coverage["content_envelope_with_one_cell_margin"];
-                sheets.insert(name.to_owned(), json!({"differences":0,"captures":0,"rows":bounds["bottom"],"columns":bounds["right"]}));
+                sheets.insert(name.to_owned(), json!({
+                    "differences":0,"captures":0,"rows":bounds["bottom"],"columns":bounds["right"],
+                    "planning":coverage
+                }));
             }
         }
         for comparison in report["comparisons"].as_array().into_iter().flatten() {
@@ -363,6 +366,27 @@ fn append_observation(
                             .map(Value::String)
                             .unwrap_or(Value::Null);
                     }
+                }
+            }
+        }
+        for key in ["conditional_formatting", "chart_dependencies"] {
+            for pair in report[key].as_array().into_iter().flatten() {
+                if !matches!(pair["left"].as_str(), Some("O" | "OR"))
+                    || !matches!(pair["right"].as_str(), Some("SD" | "SDR"))
+                {
+                    continue;
+                }
+                for decision in pair["decisions"].as_array().into_iter().flatten() {
+                    let Some(name) = decision["sheet"].as_str()
+                        .or_else(|| decision["chart"]["sheet"].as_str()) else {
+                        continue;
+                    };
+                    let sheet = sheets.entry(name.to_owned())
+                        .or_insert_with(|| json!({"differences":0,"captures":0}));
+                    if sheet[key].is_null() {
+                        sheet[key] = json!([]);
+                    }
+                    sheet[key].as_array_mut().unwrap().push(decision.clone());
                 }
             }
         }
@@ -494,6 +518,9 @@ mod tests {
             "complete":true,"original_sha256":"0".repeat(64),"sheets":[
                 {"id":"1","name":"Data","order":0,"state":"visible"},
                 {"id":"2","name":"Empty","order":1,"state":"hidden"}]},
+            "content_coverage":[{"sheet":"Data","selected_capture_regions":2}],
+            "conditional_formatting":[{"left":"OR","right":"SDR","decisions":[
+                {"sheet":"Data","outcome":"capture","reason":"unsupported-rule-semantics"}]}],
             "comparisons":[{"left":"OR","right":"SDR","findings":[
                 {"sheet":"Data","cell":"A1","presence_differs":true}]},
                 {"left":"O","right":"OR","findings":[
@@ -518,6 +545,9 @@ mod tests {
         let book = &catalog["books"][0];
         assert_eq!(book["sheets"][1]["name"], "Empty");
         assert_eq!(book["inventory_complete"], true);
+        assert_eq!(book["observations"][0]["sheets"]["Data"]["planning"]["selected_capture_regions"], 2);
+        assert_eq!(book["observations"][0]["sheets"]["Data"]["conditional_formatting"][0]["reason"],
+            "unsupported-rule-semantics");
         assert_eq!(book["observations"].as_array().unwrap().len(), 2);
         for observation in book["observations"].as_array().unwrap() {
             assert_eq!(observation["sheets"]["Data"]["differences"], 1);

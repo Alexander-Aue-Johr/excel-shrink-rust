@@ -4,6 +4,32 @@ import { gzipSync } from 'node:zlib';
 import { readGzip, contextKey, assetUrl, candidatePair, sheetSummary, recordedOutcome, groupOutcome } from '../model.js';
 import { bookLayout } from '../gallery.js';
 import { difference, nativeZoomRegion } from '../comparison.js';
+import { sheetEvidence } from '../model.js';
+import { atlasColors } from '../card-painter.js';
+
+test('sheet badges preserve unknown causes and limit equality to retained captures', () => {
+  assert.equal(sheetEvidence([]).outcome, 'unknown');
+  assert.equal(sheetEvidence([{ captures: 1 }]).outcome, 'checked');
+  assert.equal(sheetEvidence([{ differences: 1, volatile_formula: true }]).outcome, 'difference');
+  assert.match(sheetEvidence([{ differences: 1 }]).label, /unclassified/);
+  assert.equal(sheetEvidence([{ planning: { selected_capture_regions: 2 } }]).planned, true);
+  assert.equal(sheetEvidence([{ captures: 1 }]).planned, false);
+  const rules = [{ conditional_formatting: [
+    { outcome: 'partial', formula_input_observations: 2 },
+    { outcome: 'capture', reason: 'unsupported-rule-semantics' },
+  ] }];
+  assert.equal(sheetEvidence(rules).indirect, true);
+  assert.equal(sheetEvidence(rules).conservative, true);
+  assert.equal(sheetEvidence([{ conditional_formatting: [
+    { outcome: 'excluded', formula_input_observations: 2 },
+  ] }]).indirect, false);
+});
+
+test('light and dark palettes preserve the native white capture paper', () => {
+  assert.notEqual(atlasColors('light').text, atlasColors('dark').text);
+  assert.equal(atlasColors('light').paper, '#ffffff');
+  assert.equal(atlasColors('dark').paper, '#ffffff');
+});
 
 test('native change masks ignore padded edges and retain changed common pixels', () => {
   const original = new Uint8ClampedArray(4 * 3 * 4).fill(255);

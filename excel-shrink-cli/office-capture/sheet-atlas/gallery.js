@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.module.js';
-import { paintSheetCard, getSheetLayout } from './card-painter.js';
-import { assetUrl, loadImage, sheetSummary } from './model.js';
+import { paintSheetCard, getSheetLayout, atlasColors } from './card-painter.js';
+import { assetUrl, loadImage, sheetSummary, sheetEvidence } from './model.js';
 
 const CARD_WIDTH = 1;
 const CARD_HEIGHT = .7;
@@ -112,7 +112,7 @@ export class AtlasGallery {
     this.world.append(label);
     const headingCanvas = document.createElement('canvas'); headingCanvas.width = 1800; headingCanvas.height = 160;
     const headingContext = headingCanvas.getContext('2d');
-    headingContext.fillStyle = '#d9e3e7'; headingContext.font = '100px Segoe UI';
+    headingContext.fillStyle = atlasColors().text; headingContext.font = '100px Segoe UI';
     const title = item.book.name.length > 35 ? item.book.name.slice(0, 32) + '…' : item.book.name;
     headingContext.fillText(title, 0, 108, 1800);
     const headingTexture = new THREE.CanvasTexture(headingCanvas); headingTexture.colorSpace = THREE.SRGBColorSpace;
@@ -165,23 +165,32 @@ export class AtlasGallery {
   }
 
   paintBase(entry) {
+    const colors = atlasColors();
     const observations = entry.book.observations.filter(o => this.selected.has(o.variant));
     const summaries = observations.map(o => sheetSummary(o, entry.sheet.name)).filter(Boolean);
+    const evidence = sheetEvidence(summaries);
     const count = summaries.reduce((sum, s) => sum + s.differences, 0);
     const incomplete = observations.some(o => !o.detail || !String(o.status).startsWith('completed'));
     const ctx = entry.canvas.getContext('2d');
     ctx.setTransform(entry.canvas.width / 420, 0, 0, entry.canvas.height / 294, 0, 0);
-    ctx.fillStyle = count ? '#3a3039' : '#233741'; ctx.fillRect(0, 0, 420, 294);
-    ctx.strokeStyle = count ? '#a4646d' : '#405763'; ctx.lineWidth = 3; ctx.strokeRect(1, 1, 418, 292);
-    ctx.fillStyle = count ? '#df8f96' : '#93a8b4';
+    ctx.fillStyle = count ? colors.observedFill : evidence.captures ? colors.checkedFill : colors.tile;
+    ctx.fillRect(0, 0, 420, 294);
+    ctx.strokeStyle = count ? colors.observedEdge : evidence.captures ? colors.checkedEdge : colors.tileEdge;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1, 1, 418, 292);
+    ctx.fillStyle = count ? colors.observedText : colors.muted;
     ctx.font = '18px Segoe UI'; ctx.fillText(String(entry.sheet.order + 1).padStart(2, '0'), 15, 27);
     ctx.font = '20px Segoe UI'; ctx.fillText(entry.sheet.name.slice(0, 32), 15, 150);
-    if (count) ctx.fillText(`${count} findings`, 15, 267);
+    ctx.font = '16px Segoe UI';
+    ctx.fillText(evidence.label.split(' · ')[0], 15, 267);
+    const badges = [evidence.planned && 'P', evidence.indirect && 'I', evidence.conservative && 'F'].filter(Boolean);
+    ctx.fillText(badges.join(' '), 325, 27);
     if (incomplete) ctx.fillText('Incomplete', 15, 58);
     entry.texture.needsUpdate = true;
     entry.button.classList.toggle('has-differences', count > 0);
+    entry.button.classList.toggle('has-checked-captures', !count && evidence.captures > 0);
     entry.button.classList.toggle('is-incomplete', incomplete);
-    entry.button.setAttribute('aria-label', `${entry.sheet.name}, ${count} recorded differences${incomplete ? ', incomplete' : ''}`);
+    entry.button.setAttribute('aria-label', `${entry.sheet.name}, ${evidence.label}${evidence.planned ? ', capture plan retained' : ''}${evidence.indirect ? ', conditional-formatting dependency candidate' : ''}${evidence.conservative ? ', conservative rule capture' : ''}${incomplete ? ', incomplete' : ''}`);
     entry.metadata.textContent = summaries.find(s => s.rows)?.rows
       ? `Envelope · ${summaries.find(s => s.rows).rows} rows · ${summaries.find(s => s.columns)?.columns || '?'} columns`
       : entry.sheet.state;
@@ -189,6 +198,15 @@ export class AtlasGallery {
 
   setSelected(selected) {
     this.selected = selected;
+    for (const item of this.bookEntries.values()) {
+      const canvas = item.heading.material.map.image;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = atlasColors().text;
+      const title = item.book.name.length > 35 ? item.book.name.slice(0, 32) + '…' : item.book.name;
+      ctx.fillText(title, 0, 108, 1800);
+      item.heading.material.map.needsUpdate = true;
+    }
     for (const entry of this.entries.values()) {
       this.removeDetail(entry);
       this.paintBase(entry);

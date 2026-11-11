@@ -2,14 +2,29 @@ import { drawSheetRegion } from './sheet-renderer.js';
 
 // Canvas dimensions are supplied by the caller. All internal geometry is in
 // those canvas pixels; returned interaction rectangles are normalised to 0..1.
-const C = {
+const DARK = {
   body: '#192a34', edge: '#40545e', text: '#d9e3e7', muted: '#93a8b4',
   tile: '#233741', tileEdge: '#405763', tileChanged: '#3a3039',
   tileChangedEdge: '#a4646d', red: '#df8f96', redFill: 'rgba(218,124,136,.15)',
   previewPadding: '#dfe7e5', paper: '#ffffff', neutralMap: '#293e48',
   neutralEdge: '#647c87', captureTint: 'rgba(104,195,167,.15)',
   green: '#8ad5ae', greenFill: 'rgba(115,210,166,.16)',
+  observedFill: '#493d27', observedEdge: '#d2a653', observedText: '#f1cf8c',
+  checkedFill: '#213d39', checkedEdge: '#579e88',
 };
+const LIGHT = {
+  ...DARK,
+  body: '#ffffff', edge: '#9aadb7', text: '#20343d', muted: '#506773',
+  tile: '#e5edf2', tileEdge: '#819aa8', tileChanged: '#f9e6e5',
+  tileChangedEdge: '#b74743', red: '#a62c2c', neutralMap: '#edf2f5',
+  neutralEdge: '#728c99', green: '#17644d',
+  observedFill: '#fff0ce', observedEdge: '#956118', observedText: '#744b10',
+  checkedFill: '#e3f1eb', checkedEdge: '#4c8a73',
+};
+export function atlasColors(theme = globalThis.document?.documentElement.dataset.theme) {
+  return theme === 'light' ? LIGHT : DARK;
+}
+let C = DARK;
 const FONT = '"Inter", "Segoe UI", system-ui, sans-serif';
 const FORMAT = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 });
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -468,6 +483,7 @@ function paintMapAttachment(canvas, sheet, sheetLayout, changes, options) {
 
 /** Draws only the available thumbnail image. The minimap NEVER calls the renderer. */
 export function paintSheetCard(canvas, sheet, options = {}) {
+  C = atlasColors();
   const { ctx, width, height } = beginBody(canvas);
   const layout = getSheetLayout(sheet, width, height, { previewRegion: options.previewRegion });
   const { unit, previewRect: imageRect, thumbnailRect, previewRegion } = layout;
