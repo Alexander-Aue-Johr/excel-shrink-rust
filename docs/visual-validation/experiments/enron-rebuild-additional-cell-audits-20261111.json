@@ -1,0 +1,28 @@
+[
+  {
+    "selection": "enron-local-cell-audit-next500-20261111",
+    "pairs": 500,
+    "statuses": {
+      "equal_cell_contents": 463,
+      "differences_found": 37
+    },
+    "difference_kinds": {
+      "changed": 3577
+    },
+    "summary_sha256": "45997c85a46fd8ceefa7fa4d641e47e4919f717da739bd033cab0c08f975830d",
+    "scope": "Verified source/output hashes. Differences retain all raw records. Formula diagnostics sample at most32 cells and may be budget limited."
+  },
+  {
+    "selection": "enron-desktop-first100-cell-audit-20261111",
+    "pairs": 100,
+    "statuses": {
+      "equal_cell_contents": 89,
+      "differences_found": 11
+    },
+    "difference_kinds": {
+      "changed": 11
+    },
+    "summary_sha256": "0245debff3bc0f35335c5a338794eff609ac38a6d1a225e2528c4f4174a82f3f",
+    "scope": "Verified source/output hashes. Differences retain all raw records. Formula diagnostics sample at most32 cells and may be budget limited."
+  }
+]
