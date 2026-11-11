@@ -124,3 +124,13 @@ The local raw evidence is retained in
 frame, selection, preparation, source copies, native receipts and images.
 These four observations concern the supplied envelopes of prepared workbooks.
 They supply no whole-workbook or population recall estimate.
+
+The ordinary v15 selector subsequently completed all four of the same pairs.
+Its per-quartile region counts were 1, 0, 4 and 2. Quartile 2 has byte-identical
+input packages and supplies no new targeted image observation. The other three
+pairs rendered fourteen images totaling 77,982,732 pixels. The independent
+reference rendered 82 images totaling 398,046,292 pixels across all four inputs.
+All seven targeted image pairs have equal pixels and geometry. These counts
+measure actual rendering work under the two recorded plans. Fixed 256-row
+reference tiles and adaptive targeted partitions differ, and the reference
+also qualifies native objects. These runs supply no matched timing estimate.

@@ -120,7 +120,30 @@
             "e5c4579c553dcfb42be6233f25a7fdb673614ed52d8c6079ebbd1961ec3adfbb"
           ]
         }
-      ]
+      ],
+      "targeted": {
+        "status": "completed_with_limitations",
+        "capture_policy": "targeted-content-grid-v15",
+        "candidate_count": 1,
+        "paired_findings": 1,
+        "pixel_differences": 0,
+        "geometry_differences": 0,
+        "rendered_images": 2,
+        "rendered_pixels": 2696176,
+        "reference_rendered_pixels": 2723592,
+        "image_comparison_statistics": {
+          "comparisons": 1,
+          "files_read": 2,
+          "decoded_images": 1,
+          "encoded_images_reused": 1,
+          "encoded_bytes_read": 183012
+        },
+        "timings_ms": {
+          "capture_selection_and_transport": 283,
+          "image_comparisons": 21
+        },
+        "report_sha256": "f158d240064b0f10139f86648a7f68e1378f2cbc2dd27b6e6f3d5f083a4ecfaa"
+      }
     },
     {
       "identity": "49a1d1b72ebc1e06029d0921ce9eb8eb10a9a0f375e7610bea505d26dc174bc1",
@@ -174,7 +197,30 @@
             "8ec94d82aef2e2f8ab7403fd32fc4cf041b9feed83cb1d5de9629b850505fc40"
           ]
         }
-      ]
+      ],
+      "targeted": {
+        "status": "completed_with_limitations",
+        "capture_policy": "targeted-content-grid-v15",
+        "candidate_count": 0,
+        "paired_findings": 0,
+        "pixel_differences": 0,
+        "geometry_differences": 0,
+        "rendered_images": 0,
+        "rendered_pixels": 0,
+        "reference_rendered_pixels": 1230060,
+        "image_comparison_statistics": {
+          "comparisons": 0,
+          "files_read": 0,
+          "decoded_images": 0,
+          "encoded_images_reused": 0,
+          "encoded_bytes_read": 0
+        },
+        "timings_ms": {
+          "capture_selection_and_transport": 21,
+          "image_comparisons": 0
+        },
+        "report_sha256": "77f92182bbac43c71feb51a974ff2b9890fb7c4f41c6f32682ff2e679eaff256"
+      }
     },
     {
       "identity": "b7af3fcdc28297fe3bab69604facd0da59f85dfd85d0a0c367241f52d431fc20",
@@ -288,7 +334,30 @@
             "c439a41ebd2fa1f0f1ba1d76becbd61a89cd434b4b02879287e7d8ba545df1a3"
           ]
         }
-      ]
+      ],
+      "targeted": {
+        "status": "completed_with_limitations",
+        "capture_policy": "targeted-content-grid-v15",
+        "candidate_count": 4,
+        "paired_findings": 4,
+        "pixel_differences": 0,
+        "geometry_differences": 0,
+        "rendered_images": 8,
+        "rendered_pixels": 24944836,
+        "reference_rendered_pixels": 40764400,
+        "image_comparison_statistics": {
+          "comparisons": 4,
+          "files_read": 8,
+          "decoded_images": 4,
+          "encoded_images_reused": 4,
+          "encoded_bytes_read": 1182290
+        },
+        "timings_ms": {
+          "capture_selection_and_transport": 1139,
+          "image_comparisons": 97
+        },
+        "report_sha256": "a511e3eb1976caae58a228349ec5a34c26685b3b6c0f3b1990e9f6ea6818072d"
+      }
     },
     {
       "identity": "6ff86375c8a4fb8ef59f9297a69d7b09814c704f84f83d450b2a8286ba3cacec",
@@ -962,7 +1031,30 @@
             "d9de5a3a8d2003e99aee0c520122a486b0fe399cd11efb5fed8781f99c72987f"
           ]
         }
-      ]
+      ],
+      "targeted": {
+        "status": "completed_with_limitations",
+        "capture_policy": "targeted-content-grid-v15",
+        "candidate_count": 2,
+        "paired_findings": 2,
+        "pixel_differences": 0,
+        "geometry_differences": 0,
+        "rendered_images": 4,
+        "rendered_pixels": 50341720,
+        "reference_rendered_pixels": 353328240,
+        "image_comparison_statistics": {
+          "comparisons": 2,
+          "files_read": 4,
+          "decoded_images": 2,
+          "encoded_images_reused": 2,
+          "encoded_bytes_read": 836210
+        },
+        "timings_ms": {
+          "capture_selection_and_transport": 1317,
+          "image_comparisons": 162
+        },
+        "report_sha256": "ba2d1fdcf7e91a52c4df7675e7641a1298df75bf658d6ec7d9774902b4e51089"
+      }
     }
   ],
   "limits": "Four source-size-stratified prepared Enron XLSX inputs. Prior exposure unclassified. Reference scope is the declared stored-dimension envelope with native object qualification. No selector recall or whole-workbook equivalence claim."
