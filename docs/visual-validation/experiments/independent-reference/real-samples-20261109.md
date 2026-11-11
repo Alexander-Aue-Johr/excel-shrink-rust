@@ -134,3 +134,37 @@ All seven targeted image pairs have equal pixels and geometry. These counts
 measure actual rendering work under the two recorded plans. Fixed 256-row
 reference tiles and adaptive targeted partitions differ, and the reference
 also qualifies native objects. These runs supply no matched timing estimate.
+# Data.gov inventory sample on 2026-11-11
+
+`profile_sample.py` freezes one occurrence per size quartile from the versioned
+9,117-member `profiles/corpora/datagov.json` inventory. It uses seed
+`deltasieve-datagov-reference-20261111-v1`, the inventory's archive identity,
+member index/name and stored bytes. Selection was written before joining the
+existing SheetShrink preparations. A second execution reproduced the selection
+exactly. Prior development exposure remains unclassified.
+
+```powershell
+python docs/visual-validation/experiments/independent-reference/profile_sample.py `
+  --profile profiles/corpora/datagov.json `
+  --seed deltasieve-datagov-reference-20261111-v1 `
+  --output 'G:\deltasieve-work\datagov-reference-reproduction'
+```
+
+Original bytes were checked against the selected inventory SHA-256. Candidate
+paths came from the existing preparation and recovered-output manifests. Plans
+used `prepare.make_plan(original_bytes, candidate_bytes, True, 256)`, retaining
+its 64-area limit. Each native reference additionally requested object
+qualification and had a 90-second total deadline on an owned private desktop.
+The frozen selection, plans, native receipts and raw PNGs remain under
+`G:\deltasieve-work\datagov-reference-20261111`.
+
+Two references completed over eleven areas, with equal image dimensions and
+zero changed RGBA pixels. All 22 PNG hashes and decoded pixels were checked.
+Quartile one was byte-identical and selected no targeted captures. Quartile two
+selected eight equal image pairs. The other two frozen references failed native
+image-size preflight before capture and remain failed selected observations.
+They were neither replaced nor counted as equal. Their 256-row plans contain
+two and 46 regions respectively. These results do not estimate corpus recall.
+`datagov-sample-20261111.json` retains all four selected identities, outcomes,
+native receipt identities, rendered image hashes and targeted observations.
+

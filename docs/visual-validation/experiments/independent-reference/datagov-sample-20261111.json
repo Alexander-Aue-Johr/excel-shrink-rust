@@ -1,0 +1,510 @@
+{
+  "schema": 1,
+  "selection": {
+    "schema": 1,
+    "population": 9117,
+    "source_profile_sha256": "eaecb402c0c06db982e53ef5d978e558c351560947dddb10521aab3a285ef084",
+    "archive_sha256": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808",
+    "seed": "deltasieve-datagov-reference-20261111-v1",
+    "strata": [
+      {
+        "quartile": 1,
+        "population": 2279,
+        "selected": 1,
+        "smallest_bytes": 2612,
+        "largest_bytes": 24012
+      },
+      {
+        "quartile": 2,
+        "population": 2279,
+        "selected": 1,
+        "smallest_bytes": 24025,
+        "largest_bytes": 78212
+      },
+      {
+        "quartile": 3,
+        "population": 2279,
+        "selected": 1,
+        "smallest_bytes": 78316,
+        "largest_bytes": 602822
+      },
+      {
+        "quartile": 4,
+        "population": 2280,
+        "selected": 1,
+        "smallest_bytes": 602836,
+        "largest_bytes": 356054341
+      }
+    ],
+    "selected": [
+      {
+        "archive_index": 73,
+        "member_name": "10-19-16 paper extracts unknowns_74b3b4eeb4e0.xlsx",
+        "bytes": 21479,
+        "sha256": "74b3b4eeb4e039afb2d5ae78b8485eb80da22ee48c88f6378c4fc2e69e982520",
+        "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:73:10-19-16 paper extracts unknowns_74b3b4eeb4e0.xlsx",
+        "quartile": 1,
+        "group_id": "0c98e57a90820efb4c8b",
+        "selection_priority": "0037d17af265540b2da3928e33c927bce0b7bd8c62104f9758b294c8cd5e60c7"
+      },
+      {
+        "archive_index": 4466,
+        "member_name": "GordonChristopher_E331 TP HF O3 SHC 2_63_dataset_20170309 SCID A-bvqk_776ac1d4a6c0.xlsx",
+        "bytes": 62733,
+        "sha256": "776ac1d4a6c0fcfd05e0a2079eb7532688c01e2d28719993cba0c72a31ea87ef",
+        "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:4466:GordonChristopher_E331 TP HF O3 SHC 2_63_dataset_20170309 SCID A-bvqk_776ac1d4a6c0.xlsx",
+        "quartile": 2,
+        "group_id": "9e1aabfcbfd359e6f9cc",
+        "selection_priority": "0006408adda57dd68c5f23714e668c32531c514b2917639de0b6b56067222410"
+      },
+      {
+        "archive_index": 700,
+        "member_name": "2024_q3_365196c90ced.xlsx",
+        "bytes": 419489,
+        "sha256": "365196c90cede646a18bd686f66e6b6bb5fb6524ff9cd12067fe0ee55fc24aaa",
+        "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:700:2024_q3_365196c90ced.xlsx",
+        "quartile": 3,
+        "group_id": "64dfb4b5a56cb6ded9bb",
+        "selection_priority": "00198d4ec7f1ca365e166640fb8e30d11d4fb69cbd8e1fb276a6480b7f0e0da1"
+      },
+      {
+        "archive_index": 1057,
+        "member_name": "AOP development_Science Hub_15c57074fbd6.xlsx",
+        "bytes": 1963947,
+        "sha256": "15c57074fbd6b2774a8b2d66b4432f1f1e16761db1b186e98ae436e085b48d3f",
+        "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:1057:AOP development_Science Hub_15c57074fbd6.xlsx",
+        "quartile": 4,
+        "group_id": "88cea5190878118df616",
+        "selection_priority": "0014275018c57b71cbd83352c46c986bb56ce8bb903199c6c3d0bab62e86bc72"
+      }
+    ],
+    "prior_exposure": "unclassified",
+    "status": "selection frozen before joining optimization results"
+  },
+  "selection_reproduced": true,
+  "producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c",
+  "source_profile": "profiles/corpora/datagov.json",
+  "tile_rows": 256,
+  "max_regions": 64,
+  "native_operation_timeout_seconds": 90,
+  "native_objects_required": true,
+  "outcomes": [
+    {
+      "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:73:10-19-16 paper extracts unknowns_74b3b4eeb4e0.xlsx",
+      "quartile": 1,
+      "name": "10-19-16 paper extracts unknowns_74b3b4eeb4e0.xlsx",
+      "original_sha256": "74b3b4eeb4e039afb2d5ae78b8485eb80da22ee48c88f6378c4fc2e69e982520",
+      "candidate_sha256": "74b3b4eeb4e039afb2d5ae78b8485eb80da22ee48c88f6378c4fc2e69e982520",
+      "regions": 1,
+      "reference_status": "completed",
+      "reference_error": null,
+      "elapsed_seconds": 8.5898367,
+      "reference_receipt_sha256": "6cff63b0801bf90d80e7c5011c78f4520c530de8cff7c37622f097a777350e12",
+      "images": [
+        {
+          "sheet": "10-19-16 paper extarcts unknown",
+          "range": "A1:AX31",
+          "dimensions": [
+            4201,
+            621
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 204296,
+              "file": "reference-0-O.png",
+              "sha256": "70e6c27835a098927588c4dc8999b40c62d1f2ec155d2751909c7e012cfccd7a"
+            },
+            {
+              "bytes": 204296,
+              "file": "reference-0-SD.png",
+              "sha256": "70e6c27835a098927588c4dc8999b40c62d1f2ec155d2751909c7e012cfccd7a"
+            }
+          ]
+        }
+      ],
+      "targeted": {
+        "status": "completed_with_limitations",
+        "candidate_count": 0,
+        "capture_counts": {
+          "OR:charts": 0
+        },
+        "observations": [],
+        "receipt_sha256": "8d605e076365ec1692e58864a7d55c8da2d04d44069ff325b97f514f03de7a88"
+      }
+    },
+    {
+      "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:4466:GordonChristopher_E331 TP HF O3 SHC 2_63_dataset_20170309 SCID A-bvqk_776ac1d4a6c0.xlsx",
+      "quartile": 2,
+      "name": "GordonChristopher_E331 TP HF O3 SHC 2_63_dataset_20170309 SCID A-bvqk_776ac1d4a6c0.xlsx",
+      "original_sha256": "776ac1d4a6c0fcfd05e0a2079eb7532688c01e2d28719993cba0c72a31ea87ef",
+      "candidate_sha256": "ed2bb460aab723bbe29d5b71dc2fbd559698dcf21fb869a2bff7f8c76962b6cb",
+      "regions": 10,
+      "reference_status": "completed",
+      "reference_error": null,
+      "elapsed_seconds": 13.35925,
+      "reference_receipt_sha256": "5ba6924118da53c63797d12278a04a8e525aafc67a27fc2771fe8fa55a027a4f",
+      "images": [
+        {
+          "sheet": "Fig 2",
+          "range": "A1:BV10",
+          "dimensions": [
+            4737,
+            201
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 36247,
+              "file": "reference-0-O.png",
+              "sha256": "46ac2a5610784b917888ce6eeb39bc0fcac903fc08a59c32a47713f8ba7f3e48"
+            },
+            {
+              "bytes": 36247,
+              "file": "reference-0-SD.png",
+              "sha256": "46ac2a5610784b917888ce6eeb39bc0fcac903fc08a59c32a47713f8ba7f3e48"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 3",
+          "range": "A1:BU16",
+          "dimensions": [
+            4673,
+            322
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 37737,
+              "file": "reference-1-O.png",
+              "sha256": "2dca8e8a415c2e45c9b70f7974679437a9be2e88379505736a2b55b46e05b450"
+            },
+            {
+              "bytes": 37737,
+              "file": "reference-1-SD.png",
+              "sha256": "2dca8e8a415c2e45c9b70f7974679437a9be2e88379505736a2b55b46e05b450"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 4",
+          "range": "A1:AK23",
+          "dimensions": [
+            2369,
+            461
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 60234,
+              "file": "reference-2-O.png",
+              "sha256": "1bcdc8d8cc1ef84edb5fab29967fed3af2f184aa5195bbca636e324abd768239"
+            },
+            {
+              "bytes": 60234,
+              "file": "reference-2-SD.png",
+              "sha256": "1bcdc8d8cc1ef84edb5fab29967fed3af2f184aa5195bbca636e324abd768239"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 5",
+          "range": "A1:I15",
+          "dimensions": [
+            577,
+            301
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 9280,
+              "file": "reference-3-O.png",
+              "sha256": "2cf9fb0733c722cacaf91f34be7e436f6b0ddf53eff7c14d168573b6ef074469"
+            },
+            {
+              "bytes": 9280,
+              "file": "reference-3-SD.png",
+              "sha256": "2cf9fb0733c722cacaf91f34be7e436f6b0ddf53eff7c14d168573b6ef074469"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 6",
+          "range": "A1:BU40",
+          "dimensions": [
+            4673,
+            801
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 87974,
+              "file": "reference-4-O.png",
+              "sha256": "d0dd49b7ec9d548251514b3ddc4e6a90ba68b19dd1303d2e2d3d69a6476a9b41"
+            },
+            {
+              "bytes": 87974,
+              "file": "reference-4-SD.png",
+              "sha256": "d0dd49b7ec9d548251514b3ddc4e6a90ba68b19dd1303d2e2d3d69a6476a9b41"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 7",
+          "range": "A1:I18",
+          "dimensions": [
+            577,
+            361
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 9954,
+              "file": "reference-5-O.png",
+              "sha256": "2f4696cbb229f38884b160cdf01079832ac2b60baba25a0ae7824085644ca5d1"
+            },
+            {
+              "bytes": 9954,
+              "file": "reference-5-SD.png",
+              "sha256": "2f4696cbb229f38884b160cdf01079832ac2b60baba25a0ae7824085644ca5d1"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 8",
+          "range": "A1:CC15",
+          "dimensions": [
+            5185,
+            301
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 48589,
+              "file": "reference-6-O.png",
+              "sha256": "21e0e88e6741ace3e3ad7be2c98610c8b0ac1441f740f6b64c3a7563e6e732e7"
+            },
+            {
+              "bytes": 48589,
+              "file": "reference-6-SD.png",
+              "sha256": "21e0e88e6741ace3e3ad7be2c98610c8b0ac1441f740f6b64c3a7563e6e732e7"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 9",
+          "range": "A1:AO21",
+          "dimensions": [
+            2625,
+            421
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 33992,
+              "file": "reference-7-O.png",
+              "sha256": "52404a92577024e5004cb504bb5ec97fa849d4753ff9b4bb530919be39e43e33"
+            },
+            {
+              "bytes": 33992,
+              "file": "reference-7-SD.png",
+              "sha256": "52404a92577024e5004cb504bb5ec97fa849d4753ff9b4bb530919be39e43e33"
+            }
+          ]
+        },
+        {
+          "sheet": "Fig 10",
+          "range": "A1:AO118",
+          "dimensions": [
+            2625,
+            2361
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 187659,
+              "file": "reference-8-O.png",
+              "sha256": "98f485b60855a70a6bfa2ed6a4f09f523e7b39fc87752386b06372400f9a1ddf"
+            },
+            {
+              "bytes": 187659,
+              "file": "reference-8-SD.png",
+              "sha256": "98f485b60855a70a6bfa2ed6a4f09f523e7b39fc87752386b06372400f9a1ddf"
+            }
+          ]
+        },
+        {
+          "sheet": "Dictionary",
+          "range": "A1:C44",
+          "dimensions": [
+            193,
+            881
+          ],
+          "changed_rgba_pixels": 0,
+          "images": [
+            {
+              "bytes": 23434,
+              "file": "reference-9-O.png",
+              "sha256": "23aa7e5ba191e56b20054d7d81cc571f1ea7932e79a61c99c8b053ccb4d976bd"
+            },
+            {
+              "bytes": 23434,
+              "file": "reference-9-SD.png",
+              "sha256": "23aa7e5ba191e56b20054d7d81cc571f1ea7932e79a61c99c8b053ccb4d976bd"
+            }
+          ]
+        }
+      ],
+      "targeted": {
+        "status": "completed_with_limitations",
+        "candidate_count": 8,
+        "capture_counts": {
+          "OR": 8,
+          "OR:charts": 0,
+          "SDR": 8,
+          "SDR:charts": 0
+        },
+        "observations": [
+          {
+            "sheet": "Fig 10",
+            "range": "Q1:AF118",
+            "dimensions": [
+              1025,
+              2361
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "fdb6be310009fbce889298f754f2c149bcb9a7d42b0d0f35273b3c8e84b4be9c",
+              "fdb6be310009fbce889298f754f2c149bcb9a7d42b0d0f35273b3c8e84b4be9c"
+            ]
+          },
+          {
+            "sheet": "Fig 2",
+            "range": "A1:BW10",
+            "dimensions": [
+              4801,
+              201
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "4d85be3f064c52eae98992266c8c84ae4013a01778d25b62f75f56d65974a602",
+              "4d85be3f064c52eae98992266c8c84ae4013a01778d25b62f75f56d65974a602"
+            ]
+          },
+          {
+            "sheet": "Fig 3",
+            "range": "A1:BV16",
+            "dimensions": [
+              4737,
+              322
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "8c74fbd3513807beb6dda160bc6eb08925c6b7652e78da285f4908f46b1bc8a4",
+              "8c74fbd3513807beb6dda160bc6eb08925c6b7652e78da285f4908f46b1bc8a4"
+            ]
+          },
+          {
+            "sheet": "Fig 4",
+            "range": "A1:AF23",
+            "dimensions": [
+              2049,
+              461
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "34240821673db1525e9c23b2bd0a39fcd9555c49f38b8812675e4a64e9248000",
+              "34240821673db1525e9c23b2bd0a39fcd9555c49f38b8812675e4a64e9248000"
+            ]
+          },
+          {
+            "sheet": "Fig 6",
+            "range": "A1:BR40",
+            "dimensions": [
+              4481,
+              801
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "2915e4a4cbb13d189c7d5655fe09b8b7d6d026d153c2ea54dfd30852b3120ffb",
+              "2915e4a4cbb13d189c7d5655fe09b8b7d6d026d153c2ea54dfd30852b3120ffb"
+            ]
+          },
+          {
+            "sheet": "Fig 8",
+            "range": "BM1:CB15",
+            "dimensions": [
+              1025,
+              301
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "8b89efc63cbd841978a3f93f5c0f291f2eac401371053097578f1b97ebcae8ba",
+              "8b89efc63cbd841978a3f93f5c0f291f2eac401371053097578f1b97ebcae8ba"
+            ]
+          },
+          {
+            "sheet": "Fig 8",
+            "range": "Q1:AV15",
+            "dimensions": [
+              2049,
+              301
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "db0212e0ceb9ca8eaa1c833d6ce2f9649ffddf615330b8329a509c8d5fa3f20a",
+              "db0212e0ceb9ca8eaa1c833d6ce2f9649ffddf615330b8329a509c8d5fa3f20a"
+            ]
+          },
+          {
+            "sheet": "Fig 9",
+            "range": "Q1:AP21",
+            "dimensions": [
+              1665,
+              421
+            ],
+            "changed_rgba_pixels": 0,
+            "image_sha256": [
+              "e2dc3758499399950ca9f3b48a80002daca8d5af90dd49ee2fa398df2a9d3667",
+              "e2dc3758499399950ca9f3b48a80002daca8d5af90dd49ee2fa398df2a9d3667"
+            ]
+          }
+        ],
+        "receipt_sha256": "6a9e260f2a3a9597446981b8801133cead4ce0cdc88ffad6009ea35346c6ca07"
+      }
+    },
+    {
+      "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:700:2024_q3_365196c90ced.xlsx",
+      "quartile": 3,
+      "name": "2024_q3_365196c90ced.xlsx",
+      "original_sha256": "365196c90cede646a18bd686f66e6b6bb5fb6524ff9cd12067fe0ee55fc24aaa",
+      "candidate_sha256": "365196c90cede646a18bd686f66e6b6bb5fb6524ff9cd12067fe0ee55fc24aaa",
+      "regions": 2,
+      "reference_status": "failed",
+      "reference_error": "Reference area exceeds image limits; split its frozen plan independently",
+      "elapsed_seconds": 8.9801401,
+      "reference_receipt_sha256": "7285dea425717f6d6e93f7c0fda7c688a7519f3d8da414f77fa9180a1333284b",
+      "images": []
+    },
+    {
+      "identity": "c521fad367f29796b31c49564d9cc47e04d9c034f2cf25d3025f5ad6d7744808:1057:AOP development_Science Hub_15c57074fbd6.xlsx",
+      "quartile": 4,
+      "name": "AOP development_Science Hub_15c57074fbd6.xlsx",
+      "original_sha256": "15c57074fbd6b2774a8b2d66b4432f1f1e16761db1b186e98ae436e085b48d3f",
+      "candidate_sha256": "a206fbae28280be4c51ef0a820f8623356fe34416a236658a751bac3315ca7fb",
+      "regions": 46,
+      "reference_status": "failed",
+      "reference_error": "Reference area exceeds image limits; split its frozen plan independently",
+      "elapsed_seconds": 11.3006013,
+      "reference_receipt_sha256": "c14391bcee057ffe2f894dc5bdda1b1477c1a6313b752dd65c392a044e855702",
+      "images": []
+    }
+  ],
+  "limitations": [
+    "Prior exposure unclassified; not a held-out sample.",
+    "Stored dimensions do not alone certify graphical completeness; native object qualification requested.",
+    "Failed reference plans retain their frozen areas and are not replaced by easier inputs.",
+    "Four references ran sequentially while production jobs remained active; elapsed times are unmatched observations."
+  ]
+}
