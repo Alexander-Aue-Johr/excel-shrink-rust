@@ -1,0 +1,24 @@
+{
+  "exporter_commit": "b605edad03b8a27d3ad7f6cf16c12c01a87b7701",
+  "integrity": {
+    "bytes": 678463612,
+    "within_one_gb": true,
+    "exact_detail_payloads": 125,
+    "verified_source_png_paths": 9975,
+    "unique_presentation_assets": 8358
+  },
+  "schema": 1,
+  "publication_status": "review_required",
+  "browser": {
+    "base": "http://127.0.0.1:18782/",
+    "atlasAssetRequests": 3,
+    "detailAssetRequests": 3,
+    "dimensions": [
+      1368,
+      466
+    ],
+    "errors": []
+  },
+  "browser_policy": "External origins and validation API requests were blocked during the three-corpus overview and Adage detail checks.",
+  "verifier_commit": "afb5db48"
+}

@@ -118,6 +118,14 @@ comparison. The byte-exact static export totals 3,459,453,724 bytes.
 The opening figure in the DeltaSieve manuscript now uses this snapshot.
 The public hosting URL and publication review remain open.
 
+The repository's compact exporter completed its full first-stage run.
+The verified result contains 678,463,612 bytes, 125 exact detail payloads,
+9,975 source PNG mappings and 8,358 pooled presentation assets. Three corpus
+overviews and the direct Adage detail passed browser checks with external
+origins and validation API requests blocked. The
+[verification receipt](../visual-validation/experiments/static-atlas-compact-20261111.json)
+records the export and verifier revisions.
+
 The compact local projection of this snapshot contains 8,758 files totaling
 678,466,994 bytes, with a SHA-256 inventory for the entire directory. Its
 largest individual file is 45,003,784 bytes. The metadata audit lists 116
@@ -1144,8 +1152,18 @@ Continuous 256-row reference tiling localized the visible B2000 and J2099 change
 the hidden B3000 tile equal. The experiment records its supplied area limits,
 producer/source hashes, deadlines, raw images and the initial failed path attempt
 in `../visual-validation/experiments/independent-reference/comparator-pilot-20261109.md`.
-These are controlled pair-level checks. The real-world seeded sample, broader
+These are controlled pair-level checks. Broader seeded samples, the extended
 mutation matrix, pixel-coverage scoring and matched cost experiments remain open.
+
+A separate fixed-seed sample selected one prepared Enron XLSX per source-size
+quartile from 30,301 inputs. All four native references qualified over 41
+stored-dimension rectangles, with equal dimensions and zero changed RGBA
+pixels. The source frame, seed, inputs and image identities are in the
+[prepared Enron sample](../visual-validation/experiments/independent-reference/enron-prepared-sample-20261111.json).
+Prior exposure remains unclassified. Two additional synthetic representation
+controls independently confirmed equal rendering after style and shared-string
+permutations. Their selected plans contained zero and one regions, respectively.
+The shared-string case retains one unnecessary capture pair under tested v15.
 
 The existing twelve-occurrence Enron development reference sample was fully
 reconciled to seven completed inputs with 33 areas, two size-preflight failures

@@ -125,6 +125,14 @@ It rejects incomplete exports and paths outside the two supplied directories.
 Its output reports package bytes and the numbers of checked payloads and images.
 Browser navigation and decoded-pixel checks remain additional verification steps.
 
+The complete three-corpus first-stage export passed this check on 2026-11-11.
+It contains 678,463,612 bytes, 125 byte-exact detail payloads and 9,975 mapped
+source PNG paths served through 8,358 pooled presentation assets. The
+[export receipt](experiments/static-atlas-compact-20261111.json) also records
+browser checks for all three corpus overviews and the Adage detail, with
+external origins and validation API requests blocked. Publication review
+remains separate from these integrity and execution checks.
+
 A retained 573-by-19,981-pixel capture exercises the tiled SVG path beyond
 WebP's single-image height limit. The browser decoded the embedded tiles into
 a full-size canvas. Its SHA-256 over RGBA bytes matched the original PNG's
