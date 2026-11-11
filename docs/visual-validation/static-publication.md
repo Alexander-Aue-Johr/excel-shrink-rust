@@ -100,6 +100,13 @@ export. Use `public-provenance.json` to trace the displayed observations to
 their source reports. Wait for `.incomplete` to disappear and review
 `publication-review.json` before serving the directory.
 
+Renderer recipe hashes exclude the static `sheet-atlas` and `control-room`
+directories. Changes to report navigation and magnifiers can therefore retain
+capture compatibility. Native PowerShell, C# and taskpane assets remain hashed.
+The [retained diagnostic](experiments/host-recipe-viewer-20261111.json) reproduces
+two earlier recipe hashes by changing only the Atlas app and comparison modules.
+Historical report signatures retain their recorded values.
+
 Check the size of the complete reviewer directory against the hosting budget.
 The Atlas displays its estimated size and whether it exceeds the configured
 GitHub Pages budget. A larger release requires a static host with sufficient

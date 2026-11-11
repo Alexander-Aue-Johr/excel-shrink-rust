@@ -151,6 +151,22 @@ mod asset_tests {
     use super::*;
 
     #[test]
+    fn static_viewer_edits_do_not_invalidate_the_renderer_recipe() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("capture-recipe-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("sheet-atlas"))?;
+        fs::write(root.join("taskpane.js"), b"capture implementation")?;
+        fs::write(root.join("sheet-atlas/app.js"), b"original viewer")?;
+        let original = runtime_recipe_digest(&root)?;
+        fs::write(root.join("sheet-atlas/app.js"), b"updated viewer")?;
+        fs::write(root.join("sheet-atlas/comparison.js"), b"new viewer module")?;
+        assert_eq!(original, runtime_recipe_digest(&root)?);
+        fs::write(root.join("taskpane.js"), b"changed capture implementation")?;
+        assert_ne!(original, runtime_recipe_digest(&root)?);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     fn release_assets_take_precedence_and_explicit_mistakes_do_not_fall_back() -> Result<()> {
         let root = std::env::temp_dir().join(format!("capture-assets-{}", uuid::Uuid::new_v4()));
         let packaged = root.join("release/office-capture");
@@ -191,12 +207,11 @@ pub(super) fn signature(options: &CaptureOptions, environment_key: &str) -> Resu
         "environment_key":environment_key,
         "platform":std::env::consts::OS,
         "architecture":std::env::consts::ARCH,
-        "host_recipe_sha256":runtime_recipe_digest()?,
+        "host_recipe_sha256":runtime_recipe_digest(&capture_directory()?)?,
     }))
 }
 
-fn runtime_recipe_digest() -> Result<String> {
-    let root = capture_directory()?;
+fn runtime_recipe_digest(root: &Path) -> Result<String> {
     let mut files = std::collections::BTreeMap::new();
     // The host composes PowerShell, C# and Office.js at runtime. Keep edits to
     // those source assets in the reuse identity even without a rebuilt binary.
@@ -209,7 +224,7 @@ fn runtime_recipe_digest() -> Result<String> {
         if relative.components().any(|part| {
             matches!(
                 part.as_os_str().to_str(),
-                Some("control-room" | "tests" | "obj" | "bin")
+                Some("control-room" | "sheet-atlas" | "tests" | "obj" | "bin")
             )
         }) {
             continue;

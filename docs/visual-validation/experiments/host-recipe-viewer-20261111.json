@@ -1,0 +1,12 @@
+{
+  "current": "7be45f1df68b126f64643cf3e550912a1616fb6ca346853126f9aa50831ff666",
+  "earlier_viewer": "97d5b9695b9fa14842c508a4fb5a4af9d1864a0add82d5c7ac9f300f7f2695f4",
+  "changed_files": [
+    "sheet-atlas/app.js",
+    "sheet-atlas/comparison.js"
+  ],
+  "schema": 1,
+  "inspected_files": 59,
+  "source_commit_for_earlier_viewer": "f00ccd71",
+  "interpretation": "Both recorded recipe hashes are reproduced by replacing only the two static viewer modules. Validator source, capture options and input bytes match between the inspected ordinary runs."
+}
