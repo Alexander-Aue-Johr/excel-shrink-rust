@@ -208,7 +208,8 @@ impl<'a> VisualBounds<'a> {
     /// Flat inherited fills repeat beyond their last finite transition. Preserve
     /// every explicit cell and transition, plus one tail row/column. Gridline
     /// visibility is sheet-wide, so it adds no transition in the repeating tail.
-    /// CF, borders and unsupported worksheet features must be excluded by callers.
+    /// Column borders and unsupported worksheet features retain their fallback.
+    /// Finite row borders keep the full worksheet width through the last row band.
     pub fn finish_background_bands(
         &mut self,
         solid_fills: &BTreeSet<u32>,
@@ -227,39 +228,52 @@ impl<'a> VisualBounds<'a> {
             .chain(self.row_styles.iter())
             .all(|index| {
                 self.styles.get(*index).is_some_and(|style| {
-                    !style.has_visible_border
-                        && (!style.has_visible_fill
-                            || style
-                                .fill_id
-                                .is_some_and(|fill| solid_fills.contains(&fill)))
+                    !style.has_visible_fill
+                        || style
+                            .fill_id
+                            .is_some_and(|fill| solid_fills.contains(&fill))
                 })
             });
-        if !supported {
+        let column_border = std::iter::once(&0)
+            .chain(self.column_styles.iter())
+            .any(|index| {
+                self.styles
+                    .get(*index)
+                    .is_some_and(|style| style.has_visible_border)
+            });
+        if !supported || column_border {
             return false;
         }
         self.columns.finalize();
         // Unfilled columns leave each solid row background unchanged across width
         // and font boundaries. Explicit cells and finite fill transitions stay below.
-        let columns_without_fill = std::iter::once(&0)
-            .chain(self.column_styles.iter())
-            .all(|index| {
-                self.styles.get(*index).is_some_and(|style| !style.has_visible_fill)
-            });
+        let columns_without_fill =
+            std::iter::once(&0)
+                .chain(self.column_styles.iter())
+                .all(|index| {
+                    self.styles
+                        .get(*index)
+                        .is_some_and(|style| !style.has_visible_fill)
+                });
         let uniform_column_fill = self
             .columns
             .uniform_background_fill()
             .is_some_and(|fill| solid_fills.contains(&fill));
-        let right = if columns_without_fill || uniform_column_fill {
+        let row_border = self.row_styles.iter().any(|index| {
+            self.styles
+                .get(*index)
+                .is_some_and(|style| style.has_visible_border)
+        });
+        let right = if row_border {
+            // A row style applies to every column, including distant empty cells.
+            // Its border is finite vertically, so it does not require all rows.
+            16_384
+        } else if columns_without_fill || uniform_column_fill {
             finite.right.saturating_add(1).min(16_384)
         } else {
             finite.right.max(self.band_right)
         };
-        self.include_rectangle(
-            1,
-            1,
-            finite.bottom.max(self.band_bottom),
-            right,
-        );
+        self.include_rectangle(1, 1, finite.bottom.max(self.band_bottom), right);
         if let Some(bounds) = self.explicit_cells {
             self.include_rectangle(bounds.top, bounds.left, bounds.bottom, bounds.right);
         }
@@ -364,7 +378,9 @@ mod tests {
     #[ignore = "requires ANBAU_BACKGROUND_FIXTURE with retained rebuilt XLSX partners"]
     fn retained_anbau_uniform_background_bounds_capture_selection() -> Result<()> {
         use super::super::{
-            capture_layout, content_bounds::ContentBounds, layout_candidates,
+            capture_layout,
+            content_bounds::ContentBounds,
+            layout_candidates,
             xml_changes::{cell_candidates, Snapshot},
         };
         let root = std::path::PathBuf::from(std::env::var("ANBAU_BACKGROUND_FIXTURE")?);
@@ -379,6 +395,22 @@ mod tests {
         let (selected, _) = bounds.select(&candidates)?;
         let coalesced = capture_layout::coalesce(&selected)?;
         assert_eq!(coalesced.len(), 164);
+        Ok(())
+    }
+
+    /// Municipal-finance Inquire output, GENESIS-Online. Its mixed drawing
+    /// objects still require qualification before background-tail sampling.
+    #[test]
+    #[ignore = "requires GENESIS_BACKGROUND_FIXTURE with retained rebuilt XLSX partners"]
+    fn retained_genesis_drawing_keeps_background_fallback() -> Result<()> {
+        use super::super::xml_changes::Snapshot;
+        let root = std::path::PathBuf::from(std::env::var("GENESIS_BACKGROUND_FIXTURE")?);
+        let original = Snapshot::read(&root.join("OR-rebuilt.xlsx"))?;
+        let sheet = &original.sheets["GENESIS-Online"];
+        assert!(!sheet.background_tail_sampling);
+        let bounds = sheet.visual_bounds.unwrap();
+        assert_eq!(bounds.right, 16_384);
+        assert_eq!(bounds.bottom, 1_048_576);
         Ok(())
     }
 
@@ -507,12 +539,6 @@ mod tests {
                 true,
                 false,
             ),
-            (
-                r#"<row r="9" s="3" customFormat="1"/>"#,
-                BTreeSet::from([2, 3]),
-                true,
-                false,
-            ),
         ] {
             let mut bounds = VisualBounds::new(&styles);
             let xml = format!(
@@ -528,6 +554,40 @@ mod tests {
             if sampled {
                 assert_eq!(bounds.bounds.unwrap().address(), "A1:Z40");
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn finite_row_border_keeps_xfd_without_unbounded_background_height() -> Result<()> {
+        let styles = [
+            Xf::default(),
+            Xf {
+                fill_id: Some(2),
+                has_visible_fill: true,
+                apply_fill: true,
+                ..Default::default()
+            },
+            Xf {
+                has_visible_border: true,
+                ..Default::default()
+            },
+        ];
+        for custom_format in ["1", "true"] {
+            let xml = format!(
+                r#"<col min="1" max="16384" style="1"/><row r="9" s="2" customFormat="{custom_format}"/><c r="C25"/>"#
+            );
+            let mut bounds = VisualBounds::new(&styles);
+            let mut reader = Reader::<32>::new(xml.as_bytes())?;
+            while let Some(tag) = reader.next()? {
+                bounds.observe(tag)?;
+            }
+            assert!(bounds.finish_background_bands(
+                &BTreeSet::from([2]),
+                Rectangle::parse("A1:C25")?,
+                true,
+            ));
+            assert_eq!(bounds.bounds.unwrap().address(), "A1:XFD25");
         }
         Ok(())
     }

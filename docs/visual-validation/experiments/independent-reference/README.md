@@ -346,3 +346,35 @@ establish coverage of every conditional-format or name dependency.
 The bounded reference and targeted methods completed under an 8 GiB RAM and
 commit-headroom watcher, with minima above 51 GiB. All six targeted Excel PIDs
 were confirmed exited afterward. Existing native corpus captures continued.
+
+## Finite row borders over flat backgrounds on 2026-11-11
+
+`../comparator-pilot/border_background_control.py` generates three development
+controls. `--mutation row-border` changes a single inherited first-row border
+over a worksheet-wide flat column fill. Both the legacy policy and v17 select
+256 tiles. Independent A1:D5 and XFA1:XFD5 references contain 85 and 337 changed
+common pixels. Aligned selected masks match both references exactly.
+
+`--mutation default-height` retains that row border and changes only a fixed
+default row height from 15 to 16 points, with customHeight enabled in both
+states. The legacy v15 attempt stops at its explicit unbounded-plan guard for
+A1:XFD1048576. Policy v17 bounds the input envelope to A1:XFD4 and completes
+69 regions, retaining all columns through XFD. Its aligned change masks match
+the two independent references exactly, containing 1,170 and 674 common pixels.
+The guarded attempt and successful attempt are different outcomes. Their debug
+and release wall times do not establish a matched speedup.
+
+The first height trial omitted customHeight. Excel rebuilt both inputs with a
+15-point default, and both reference images remained equal. Its zero-region
+targeted outcomes remain an observed invariance. The generator exposes this
+case as `--mutation implicit-default-height`. It is excluded from changed-case
+detection counts. Raw original expectations remain in the experiment receipt.
+
+The receipt `finite-row-border-background-20261111.json` retains native producer,
+source and image hashes, reference masks and memory-watch outcomes. All methods
+used 8 GiB RAM/commit reserves. The final Excel PID set matched the same five
+preexisting processes. Nine visual-bound tests, six report-contract tests and
+six fixture tests passed. A retained GENESIS-Online fixture still requires its
+mixed drawing qualification and keeps the conservative full-grid envelope.
+Reproduce that negative guard with GENESIS_BACKGROUND_FIXTURE and the ignored
+Rust test retained_genesis_drawing_keeps_background_fallback.

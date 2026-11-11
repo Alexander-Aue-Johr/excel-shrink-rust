@@ -9,6 +9,7 @@ import zipfile
 from fixtures import CHART, SHEET, create
 from error_controls import create as create_error_controls
 from formatting_controls import create as create_formatting_controls
+from border_background_control import create as create_border_control
 
 
 def read_xml(path, member):
@@ -21,6 +22,58 @@ def cell_value(sheet, address):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_background_height_control_keeps_the_row_border(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "height"
+            create_border_control(root, "default-height")
+            with zipfile.ZipFile(root / "original.xlsx") as original, \
+                    zipfile.ZipFile(root / "candidate.xlsx") as candidate:
+                for member in original.namelist():
+                    before = original.read(member)
+                    after = candidate.read(member)
+                    if member == "xl/worksheets/sheet1.xml":
+                        self.assertIn(b'<row r="1" s="2"', before)
+                        self.assertEqual(
+                            before.replace(b'defaultRowHeight="15"', b'defaultRowHeight="16"'),
+                            after,
+                        )
+                    else:
+                        self.assertEqual(before, after)
+
+    def test_implicit_height_control_has_no_custom_height_flag(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "implicit"
+            create_border_control(root, "implicit-default-height")
+            for lane, height in (("original", "15"), ("candidate", "16")):
+                sheet = read_xml(root / f"{lane}.xlsx", "xl/worksheets/sheet1.xml")
+                defaults = sheet.find(f"{{{SHEET}}}sheetFormatPr")
+                self.assertEqual(defaults.get("defaultRowHeight"), height)
+                self.assertIsNone(defaults.get("customHeight"))
+
+    def test_border_control_changes_only_the_finite_row_style(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            create_border_control(root / "first")
+            create_border_control(root / "second")
+            for lane in ("original", "candidate"):
+                self.assertEqual(
+                    (root / "first" / f"{lane}.xlsx").read_bytes(),
+                    (root / "second" / f"{lane}.xlsx").read_bytes(),
+                )
+            with zipfile.ZipFile(root / "first/original.xlsx") as original, \
+                    zipfile.ZipFile(root / "first/candidate.xlsx") as candidate:
+                for member in original.namelist():
+                    before = original.read(member)
+                    after = candidate.read(member)
+                    if member == "xl/worksheets/sheet1.xml":
+                        self.assertIn(b'max="16384"', before)
+                        self.assertEqual(
+                            before.replace(b'<row r="1" s="2"', b'<row r="1" s="0"'),
+                            after,
+                        )
+                    else:
+                        self.assertEqual(before, after)
+
     def test_formatting_controls_change_only_the_declared_rule_or_name(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

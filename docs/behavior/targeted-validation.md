@@ -12,7 +12,7 @@ One changed pixel is sufficient to offer an explanation. The explanation is a
 possible dependency path and does not establish the cause of every changed pixel.
 
 The fast corpus strategy is `paired-inplace-rebuild-v1`, with capture policy
-`targeted-content-grid-v16`. It compares rebuilt Original (OR) with rebuilt Default
+`targeted-content-grid-v17`. It compares rebuilt Original (OR) with rebuilt Default
 (SDR). Each workbook reuses its existing Excel process. Native Check Performance
 is optional; when requested its rebuilt state (CPR) is compared with OR.
 
@@ -360,7 +360,7 @@ proof and retain the conservative extent. Changed column formats and effective
 row heights inside the retained envelope still produce capture candidates.
 
 An additional inherited-background rule applies when worksheet views have
-supported gridline settings, inherited row/column formats and the default style
+supported gridline settings, inherited column formats and the default style
 have no visible borders, and each visible inherited fill is a supported solid
 fill. It requires resolved column definitions, supported worksheet markup and
 no conditional-format effect on unserialized blank tails. The envelope retains every serialized cell,
@@ -371,13 +371,20 @@ Beyond these transitions the empty background repeats. Different solid color
 references are allowed because their pixels are still compared within the
 retained extent, without assuming that the colors are equal.
 
+Policy v17 additionally admits finite row borders. The envelope retains every
+column through XFD when any inherited row style has a visible border, through
+the last finite row transition and its following sample row. A border on one
+row therefore does not extend a flat column background to all 1,048,576 rows.
+This uses the existing style and row sets without an additional XML pass or
+native query. Column/default borders keep their full-height fallback.
+
 Coverage records expose `background_tail_sampling=true` when any included state
 uses this rule. Pixels outside that extent were not captured. This records
 representative background coverage and must not be presented as exhaustive
 whole-grid pixel coverage. Gridline visibility is sheet-wide and adds no finite
 transition after the last recorded row or column layout transition. Visible,
 hidden and default gridline settings are supported. Missing views, unknown
-gridline settings, unresolved CF, inherited borders, patterned
+gridline settings, unresolved CF, inherited column/default borders, patterned
 fills, unknown styles or unsupported markup retain the previous fallback.
 
 Drawing envelope guards inspect XML tags and attributes through the byte reader.

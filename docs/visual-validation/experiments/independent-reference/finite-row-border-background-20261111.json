@@ -1,0 +1,420 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "cases": [
+    {
+      "case": "row-border",
+      "protocol": {
+        "schema": 1,
+        "synthetic": true,
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\finite-border-background-20261111\\original.xlsx",
+            "sha256": "817526d724a68d0ccab50d87d58d322761536d65c66c9922b9d87ad8164059d4"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\finite-border-background-20261111\\candidate.xlsx",
+            "sha256": "dc86e00c7f8b0d3800cf97c172c0e1cea00cc71642d1dd5118d58ecbe3b1d0b3"
+          }
+        },
+        "changed_input": "Only the first row's style changes from a bottom border to style zero.",
+        "expected": "The border change remains observable at the far-right worksheet edge."
+      },
+      "producer_sha256": "b24e07fb6c72f63ed8d4f521111236ebae7078a7622ca10b2a2044bfd8160145",
+      "targeted_policy": "targeted-content-grid-v17",
+      "targeted_status": "completed_with_limitations",
+      "selected_regions": 256,
+      "capture_counts": {
+        "OR": 256,
+        "OR:charts": 0,
+        "SDR": 256,
+        "SDR:charts": 0
+      },
+      "reference_areas": [
+        {
+          "reference_area": {
+            "range": "A1:D5",
+            "sheet": "Data"
+          },
+          "changed_common_rgba_pixels": 85,
+          "images": [
+            {
+              "file": "reference\\reference-0-O.png",
+              "sha256": "d36247a1f6edd351a38dd56d1c4c1e388c0a9e46f623a720290261a6b9e515c6",
+              "dimensions": [
+                337,
+                101
+              ]
+            },
+            {
+              "file": "reference\\reference-0-SD.png",
+              "sha256": "f75d9389c6ae5f497b26871d5db0a083bd750ca7ac9a5c79a18149fa9419282e",
+              "dimensions": [
+                337,
+                101
+              ]
+            }
+          ],
+          "selected_tile": "A1:BL128",
+          "exact_reference_area_mask_agreement": true,
+          "mapping": "Measured horizontal origin, 96-DPI point scale; common paired pixels with zero extension below the selected common height."
+        },
+        {
+          "reference_area": {
+            "range": "XFA1:XFD5",
+            "sheet": "Data"
+          },
+          "changed_common_rgba_pixels": 337,
+          "images": [
+            {
+              "file": "reference\\reference-1-O.png",
+              "sha256": "d6afd399066c1e4fbefa2149c421a64508f9348b0dc230ce595939929224fddb",
+              "dimensions": [
+                337,
+                101
+              ]
+            },
+            {
+              "file": "reference\\reference-1-SD.png",
+              "sha256": "a19110e1c131058461dcbac6225d70748d6ba897fdefa52ea9e13ec582483232",
+              "dimensions": [
+                337,
+                101
+              ]
+            }
+          ],
+          "selected_tile": "XCS1:XFD128",
+          "exact_reference_area_mask_agreement": true,
+          "mapping": "Measured horizontal origin, 96-DPI point scale; common paired pixels with zero extension below the selected common height."
+        }
+      ],
+      "native_watch": {
+        "status": "completed",
+        "reserve_bytes": 8589934592,
+        "methods": [
+          {
+            "method": "reference",
+            "pid": 37024,
+            "status": "completed",
+            "minimum_free_ram": 71819411456,
+            "minimum_commit_headroom": 55417511936,
+            "exit_code": 0,
+            "elapsed_seconds": 12.015999999995984
+          },
+          {
+            "method": "targeted",
+            "pid": 42000,
+            "status": "completed",
+            "minimum_free_ram": 69100265472,
+            "minimum_commit_headroom": 52719779840,
+            "exit_code": 0,
+            "elapsed_seconds": 138.07800000000134
+          }
+        ]
+      },
+      "baseline_watch": {
+        "status": "completed",
+        "reserve_bytes": 8589934592,
+        "methods": [
+          {
+            "method": "baseline",
+            "pid": 9704,
+            "status": "completed",
+            "minimum_free_ram": 71522361344,
+            "minimum_commit_headroom": 55017365504,
+            "exit_code": 0,
+            "elapsed_seconds": 103.06199999999808
+          }
+        ]
+      },
+      "legacy": {
+        "policy": "targeted-content-grid-v15",
+        "status": "completed_with_limitations",
+        "selected_regions": 256
+      }
+    },
+    {
+      "case": "implicit-default-height",
+      "protocol": {
+        "schema": 1,
+        "synthetic": true,
+        "mutation": "default-height",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\finite-border-height-20261111\\original.xlsx",
+            "sha256": "817526d724a68d0ccab50d87d58d322761536d65c66c9922b9d87ad8164059d4"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\finite-border-height-20261111\\candidate.xlsx",
+            "sha256": "6c09498c8d71b3ea1718ef08745b1be1018acf12c7988145d2544e9761d7f0cf"
+          }
+        },
+        "changed_input": "Only defaultRowHeight changes from 15 to 16 points; the row border remains.",
+        "expected": "A visible change remains observable at the far-right worksheet edge."
+      },
+      "producer_sha256": "b24e07fb6c72f63ed8d4f521111236ebae7078a7622ca10b2a2044bfd8160145",
+      "targeted_policy": "targeted-content-grid-v17",
+      "targeted_status": "completed_with_limitations",
+      "selected_regions": 0,
+      "capture_counts": {
+        "OR:charts": 0,
+        "SDR:charts": 0
+      },
+      "reference_areas": [
+        {
+          "reference_area": {
+            "range": "A1:D5",
+            "sheet": "Data"
+          },
+          "changed_common_rgba_pixels": 0,
+          "images": [
+            {
+              "file": "reference\\reference-0-O.png",
+              "sha256": "d36247a1f6edd351a38dd56d1c4c1e388c0a9e46f623a720290261a6b9e515c6",
+              "dimensions": [
+                337,
+                101
+              ]
+            },
+            {
+              "file": "reference\\reference-0-SD.png",
+              "sha256": "d36247a1f6edd351a38dd56d1c4c1e388c0a9e46f623a720290261a6b9e515c6",
+              "dimensions": [
+                337,
+                101
+              ]
+            }
+          ]
+        },
+        {
+          "reference_area": {
+            "range": "XFA1:XFD5",
+            "sheet": "Data"
+          },
+          "changed_common_rgba_pixels": 0,
+          "images": [
+            {
+              "file": "reference\\reference-1-O.png",
+              "sha256": "d6afd399066c1e4fbefa2149c421a64508f9348b0dc230ce595939929224fddb",
+              "dimensions": [
+                337,
+                101
+              ]
+            },
+            {
+              "file": "reference\\reference-1-SD.png",
+              "sha256": "d6afd399066c1e4fbefa2149c421a64508f9348b0dc230ce595939929224fddb",
+              "dimensions": [
+                337,
+                101
+              ]
+            }
+          ]
+        }
+      ],
+      "native_watch": {
+        "status": "completed",
+        "reserve_bytes": 8589934592,
+        "methods": [
+          {
+            "method": "reference",
+            "pid": 27680,
+            "status": "completed",
+            "minimum_free_ram": 71896289280,
+            "minimum_commit_headroom": 55214993408,
+            "exit_code": 0,
+            "elapsed_seconds": 12.0
+          },
+          {
+            "method": "targeted",
+            "pid": 37616,
+            "status": "completed",
+            "minimum_free_ram": 71885111296,
+            "minimum_commit_headroom": 55284207616,
+            "exit_code": 0,
+            "elapsed_seconds": 10.125
+          }
+        ]
+      },
+      "baseline_watch": {
+        "status": "completed",
+        "reserve_bytes": 8589934592,
+        "methods": [
+          {
+            "method": "baseline",
+            "pid": 36904,
+            "status": "completed",
+            "minimum_free_ram": 72046641152,
+            "minimum_commit_headroom": 55515062272,
+            "exit_code": 0,
+            "elapsed_seconds": 10.014999999999418
+          }
+        ]
+      },
+      "legacy": {
+        "policy": "targeted-content-grid-v15",
+        "status": "completed_with_limitations",
+        "selected_regions": 0
+      }
+    },
+    {
+      "case": "default-height",
+      "protocol": {
+        "schema": 1,
+        "synthetic": true,
+        "mutation": "default-height",
+        "inputs": {
+          "original": {
+            "file": "G:\\deltasieve-work\\finite-border-fixed-height-20261111\\original.xlsx",
+            "sha256": "18b90afeec241beffbd563c2ec8affaec41e19fcb55ca0901d4ead1ad4a190f2"
+          },
+          "candidate": {
+            "file": "G:\\deltasieve-work\\finite-border-fixed-height-20261111\\candidate.xlsx",
+            "sha256": "e6e9e962019ee315bcbe61257842ff53c1f1ee7652f76ec538ad8ce162f2a879"
+          }
+        },
+        "changed_input": "Only defaultRowHeight changes from 15 to 16 points; the row border remains.",
+        "expected": "A visible change remains observable at the far-right worksheet edge."
+      },
+      "producer_sha256": "b24e07fb6c72f63ed8d4f521111236ebae7078a7622ca10b2a2044bfd8160145",
+      "targeted_policy": "targeted-content-grid-v17",
+      "targeted_status": "completed_with_limitations",
+      "selected_regions": 69,
+      "capture_counts": {
+        "OR": 69,
+        "OR:charts": 0,
+        "SDR": 69,
+        "SDR:charts": 0
+      },
+      "reference_areas": [
+        {
+          "reference_area": {
+            "range": "A1:D5",
+            "sheet": "Data"
+          },
+          "changed_common_rgba_pixels": 1170,
+          "images": [
+            {
+              "file": "reference\\reference-0-O.png",
+              "sha256": "d36247a1f6edd351a38dd56d1c4c1e388c0a9e46f623a720290261a6b9e515c6",
+              "dimensions": [
+                337,
+                101
+              ]
+            },
+            {
+              "file": "reference\\reference-0-SD.png",
+              "sha256": "f0ad84545d605b664f48d8ac2bb231e1c9911dfb563757871f06b1be1ea5fdec",
+              "dimensions": [
+                337,
+                106
+              ]
+            }
+          ],
+          "selected_tile": "A1:IC4",
+          "exact_reference_area_mask_agreement": true,
+          "mapping": "Measured horizontal origin, 96-DPI point scale; common paired pixels with zero extension below the selected common height."
+        },
+        {
+          "reference_area": {
+            "range": "XFA1:XFD5",
+            "sheet": "Data"
+          },
+          "changed_common_rgba_pixels": 674,
+          "images": [
+            {
+              "file": "reference\\reference-1-O.png",
+              "sha256": "d6afd399066c1e4fbefa2149c421a64508f9348b0dc230ce595939929224fddb",
+              "dimensions": [
+                337,
+                101
+              ]
+            },
+            {
+              "file": "reference\\reference-1-SD.png",
+              "sha256": "1fdf77a3d9d0c59cb36033d21d80a66801928d1abebbd10c98082fea8ab0cca8",
+              "dimensions": [
+                337,
+                106
+              ]
+            }
+          ],
+          "selected_tile": "WWA1:XFD4",
+          "exact_reference_area_mask_agreement": true,
+          "mapping": "Measured horizontal origin, 96-DPI point scale; common paired pixels with zero extension below the selected common height."
+        }
+      ],
+      "native_watch": {
+        "status": "completed",
+        "reserve_bytes": 8589934592,
+        "methods": [
+          {
+            "method": "reference",
+            "pid": 16488,
+            "status": "completed",
+            "minimum_free_ram": 70646898688,
+            "minimum_commit_headroom": 53132455936,
+            "exit_code": 0,
+            "elapsed_seconds": 13.046999999998661
+          },
+          {
+            "method": "targeted",
+            "pid": 47624,
+            "status": "completed",
+            "minimum_free_ram": 69587947520,
+            "minimum_commit_headroom": 52273729536,
+            "exit_code": 0,
+            "elapsed_seconds": 34.125
+          }
+        ]
+      },
+      "baseline_watch": {
+        "status": "failed",
+        "reserve_bytes": 8589934592,
+        "methods": [
+          {
+            "method": "baseline",
+            "pid": 44644,
+            "status": "interrupted",
+            "minimum_free_ram": 69589299200,
+            "minimum_commit_headroom": 52274782208,
+            "exit_code": 1,
+            "elapsed_seconds": 25.1559999999954
+          }
+        ],
+        "error": "baseline failed; retain logs"
+      },
+      "legacy": {
+        "failure": {
+          "sheet": "Data",
+          "error": "Targeted plan requires the entire worksheet Data!A1:XFD1048576; bounded background and conditional-format coverage is unresolved.",
+          "range": "A1:XFD1048576",
+          "kind": "unbounded_capture_plan",
+          "status": "failed",
+          "coverage": "unverified"
+        },
+        "failure_sha256": "61d0aa23521f397b05296bae2f57179f144d97515dd16bff9572903bb6b2b2e8"
+      }
+    }
+  ],
+  "scope": "Development controls for finite row borders. Explicit reference areas do not cover the entire worksheet or establish population recall.",
+  "invariance_note": "The first default-height input changed the numeric attribute without customHeight. Native rebuilding normalized both states to 15 points. It is retained as an observed invariance, excluding it from changed-case detection.",
+  "timing_note": "New prototype is a debug build and legacy producer is release. Their wall times are not a matched speedup experiment. The fixed-height legacy attempt failed the declared unbounded-plan guard.",
+  "native_cleanup": "After all three experiments, the Excel PID set matched the same five preexisting processes.",
+  "prototype_source_files": [
+    {
+      "file": "excel-shrink-cli/src/regression/targeted_comparison.rs",
+      "sha256": "033845c8e2676fa6bd12414466cf636e4ef6ea04d9ca180092b2759a66fe085a"
+    },
+    {
+      "file": "excel-shrink-cli/src/regression/targeted_comparison/visual_bounds.rs",
+      "sha256": "14dbf991b5481965b52c8ac46b70268a3e73537f504ad200f75807bfd79a324b"
+    },
+    {
+      "file": "excel-shrink-cli/src/regression/archive/study/prepared/targeted/contract.rs",
+      "sha256": "a40746cd20418b5e8cef041cb956f39abea49b013e2f9e07fee5d1c220d8845d"
+    }
+  ],
+  "prototype_build_profile": "debug",
+  "legacy_producer_sha256": "c301379cc9fcf6315acc3e07f74cd0f969723249ac11c24191514e0a6bdc364c"
+}
