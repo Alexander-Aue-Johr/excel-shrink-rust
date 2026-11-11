@@ -134,6 +134,33 @@ WebP qualities 80, 60 and 40. The sample emphasizes large assets and includes
 three size quantiles. It does not estimate a corpus-wide compression ratio.
 No lossy preview mode was enabled, and all source captures remain intact.
 
+### Shared images across static project sites
+
+`tools/partition-public-atlas.py CONFIGURATION.json` prepares two new output
+directories from completed compact Atlas snapshots. Its configuration names
+the snapshots and their relative publication destinations, the two output
+directories, `site_base_url`, `shared_base_url` and a positive
+`shared_budget_bytes` limit. The image host and Atlas host must use the same
+HTTPS origin so the browser can inspect comparison pixels. Separate project
+paths under one GitHub Pages account satisfy this condition.
+
+The tool verifies each content-addressed presentation asset before selecting
+shared files, prioritizing images referenced by multiple snapshots. Only the
+generated presentation URL maps change. All other input files are verified
+byte-for-byte across the outputs. Each output retains an incomplete marker
+until the copy and integrity checks finish and both outputs fit below one GB.
+`publication-shards.json` records shared image paths, lengths and checksums.
+The remaining site content, such as earlier replays, must also fit within the
+final deployed site's budget. Keep the complete compact snapshots for local
+verification and offline distribution.
+
+For Git-based deployment, disable text conversion for generated Atlas assets
+with `/atlas/** -text`, and use `* -text` in an image-only publication branch.
+An archive of a prior publication should be produced with
+`git -c core.autocrlf=false archive` so its SVG bytes retain their recorded
+hashes. A Windows text checkout may otherwise alter SVG line endings. The
+partitioner rejects that changed image instead of normalizing it silently.
+
 Run `python tools/compact-public-atlas.py SOURCE DESTINATION --verify` after
 the compact export finishes. This read-only check verifies every source PNG
 hash, mapped presentation asset hash and byte length, the scientific catalog,
