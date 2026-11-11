@@ -4,7 +4,7 @@ The production cell writer and merge now expose a test-only verification module
 under `regression::targeted_comparison::cell_stream::verification`.
 The harness bytes were imported from the frozen preliminary paper artifact
 `papers/deltasieve/evidence/cell-stream/measured-code/verification.rs`.
-Its SHA-256 is
+The preliminary artifact's canonical LF snapshot has SHA-256
 `ba184e552d7960dcabce0e0dbee05913cc403f1b0cd5d67dc3a9e3936b6d9a88`.
 The production writer, fingerprint and merge behavior is unchanged.
 

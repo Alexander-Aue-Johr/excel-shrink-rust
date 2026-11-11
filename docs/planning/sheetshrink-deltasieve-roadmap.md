@@ -45,6 +45,19 @@ rebased above concurrent paper changes and pushed in `7743a1c7`.
 
 ### Evaluation evidence checkpoint on 2026-11-11
 
+The requested Ryzen-host cell-stream follow-up completed 63 release-test
+measurements across 21 cases, with all expected mutation counts confirmed.
+The frozen executable passed all 27 focused correctness tests, including the
+6,561-pair independent oracle. For one million densely changed cells, immediate
+consumption versus retained `CellChange` records yielded maximum working sets
+of 5.703 versus 94.973 MiB and median merge times of 66.536 versus 94.204 ms.
+The 94.0% selected-case reduction concerns emitted-result retention. One real
+3.06-million-cell repetition has a 42.121 MiB working-set peak, retained without
+attribution. The 4 GiB owned-job and 8 GiB system guards remained satisfied.
+Exact receipts and limitations are in
+`../visual-validation/experiments/cell-stream-ryzen-followup-20261111.json`.
+The earlier Intel/compiler lane stays separate. Manuscript integration follows.
+
 The Enron fourth-case resource follow-up completed eighteen openpyxl trials.
 Original and XLStylesTool reached the configured 4 GiB limit in all repetitions.
 The four other variants completed. Prepared external outputs measure library
