@@ -55,6 +55,21 @@ configuration, coverage cutoff, outcome denominators and unresolved findings in
 the release notes. Keep the exact original source and raw evidence privately when
 distribution rights prevent releasing them. Record such omissions explicitly.
 
+For the three-corpus Atlas, associate each proposed public screenshot with
+its original dataset. Data.gov directs users to the dataset-level terms,
+including exceptions and non-federal publishers. Destatis permits reuse
+of its standard publications with attribution, subject to product-specific
+notices. The EDRM Enron v2 XML archive entry supplies the acquisition
+source. EDRM's separate announcement of a privacy-cleansed PST release
+does not establish that the XML inputs used here were privacy-cleansed.
+Inspect visible cell content and embedded report text before releasing
+any Enron image or detail page.
+
+- [Data.gov licensing policy](https://data.gov/privacy-policy/#licensing)
+- [Destatis copyright and attribution](https://www.destatis.de/DE/Service/Impressum/_inhalt.html)
+- [EDRM Enron v2 XML acquisition](https://archive.org/details/edrm.enron.email.data.set.v2.xml)
+- [EDRM announcement of the privacy-cleansed PST release](https://edrm.net/2013/05/nuix-and-edrm-republish-enron-data-set-cleansed-of-more-than-10000-items-containing-private-health-and-financial-information/)
+
 ## Serve and inspect the approved snapshot
 
 For a reviewer-facing export of a completed static Atlas, generate the
