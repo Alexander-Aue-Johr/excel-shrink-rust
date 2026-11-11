@@ -118,6 +118,13 @@ comparison. The byte-exact static export totals 3,459,453,724 bytes.
 The opening figure in the DeltaSieve manuscript now uses this snapshot.
 The public hosting URL and publication review remain open.
 
+The compact local projection of this snapshot contains 8,758 files totaling
+678,466,994 bytes, with a SHA-256 inventory for the entire directory. Its
+largest individual file is 45,003,784 bytes. The metadata audit lists 116
+environment-key occurrences across the exported report surfaces. All 116
+contain a SHA-256 projection rather than the original identifier. Image,
+workbook-content and distribution-rights review still apply to public release.
+
 The live QT/RR jobs reached 27,146 and 14,754 individual captures.
 Extrapolating their observed average rates gives 11.2 and 12.3 hours
 remaining before packaging. Keep the 16-workbook expansion deferred
