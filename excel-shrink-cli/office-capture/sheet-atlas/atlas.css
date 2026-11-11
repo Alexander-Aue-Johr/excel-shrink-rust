@@ -29,6 +29,8 @@
 .explorer-item small{display:block;margin-top:5px;color:var(--muted);font-size:11px}
 .explorer-item[data-changed=true]{border-left:2px solid #a4646d}
 .demo-tag{color:inherit;text-decoration:none}
+.legend-box.changed { background: #493d27; border-color: #d2a653; }
+.legend-box.checked { background: #213d39; border-color: #579e88; }
 #publication-status{font-size:9px;overflow-wrap:anywhere}
 @keyframes atlas-fade{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.atlas-preview,.atlas-sheet-meta{transition:none}.atlas-map{animation:none}}
@@ -70,5 +72,8 @@
 }
 [data-theme="light"] .atlas-book-label { color: #20343d; }
 [data-theme="light"] .atlas-preview { background: #ffffff; }
+[data-theme="light"] .legend-box.changed { background: #fff0ce; border-color: #956118; }
+[data-theme="light"] .legend-box.checked { background: #e3f1eb; border-color: #4c8a73; }
+[data-theme="light"] .legend-box.unknown { background: #e5edf2; border-color: #819aa8; }
 [data-theme="light"] .explorer-item:hover,
 [data-theme="light"] .pipeline-option:hover { background: #edf2f5; }
