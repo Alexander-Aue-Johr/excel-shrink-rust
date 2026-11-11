@@ -6,6 +6,7 @@ import LinkedScenesPanel from "./components/LinkedScenesPanel";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { presentScene, type Theme } from "./lib/presentation";
 import { createReplay } from "./lib/replay";
+import { worksheetOptions } from "./lib/worksheet-options";
 import { downloadSvg, figureSvg } from "./lib/export-scene";
 import type { HitTarget } from "./lib/scene";
 import { buildWorkbookScene, workbookPage } from "./lib/workbook-scene";
@@ -65,6 +66,8 @@ function Observatory() {
   const [paperMode, setPaperMode] = useState(false);
   const [hoverSheet, setHoverSheet] = useState<HitTarget | null>(null);
   const [pinnedSheet, setPinnedSheet] = useState<string | null>(null);
+  const [sheetQuery, setSheetQuery] = useState("");
+  const [sheetPage, setSheetPage] = useState(0);
   const [recording, setRecording] = useState<{
     source: Update;
     events: NativeEvent[];
@@ -351,6 +354,12 @@ function Observatory() {
       </main>
     );
 
+  const sheetOptions = worksheetOptions(
+    rendering.snapshot,
+    sheetQuery,
+    sheetPage,
+    pinnedSheet,
+  );
   const detailed = update.operation === "sheet-shrink";
   const optimizing = update.operation !== "xlsx-convert";
   const title = detailed
@@ -552,26 +561,55 @@ function Observatory() {
             </button>
           )}
           {detailed && (
-            <select
-              aria-label="Link worksheet"
-              value={pinnedSheet ?? ""}
-              onChange={(event) => {
-                setPinnedSheet(event.target.value || null);
-                setSelected(
-                  rendering.snapshot.sheets.find(
-                    (sheet) => sheet.id === event.target.value,
-                  )?.workbookId ?? null,
-                );
-              }}
-            >
-              <option value="">Link a worksheet across views</option>
-              {rendering.snapshot.sheets.map((sheet) => (
-                <option key={sheet.id} value={sheet.id}>
-                  {sheet.workbookId} · {sheet.indexLabel ?? `S${sheet.index}`} ·{" "}
-                  {sheet.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <input
+                aria-label="Search worksheets"
+                placeholder="Workbook or worksheet"
+                value={sheetQuery}
+                onChange={(event) => {
+                  setSheetQuery(event.target.value);
+                  setSheetPage(0);
+                }}
+              />
+              <select
+                aria-label="Link worksheet"
+                value={pinnedSheet ?? ""}
+                onChange={(event) => {
+                  setPinnedSheet(event.target.value || null);
+                  setSelected(
+                    rendering.snapshot.sheets.find(
+                      (sheet) => sheet.id === event.target.value,
+                    )?.workbookId ?? null,
+                  );
+                }}
+              >
+                <option value="">Link a worksheet across views</option>
+                {sheetOptions.sheets.map((sheet) => (
+                  <option key={sheet.id} value={sheet.id}>
+                    {sheet.workbookId} · {sheet.indexLabel ?? `S${sheet.index}`}{" "}
+                    · {sheet.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                aria-label="Previous worksheet page"
+                disabled={sheetOptions.page === 0}
+                onClick={() => setSheetPage(sheetOptions.page - 1)}
+              >
+                Previous
+              </button>
+              <span>
+                {sheetOptions.total} worksheets · page {sheetOptions.page + 1} /{" "}
+                {sheetOptions.pages}
+              </span>
+              <button
+                aria-label="Next worksheet page"
+                disabled={sheetOptions.page + 1 >= sheetOptions.pages}
+                onClick={() => setSheetPage(sheetOptions.page + 1)}
+              >
+                Next
+              </button>
+            </>
           )}
         </div>
         <section className="page-heading" id="overview">

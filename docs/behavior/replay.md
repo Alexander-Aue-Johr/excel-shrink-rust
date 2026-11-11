@@ -164,6 +164,13 @@ accessibility extraction. This exposes a remaining large-history UI cost and
 does not establish responsive full-corpus playback. The temporary tab and proxy
 were closed after the probe. Production native workers remained active.
 
+Worksheet linking now renders pages of at most 100 matching worksheets, plus
+the pinned selection when it falls outside that page. Search matches workbook
+names, workbook identities and worksheet names without case sensitivity. Page
+navigation preserves access to the complete observed worksheet history. A
+backward replay seek clamps pages to the remaining observed matches and cannot
+expose future worksheet metadata through the selector.
+
 A [100,000-checkpoint recording experiment](../visual-validation/experiments/replay-cost-20261108.md)
 verified all retained event identities and bounded chunk sizes. It measured
 17.369 seconds of recording wall time and approximately 3.30 MB of logical

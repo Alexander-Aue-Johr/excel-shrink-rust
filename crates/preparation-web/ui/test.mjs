@@ -110,6 +110,45 @@ test("replay seeking uses recorded events without future metadata or reports", a
   assert.equal(replayAt(base, manyTasks, 1000).tasks.length, 4200);
 });
 
+test("worksheet search pages retain access to every sheet and the pinned selection", async () => {
+  const bundle = await build({
+    entryPoints: ["lib/worksheet-options.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+  });
+  const { worksheetOptions } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString("base64")}`
+  );
+  const snapshot = {
+    workbooks: [{ id: "book", name: "Corpus.xlsx" }],
+    sheets: Array.from({ length: 33059 }, (_, index) => ({
+      id: `sheet-${index}`,
+      workbookId: "book",
+      name: `Data ${index}`,
+    })),
+  };
+  const seen = new Set();
+  for (let page = 0; page < 331; page += 1) {
+    const result = worksheetOptions(snapshot, "", page, null);
+    assert.ok(result.sheets.length <= 100);
+    result.sheets.forEach((sheet) => seen.add(sheet.id));
+  }
+  assert.equal(seen.size, snapshot.sheets.length);
+  assert.equal(worksheetOptions(snapshot, "CORPUS.XLSX", 0, null).total, 33059);
+  const pinned = worksheetOptions(snapshot, "Data 33058", 0, "sheet-0");
+  assert.deepEqual(
+    pinned.sheets.map((sheet) => sheet.id),
+    ["sheet-0", "sheet-33058"],
+  );
+  assert.equal(pinned.total, 1);
+  const empty = worksheetOptions(snapshot, "missing", 999, "absent");
+  assert.equal(empty.page, 0);
+  assert.equal(empty.pages, 1);
+  assert.equal(empty.sheets.length, 0);
+});
+
 test("vector export preserves worksheet anchors and escapes source labels", async () => {
   const bundle = await build({
     stdin: {
