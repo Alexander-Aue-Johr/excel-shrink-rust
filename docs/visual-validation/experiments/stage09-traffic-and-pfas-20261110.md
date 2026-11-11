@@ -363,7 +363,7 @@ stage or stopping condition:
 | Destatis | 2 | Traffic | The bounded follow-up exceeded ten minutes without a complete visual verdict. |
 | Destatis | 45 | `31122003_Auszug_GV.xlsx` | Neither lane confirmed opening before the 120-second no-progress stop. |
 | Data.gov | 8 | Raspberries | The planner could not bound `By Country!A1:XFD1048576`. The separate finite reference remains a separate observation. |
-| Data.gov | 17 | PubMed | The original save returned `AccessDenied`. A separately normalized follow-up was stopped with 16,733,285 planned candidates and zero completed captures. |
+| Data.gov | 17 | PubMed | The original save returned `AccessDenied`. A separately normalized follow-up was stopped with a preliminary candidate counter of 16,733,285 and zero completed captures. |
 | Data.gov | 22 | Cookstove LCA | The current planner could not bound `Input Tab!A1:XFD1048576`. The historical 169-region run used a different validation iteration. |
 
 These slots stay unavailable in the version-matched comparison
@@ -386,6 +386,14 @@ original save path and from 84.63 to 69.28 MB on the SheetShrink save
 path. These are save-stage XML sizes. They identify a substantial
 normalization workload without attributing the pending candidate count
 to any one sheet or establishing visual equivalence.
+
+The last telemetry snapshot identifies the 1.32 GB stream as the original
+opening/saving control. It recorded 17,645,107 XML changes and took 81.405
+seconds, including 31.463 seconds for attribution and 19.440 seconds for
+writing evidence. The comparison of the two input packages recorded
+1,249,581 changes in 5.140 seconds. Neither count measures completed
+rendered regions. The saved snapshot contains no completed capture
+selection or final post-rebuild region count.
 
 ## Enron SheetShrink chart findings in the top-49 selection
 
