@@ -1282,6 +1282,15 @@ major-selector ablations or matched whole-corpus cost acceptance for Task 13.
 
 ## 14 Write and review complete first manuscript drafts
 
+Three further designed controls qualify changed color-scale/data-bar colors
+and a changed defined-name binding. Independent A1:N30 references contain
+5,727, 4,304 and 53 changed pixels. Selected A1:D3 masks exactly match each
+full reference mask. A shared 8 GiB RAM/commit watcher remained above 51 GiB
+of headroom during the bounded methods. The evidence is retained in
+`../visual-validation/experiments/independent-reference/formatting-controls-20261111.json`.
+The manuscript now summarizes nine exact-mask controls. The broader mutation
+matrix and population recall remain open.
+
 - [ ] Produce a complete first draft of each new paper using Task 03's research-derived design and the verified evaluation evidence.
 
 Write substantive scientific English for every planned section, including the abstract, introduction, problem and scope, contributions, method, evaluation, Related Work, limitations, and conclusion as appropriate to each design. Include the planned figures, captions, tables, bibliography, and artifact descriptions. Adjust the structures when deeper research or results justify a change. Mark missing measurements and unresolved claims explicitly in the working drafts and their evidence checklist.
