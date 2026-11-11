@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "original_failure": "Opening dialog monitor could not read progress.json during a sharing violation.",
+  "retry_status": "prepared",
+  "source_sha256": "6afbe68a72100c6c2732babec6e606dd281cb50fe163ea51fd74b5c186d7c34c",
+  "output_sha256": "883ec81827ffc3d66871eb76dfb572182948d97437777af91020cf3eb52b6dee",
+  "producer_sha256": "d2d57d44e8569a12b8d2b5250e5212fd84d96fffa863b17f5447887af3ef19e4",
+  "source_unchanged": true,
+  "phase_seconds": {
+    "closing workbook": 0.0816698,
+    "full calculation rebuild": 0.0116119,
+    "opening workbook": 0.3096349,
+    "saving XLSX conversion": 0.0751709
+  },
+  "scope": "One native retry of the exact previously failed source. The four-case lock probe separately covers locked, unlocked, absent and malformed-JSON reads."
+}
