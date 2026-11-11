@@ -409,6 +409,18 @@ the seven control coordinates. Both comparisons used the same image
 dimensions. This measures coordinate overlap independently of the color
 change at those coordinates.
 
+The control input hashes were checked again against their provenance
+records, and each ZIP member was rehashed independently before comparing
+the two inventories.
+
+| Frozen rank | Matching ZIP members | Control report SHA-256 |
+|---:|---:|---|
+| 7 | 33 | `4124105406bcb3557b25304da66869197f7ea3a395a6fe6ad8e76e9984e2e83f` |
+| 9 | 26 | `9df2a5d64deb8657d7d085dd2ea07229de20ba35d634bcbf0c7683897b9932a4` |
+| 12 | 32 | `84c28658e9f8417ba07a971bee8d5adec24be2df7a700803df379f3f5d5eae86` |
+| 17 | 25 | `ce6bba51165a41c81351fcd5c94358b8a1c5519a49b59fce55ed6137c9823079` |
+| 23 | 24 | `e11edc8f760db65381e08dfc039d9f8044405c9a134e69d9a57cca8dd176e1ac` |
+
 ### Enron rank 30 raw opening exception
 
 The top-49 identity audit has no eligible comparison for rank 30,
