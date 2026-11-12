@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "scope": "One-sided SheetShrink rebuild completion for the remaining Data.gov selection. Matched Original-versus-SheetShrink comparisons remain limited to the separately audited first 1100 pairs.",
+  "main_attempt": {
+    "elapsed_seconds": 4669.7885179,
+    "failed": 4,
+    "in_flight": 0,
+    "operation": "excel-rebuild",
+    "prepared": 7512,
+    "queued": 0,
+    "requested_workers": 2,
+    "reused": 0,
+    "started": 7516,
+    "status": "failed",
+    "total": 7516,
+    "unresolved": 0,
+    "updated_at": "2026-11-12T00:47:11.799102+00:00",
+    "version": 1
+  },
+  "recovered_unique_inputs": [
+    {
+      "name": "case-004084-sheetshrink.xlsx",
+      "source_sha256": "afeab310c861fdf278accfadc140e78719747235ca2f553b4b8ec1ac7505bb8a",
+      "rebuilt_sha256": "fcd783f8429ab33e2583bca919cf217fee29ca155ee5dada5c1455463d7c0143",
+      "full_rebuild": true
+    },
+    {
+      "name": "case-005024-sheetshrink.xlsx",
+      "source_sha256": "2d5c45d1f769728b9c35e9ff7b157d0810cb41eff84ffdce2af7652f8a3b2784",
+      "rebuilt_sha256": "9441945b26863e6ac084cca460b8122c37913fa3fa4f2f78f218633a15d2f659",
+      "full_rebuild": true
+    },
+    {
+      "name": "case-006368-sheetshrink.xlsx",
+      "source_sha256": "6f8c917c7943afd9d6de55e5da7c1b039104d61277f4a9acf7d0c0aa7996f146",
+      "rebuilt_sha256": "ccd4727a10e11875b5e05de74fe40f8d82032ac0cab06b58515fc18447719185",
+      "full_rebuild": true
+    },
+    {
+      "name": "case-007798-sheetshrink.xlsx",
+      "source_sha256": "b90b4f1575c1a293ba2c3669ac952b587aa74f85a8c5f8592814639fbe206db3",
+      "rebuilt_sha256": "11cac2ac58f6ec60eca57299e1219cd8fb571dd2b3939f0c37d11cb401badd39",
+      "full_rebuild": true
+    }
+  ],
+  "successful_unique_sheetshrink_rebuilds_in_remaining_selection": 7516,
+  "matched_rebuilt_pair_comparison_added": 0,
+  "final_retry_seconds": 4.135732399998233,
+  "earlier_attempt_errors_retained": true,
+  "methodology_limit": "Successful rebuilding alone does not establish value or visual preservation."
+}
