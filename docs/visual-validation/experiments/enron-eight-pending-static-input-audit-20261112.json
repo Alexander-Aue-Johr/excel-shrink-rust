@@ -16,5 +16,15 @@
   ],
   "summary_sha256": "1c1b973f0eb9384507dc43ee7915a7d2ec0f8a4c6cddb8649bb468ea77d82572",
   "resource_recovery": "First attempt on the prior audit volume stopped when the configured32GiB free-space guard was reached. A fresh attempt used another volume with ample free space. No source or rebuilt evidence was deleted.",
-  "limits": "Static value/formula equality does not establish successful recalculation or visual equivalence. The pending execution behavior remains unresolved. This is a separate diagnostic subset and does not increase the rebuilt-pair total."
+  "limits": "Static value/formula equality does not establish successful recalculation or visual equivalence. The pending execution behavior remains unresolved. This is a separate diagnostic subset and does not increase the rebuilt-pair total.",
+  "native_retry_followup": {
+    "inputs": 8,
+    "successful_rebuilds": 0,
+    "failed_pending_rebuilds": 8,
+    "elapsed_seconds": 265.26091579999775,
+    "failure": "CalculateFullRebuild returned but CalculationState remained xlPending continuously for30seconds. Completion was not certified.",
+    "producer_sha256": "d2d57d44e8569a12b8d2b5250e5212fd84d96fffa863b17f5447887af3ef19e4",
+    "preparation_sha256": "3b89c9b5e253a978a6edbfe4507e50d91ccb0184f07d7881da0102e387b5484e",
+    "interpretation": "Fresh corrected-monitor execution reproduced pending state. Root cause remains unresolved. Existing successful original attempts are historical controls, not a newly repeated matched trial."
+  }
 }
