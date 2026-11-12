@@ -1,0 +1,1020 @@
+{
+  "schema": 1,
+  "scope": "126 unresolved SheetShrink opening attempts in the original local assignment, compared against already recorded original attempts. No new original rebuilds.",
+  "counts": {
+    "original_also_opening_failure": 126,
+    "transformed_input": 125,
+    "byte_identical_input": 1
+  },
+  "cases": [
+    {
+      "case": 91,
+      "workbook": "00beb8ea435236e3e28874f0417319292f24fec63ca7ba76ab69689cae64a744.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "bdfbaa1d9df53228e183ff4c564ef1f8158b40acb540a5e4ea3031d256c08088",
+      "sheetshrink_sha256": "4ee17c107cc2fced573a7552079578fdbbee9254ed266dfad3f087226e5e94ec",
+      "byte_identical_input": false
+    },
+    {
+      "case": 207,
+      "workbook": "01a5d07b56043714bb691dd245f23c40086ea99a8fba5010192bb3bf133a5667.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "88a53ec6e5fac0edeac4cc54680e7da6d80bd87aa52d243014ff087ae3794ede",
+      "sheetshrink_sha256": "c9c512d92a7cc1d06abad973c60a77ee70e12d2dab45b1f3876cb5f2a1a5fce4",
+      "byte_identical_input": false
+    },
+    {
+      "case": 613,
+      "workbook": "05205bf908ca973921da062ab0dd122d6782243a16b9bba29a0073f20fe26c6d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "7af3c8531b43c1f9e5934cd3050a13fda24cc9f25ac80d98d399694cb74b9636",
+      "sheetshrink_sha256": "d274ca4ff8cc4b5c4fde2c76151b993e9721d06326c080b5861a994660f70768",
+      "byte_identical_input": false
+    },
+    {
+      "case": 692,
+      "workbook": "05fab907b9bd9a09105f1cdd88b0295c37c27264319b13ed8931a4589ba347f4.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "90b093223e4390e3ea6977a40c0297bf9592e033c494a1df77fe88844aec7334",
+      "sheetshrink_sha256": "ab6af8ab21bd7681d752ff701ff94c1beed898998f437f5d8305756e3c05827d",
+      "byte_identical_input": false
+    },
+    {
+      "case": 734,
+      "workbook": "0649f31ae0f77029b2b01bcebbf8cc03030e7dd3ee40f7f52520c19fcb543b0a.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "a95fbdef3f686e477a7e8b1e1cce699f88470723ec0fd926811ad3ccf0d29e36",
+      "sheetshrink_sha256": "2d6d4d902c976a7c13b06ad1844e91f27ba645df335eb713cb50847b96ac96be",
+      "byte_identical_input": false
+    },
+    {
+      "case": 802,
+      "workbook": "06e3eef1d3bc2c7c1cd6f19de9a529d45cd09cfe3333947a0067fe8b28621e15.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "9ce57f6fdd70391f495875c42b3697154e3bce7db7d560a22b32d46fe0f596d6",
+      "sheetshrink_sha256": "fd6800517a4885a71d57a16dea0022072b25aa8ca53df479173be164d7174dcc",
+      "byte_identical_input": false
+    },
+    {
+      "case": 1099,
+      "workbook": "09352d3ad931dff8b204e3882ae2bf9d5e261a7ee8cba0842777662b5eb515e6.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "a200f034d96ba724648c2d67a402a85d5919baf06945d9db3edc9d792ea87adb",
+      "sheetshrink_sha256": "b059f3e11d6b81b5733fad3c8315521c17ca3f144a01adba4512fbfa81f26d00",
+      "byte_identical_input": false
+    },
+    {
+      "case": 1726,
+      "workbook": "0e55bc42afbe7eb5801dbb38bb12f2cadcb2fd2774fdc6b6c30655d4109b94b5.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "0878026ff7a2a718c1286c5940c9474fa80e5ab9e61a445a3dbb9c6b4edac0ab",
+      "sheetshrink_sha256": "565acc0ea8585768f35e01927eda2c3b49bd4dbdff2ca366279c15254c986045",
+      "byte_identical_input": false
+    },
+    {
+      "case": 1807,
+      "workbook": "0f01a5d6e113e95eadf6559fb3558857649740727bea349910b3e894d6454392.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "fae7c44a5357b23907946a17c147c4b57b25f15ab93cb8bdf822c8323d7d2b27",
+      "sheetshrink_sha256": "13874cc0a17030db591895cd892d53fe351eeb583d3df656f82a3b1c86f19b76",
+      "byte_identical_input": false
+    },
+    {
+      "case": 1876,
+      "workbook": "0faa01eda8ad8b6f39587ec90529db56b00a621d64ac34b7c4ae68d1a634ddc2.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "914fb22a039c2682510e07aea7c3c7337345a65cad96760ce075a15d39a5b3d2",
+      "sheetshrink_sha256": "e3ac69f8b17e1a964e3abf36eae5349992f1fc40dca2d6a1fa908553d66ab41e",
+      "byte_identical_input": false
+    },
+    {
+      "case": 2141,
+      "workbook": "11c8f94fdd9a5aa881ce1145c03ab7917db1059836022cda323e51d7528e437d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "e6939ffa4eb3fdaa858f78acc70cabf3292725874e2341339bd6537af90b7521",
+      "sheetshrink_sha256": "ce9a43d61cbb96f82127c17f13f50280d06c22b0ca4fbac7e4d1534165b20c1a",
+      "byte_identical_input": false
+    },
+    {
+      "case": 2255,
+      "workbook": "12edb44564128994aec46e635a86777dd656030c504d054f35b172e70df00c2d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "1c35405a0085cbe65557562cd355fe96251400adb58624ef1ec91650004c46b8",
+      "sheetshrink_sha256": "7408aee58043e87ccd8ef37032d999ef7cbde31b403a2efe2b16b341cab01d9a",
+      "byte_identical_input": false
+    },
+    {
+      "case": 2497,
+      "workbook": "15355075fc21bb6b4f2dd811ea843c3c6728f267e20dd0bb022286a73cfac82d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "2159ffe7464dc36d8683994d7927ef0a52923a7fd46c9033cb8737817db13b80",
+      "sheetshrink_sha256": "7e4301b41239d9fd28ecfd0090e30b46d750e2022649e8f564ba8857ffdb5651",
+      "byte_identical_input": false
+    },
+    {
+      "case": 2890,
+      "workbook": "18b982a90ad8e3399a8c30f1a551006afddc6cc69119297c385cf893b28055d0.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "42f97be1639c29870e54f6a0fca3f38eef446da4dbaf5a989aa8eb10a5d76ac5",
+      "sheetshrink_sha256": "0e354afa3f8e0b60617f2ab60e6deb5a9a805490c8c3ce99abf9bbb8f7088327",
+      "byte_identical_input": false
+    },
+    {
+      "case": 3255,
+      "workbook": "1bdf3474c0d449a6e8821f832bf97e72bc69caba101e855cc98b1bdfda8dc318.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "8895f2e91450b312ae8ace6200fb12a854ca0cecdf85ce4d1cca1a452b58eb24",
+      "sheetshrink_sha256": "bfda073b832cf0271c14e27333aee078ebdf8a88c16f66adc31e35a1156ff8be",
+      "byte_identical_input": false
+    },
+    {
+      "case": 3274,
+      "workbook": "1c0797c37f519857d1d5a51b13c3beceeabc9993b17098e68462e7a267d5f373.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "aa9d67778c1da524131e3476586612327d8898fadda7744c5493c3a7d41428c4",
+      "sheetshrink_sha256": "180487b881e6ff74278a9e854e8e4767776ef4d4c2dcc88f3263fcd4f128ed62",
+      "byte_identical_input": false
+    },
+    {
+      "case": 3319,
+      "workbook": "1c7b34c2ca2d809611c08e4538518a69b393dc1937ae9cc7062a0768df6a2549.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "ba91ba4b54865d5f93c6a62e2f26b50babfd326be84ac5640adf5e311865bbd0",
+      "sheetshrink_sha256": "93ed073b3ef9f62cb0c6f329fdb342db6ee8f916110c38387ae29fa94b6372d5",
+      "byte_identical_input": false
+    },
+    {
+      "case": 3413,
+      "workbook": "1d4bfc1ad5037aedb333cdd73ab1eda164749cc687ce20724afe442a15a772bc.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "19e33eb4062bd07ce14754f9d8ea46a587cb4b29f897c50369fdc1e0381479d2",
+      "sheetshrink_sha256": "de79c6f839b9fa29adf9b95bd020898eabe2f647e63af6aef10609499b881d5e",
+      "byte_identical_input": false
+    },
+    {
+      "case": 3434,
+      "workbook": "1d7ba0ecc6742b43528b21d89c908150f66128da5b77868f07077c5fbeba2cc9.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "b0e405f6736ffbe8dfea3e0329d03efa2b71e9f7dced6314c87f351734970eb8",
+      "sheetshrink_sha256": "85a3b508c08577b18ba284453b9a3e9134f436c8582205943e95631c800227d5",
+      "byte_identical_input": false
+    },
+    {
+      "case": 3718,
+      "workbook": "1fb4ccbf0f177e9e0ad7a4fbc41666a88de74b32439d5ceba7c2ee984b710b91.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "42ed78fde8d1145035b89ba7554f602dd0d69c46e2b5ade8a30cc72041ba77ec",
+      "sheetshrink_sha256": "2dcb7b32939fd3ab35ab516fc12fed9258a0c1c2ff3a2ebb1da867040549504c",
+      "byte_identical_input": false
+    },
+    {
+      "case": 3781,
+      "workbook": "203adfd7ddc8dea9b172b1159148338799121167a9781ac4ae8f92a5159f4724.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "aecfe20adf1db9a2f0bb101359b73c3ef86b546701bfb940d0a0e045cda1ac9c",
+      "sheetshrink_sha256": "fe077c4cb6bbaa15889f7f1731aa879d53c0d0cad997cdaa1cde6bd6ef4dcbc8",
+      "byte_identical_input": false
+    },
+    {
+      "case": 4085,
+      "workbook": "22aa29ad1e6bb52f2ecbff7cff39b56def4a3ee2a071ab9885f6419ad270879a.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "05de01f09c167728ce4e755d14356f0079f125a091e75051bdcf5ed68035698c",
+      "sheetshrink_sha256": "cb41e287d294d5383673c4edfd4296d959e6e427433639a06912417191671eef",
+      "byte_identical_input": false
+    },
+    {
+      "case": 4175,
+      "workbook": "2358264ffeec0bc11ade3c6f0728270eac32e151e686dddaf00abb0239ba26ef.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f8d5e6b6aeea262a4453bd5726701658344420a39c0bcb3eb802aad8be594794",
+      "sheetshrink_sha256": "e7b234f5452a140ee580117830fe80501106f46f818c75ec59593ecdf05217ce",
+      "byte_identical_input": false
+    },
+    {
+      "case": 4210,
+      "workbook": "23a92e505e8bf5dd30acd14ca8b29057e1241ed6aafeb946d0c66080aa72b75f.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "1ff467e71479d2b30890cb3f24eaee94144eb217cc77ce790e7a09c1788d950c",
+      "sheetshrink_sha256": "fed0cda603d4d9d01015bb32afee1aa8185f025e8c20aefa93304acd2abd53a4",
+      "byte_identical_input": false
+    },
+    {
+      "case": 4421,
+      "workbook": "25627e230efcb23e79cb150c27113d0f0e2375604366a91bc93a50e7883cbad3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "bdf45fe00f024538af8fd7d3a45666edc274ef71bb54f906f3cdc6a5e0b1b5f1",
+      "sheetshrink_sha256": "3adab1591be8a7d3c00851389bff0d78fd7182e21408a1df3abfd3a32f1dfacc",
+      "byte_identical_input": false
+    },
+    {
+      "case": 4946,
+      "workbook": "29b1b5debabe1d0d6cdf760a4b7b9db2c82d82cd29b6a43d9c16d25ff01a1220.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "b72d637c847170568147586426d8b884de77542694907137e65d1175c26cb514",
+      "sheetshrink_sha256": "e7bbfaded8a2f18dfececace6f7eba5f950a7e71f3872fca93451bb369ca387a",
+      "byte_identical_input": false
+    },
+    {
+      "case": 5137,
+      "workbook": "2b39ece5e8a412547db2a3a12f598194c6385a04861fc6532195f1d84698d61e.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f0b4b3d5bb5f37410a3a2139010dcb65d78fd4aed722af926db67e45e5cd6a4d",
+      "sheetshrink_sha256": "43111c0b10c0a05944f48f806c35445306b0cf528058005c32e1280b1dd84be8",
+      "byte_identical_input": false
+    },
+    {
+      "case": 6041,
+      "workbook": "32fab56074227b8d5ab07a3044a5f4ee3737b26f0a55ad0ff1b7cb61125f3079.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f014dbc6cfd48e4041687a685c436cb2f6817fe2213fa02e2f36d3d4e666d489",
+      "sheetshrink_sha256": "d79a536d2bf04783ba2165f020f35edd564712c8294587bd97890c5f05a10dc4",
+      "byte_identical_input": false
+    },
+    {
+      "case": 6216,
+      "workbook": "346ea3cc12aebb55c1eaa2bc71796c2f68f76afe1d0226b79d9938643155ec1b.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "6893eddb32aabda8779cd9c3896f2d26c41bda61a1bbd8bffaf2cb00753f11fe",
+      "sheetshrink_sha256": "08ebe93479d15946cd727f8f9c40fccb937cf426d773c6a2794cd6fcf5764a29",
+      "byte_identical_input": false
+    },
+    {
+      "case": 6320,
+      "workbook": "355247bd013698be3d0bfc005c17a51c303f59b943d61a823de195b42d6b90de.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "576641bcea6917c776994b3c8be70c78cf0c2bab90fda7fd7665f1687ac86533",
+      "sheetshrink_sha256": "5460e4dbd9a34b2c968cebaf9b4ca83a802942bc88d27a6a231ffe29abd76122",
+      "byte_identical_input": false
+    },
+    {
+      "case": 6369,
+      "workbook": "35c8c807d08c1269d259b4fe5b0db6ac078f7d8699c3db2c351a9e36e9a0b97b.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "299b6b81897abf6feda9bb78c303972a1ac8a2ffd855bffe064bd860beff9c5d",
+      "sheetshrink_sha256": "b4012282b0c36241d99cc541f23593d715ff58205380483e28bf7eb9a7b53d58",
+      "byte_identical_input": false
+    },
+    {
+      "case": 6584,
+      "workbook": "379ce4588917ede67aa783878e53958e1bbd69b35aabd8a9c92ff8f0982b7602.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "c5be640126100e4404e13d7904688d9e1a3c6c9b26da48e08c7e860ebcc62a38",
+      "sheetshrink_sha256": "10a03001dbd0966ce12e87c61e47069597c99eb49deb3a512dc8794ffc134b75",
+      "byte_identical_input": false
+    },
+    {
+      "case": 7185,
+      "workbook": "3c7225683a3b12e944d7c37686ab72e30a832514816a23efdb45a0d04af24b3b.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f20a1fa3f139440da5119041714984d735fa2141c4507c5064d07edd528ca3aa",
+      "sheetshrink_sha256": "93bfce63fcf6e4370ebffe0597ca228f05e53bd7c5eef7d645c8fbb48be4bae0",
+      "byte_identical_input": false
+    },
+    {
+      "case": 7410,
+      "workbook": "3e3167548c476d6b921c36e8199759693327f3bac547f2ac37d7fb651ad2d02a.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "58f9b483eea19a3ee002d1587b6570bc2e69fe848670028aa5f4c20d9033d7f6",
+      "sheetshrink_sha256": "c045cc739fa4333998c1fb52b3d94de3b3e0ad8ffc48316b17ae163a7dcb4f24",
+      "byte_identical_input": false
+    },
+    {
+      "case": 7504,
+      "workbook": "3ef63c1970c028aef886d8ddcdae11f36951c195612199bc369fac33f0efa8bb.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "ceda9efce8fe670dba3230f979567264c6d9ff57a350757cf37553846e6f3119",
+      "sheetshrink_sha256": "f9055ea37f72034e30a91b61a35af39fa546be060b2663c29331e6b20d69ad9e",
+      "byte_identical_input": false
+    },
+    {
+      "case": 8030,
+      "workbook": "4349b24f006f8047914966ffe7e256ebf931bffa0d4f47c3e18801f3cf279c18.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "520bea130a697472e288588bb707272d6c415dec193c7746c9b5cab12eb958b4",
+      "sheetshrink_sha256": "cae5fc165971a74dfda9775968c5362840fff27e044fc72c3b566e32196ca38d",
+      "byte_identical_input": false
+    },
+    {
+      "case": 8159,
+      "workbook": "443d1fa9c8e763df79c38493c4906804616dca6f3533d7e64ba9ca51ca27ae96.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "6ad6cf3c15ce25d973169c76e395d481db8ae385e7cc4fb6fc73868dde665ea3",
+      "sheetshrink_sha256": "02222de2d9639f17bf98b4a1aedbc7ef356c23e1f7db3915b2de3759a86a22bb",
+      "byte_identical_input": false
+    },
+    {
+      "case": 8194,
+      "workbook": "4480014497ba70e8bc1e2b92d77d783fe88ee58458e88662935a8fca2632f0bf.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "9c7bcab5ef82fcdfdec5bd9559d53a9c1a0228da72e2e6fa912a7068731cc905",
+      "sheetshrink_sha256": "22aa92cc813d6806bbdc309002f4c61a0c6ffc1c385e5e68966ffb3575ba9f1e",
+      "byte_identical_input": false
+    },
+    {
+      "case": 8342,
+      "workbook": "45dccb99ef3a05a3d1331cfb5b8bcc8d13475cb844c03d3f40bf81ed7a49efc4.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "cb0420e999628b23bfebff25538db771b19f2cecbb9c0b717a20f4e0178f855b",
+      "sheetshrink_sha256": "7e78071bc58ec13e9bb1c769d9d72b3656dd8a107a3faa1cfc81593ef0e0e032",
+      "byte_identical_input": false
+    },
+    {
+      "case": 8451,
+      "workbook": "46ac47cbc6a3dfbff37b3240478f3ebc4a39308461cbb96641600c484ebbf6f2.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "420b2a601ade599cd6e95ed8d38aec55fa1310c48e925cdde3a7d0afd803b1cb",
+      "sheetshrink_sha256": "1030fb2c9aa4c8c2dcd8e58172b6056155f89750dcbc98bc4a83cb9537098444",
+      "byte_identical_input": false
+    },
+    {
+      "case": 8792,
+      "workbook": "49a203dcf6ebf36ecc3cf4f723f4f0a1178ec566693bd931b9767e8ab5f5e10a.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "52501a4971525b0ce5009a4961041365db0be4a7d620a826af229a50afea49f4",
+      "sheetshrink_sha256": "4769e7a054a8f9cbc5e7110ca0951d8b604a0cecceb42bee51642ab3fc008df8",
+      "byte_identical_input": false
+    },
+    {
+      "case": 8954,
+      "workbook": "4afb236677d039a97a90b4711c48bc4fbd0821a93af6df3e1183494e306d9455.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "a57796e76f45adb876d806c84d3287f34f6b87eaf401d42c757b84e47dcaddc7",
+      "sheetshrink_sha256": "0ee61bdc3ab9cc81415eb4d3141f95de8d467f913704d67f8586f3faa364e7eb",
+      "byte_identical_input": false
+    },
+    {
+      "case": 10193,
+      "workbook": "55b48b7de6004bdf5d2d30cf2f25dd4e8264d64ff8abcecd8fc42dd17cfffc0d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "0a635030e5ecbaf5e197b158f826fe13a38ffb0b128e3d4e376ce38c044b22f6",
+      "sheetshrink_sha256": "035cea621e119c9ec633197de5a2f986cb63b4698f28e80d183f4daca7864a91",
+      "byte_identical_input": false
+    },
+    {
+      "case": 10252,
+      "workbook": "5638f4ad6eceaf497e3ae3eb11b8a4eb8f96c6c8d5fb4cfe4196079e1e30044d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "5578ecccec2b242e8323d64d2a915ca4d1682f0902132712cda9b889023adfa7",
+      "sheetshrink_sha256": "f15fb80ef0bb71da5d137055567e0c041544d1efde40ec8222fa866161b67c22",
+      "byte_identical_input": false
+    },
+    {
+      "case": 10853,
+      "workbook": "5b403bb7dd0b07da7a03f3339fc887c4e8db52ac3846d8baed7c3fe6823452ee.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "cdb7a6139a8515b419b00dd0c6317b0c4b55e1590de1411dd18d5419c68c42a7",
+      "sheetshrink_sha256": "bfb3411ce4d42aa2ebe1d7ff478edeefd6b1bc3e953f886f3f42f428f5379fb1",
+      "byte_identical_input": false
+    },
+    {
+      "case": 10902,
+      "workbook": "5bb0ba2cf79a3842389ee481f92a9a3b7a3b9b52a18167b0e4076daa5902bd08.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "0a7cd21d48bd790660bfc3bf30febc060328ebbff2f2723b4fd854cc5d5efe20",
+      "sheetshrink_sha256": "2162d2265314156fdec1c74bcb6423ce5a94b1ba9e18a54e02a916d4771f755a",
+      "byte_identical_input": false
+    },
+    {
+      "case": 11100,
+      "workbook": "5d5d6dd5dcb839bcfadd69279de1cc9b34c78b8d61da8219cf426802b6ffc503.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "41f52e2958212aa44b77333ff25db6437cc0c8a654cd5fd078137c903b6c0445",
+      "sheetshrink_sha256": "e172bf54699a99170ac9e49600f755bc7ed2d45d8d83ea11d376d35b4308359f",
+      "byte_identical_input": false
+    },
+    {
+      "case": 11229,
+      "workbook": "5e4c495a05cb7a21840530b9baf8d9f7ead4c9275709effcb16fd7a0b8e5e66e.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "5680d1b4e1059d91a44ca396c7794eb8da8684d80a0f5af745f9be5f2e8a95da",
+      "sheetshrink_sha256": "4ec593472fa40febd92feaae286e0d34af62db92d36ff7f2912eb09462be0f68",
+      "byte_identical_input": false
+    },
+    {
+      "case": 11580,
+      "workbook": "6129649290922207d4e5415312256ea04bfd7fc33dae1ac6fa307981843f3fca.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "3af3c85ba6e853aa76a7166ca292e81713d6394b8030b24ffff39a356c1fbdfd",
+      "sheetshrink_sha256": "c08a0d831e7b7d714abe96e70d3d8709c49aa85f53159d8060d792a173c413e0",
+      "byte_identical_input": false
+    },
+    {
+      "case": 11614,
+      "workbook": "6175d5deb0633284b78bbcf7d4e6332413e5a16c6cf41bfb0875e739f069c52e.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "3980cfa291039fd7969d0adbaf30e82628c39d12ce7efae0f9ebf40f11ada7bf",
+      "sheetshrink_sha256": "bed7ee75593835c9ec66d44754dfc77c0e9565d99668749237306ae5cdfa3f94",
+      "byte_identical_input": false
+    },
+    {
+      "case": 11761,
+      "workbook": "62ab003e8c84e00cb6e11679c10062eaa7e9425e97e7de35625906fbb7390046.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "9f8d97400bf0e35ec3b755d0907aed16eaae04adcfa4d4881263feaf4347de8d",
+      "sheetshrink_sha256": "de5bb946418a2bcad6487e4a928e8981483fa06931f6add83f63cb0f70d73128",
+      "byte_identical_input": false
+    },
+    {
+      "case": 11775,
+      "workbook": "62e72bd216b89a1d7131eb7d66d37814db1fcae67054224c4cb081fe836bfcdf.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "644d2eed9559fa1f11114246063d3b8635f01c8d5d6562354a84f5c9ebc50139",
+      "sheetshrink_sha256": "dc30dee0337a9fca3fd568bdcac0113d93863c7460ff5b006131caa1ef1ea258",
+      "byte_identical_input": false
+    },
+    {
+      "case": 11804,
+      "workbook": "631dd91af97076bff906fbf96fba38e91765cd6c0d3012ff978c90fac4b2857c.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "4e72b7b274309effd4cc181118bf40ebc5a97f170fa884ba9c0379eb827b96b2",
+      "sheetshrink_sha256": "4c09dcb20ca50676b8895c91336c7f5cb215313e073a3747229b28a78bb107d7",
+      "byte_identical_input": false
+    },
+    {
+      "case": 12196,
+      "workbook": "6660e45074f495ca5d789f3702f49cc063c3a7468e310502e897c49c8cb37a84.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "fe91706003e2511e93bf94c1e52fe80fe0c8929951c9a192b3e3ae0f7d9dd392",
+      "sheetshrink_sha256": "5354ddeb9a8e2fcb15a89a0d8a3aed61a9c270c2dc15a09ee3769ebd2a8743a6",
+      "byte_identical_input": false
+    },
+    {
+      "case": 12676,
+      "workbook": "6a9aaac60416b2a95584192a3d109dc717fc420fcb23d8c03e3eaabdbdfd39a2.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "4f592e51f9ecef7ffd84cbe519d6bb1fc9c14ffa9edf6b918c3603a4b7e1f36c",
+      "sheetshrink_sha256": "60c81c284942aae7974f60fb48e2b639ccd7dc4a89aec53d188732113f5d9746",
+      "byte_identical_input": false
+    },
+    {
+      "case": 12740,
+      "workbook": "6b395ab4c9ea72ac1cba4c954d795b2fa1c317c26e77e98488c8551716ab7eff.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "aa8095a44bac58305eefc30ab20d0264ddd367e39a2592b75af34fb60c02067b",
+      "sheetshrink_sha256": "1b3fdf3b0d112a7cb4d67178d003960b4d5c0c98edcfedb7d975718da08b4094",
+      "byte_identical_input": false
+    },
+    {
+      "case": 12889,
+      "workbook": "6ca26d066886d181baf588a9c2c09fee0b19c10f0f1a6c63ae4103348ec53b2d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "70c6fae59276dff55f0a92d446b22750543ba561ee79a31543a7ef58969d8253",
+      "sheetshrink_sha256": "bed1c3b5e721b98ce19a59c9b29404d9d6e6d33868d0b752a1d7d2f924363ad3",
+      "byte_identical_input": false
+    },
+    {
+      "case": 12926,
+      "workbook": "6cd41e34fb8984a3e95860ba46adb76ae1c5ddc89f43efb0ba48e88fcad94de3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "722417dc04905af81f0ef5c801d0f300fb572373938d91170e7497616d4511e2",
+      "sheetshrink_sha256": "23aff9d3e522c2705e5c351247ceec9f65144783411baac169b8420d80e4f60f",
+      "byte_identical_input": false
+    },
+    {
+      "case": 12974,
+      "workbook": "6d2f2c712689610cfcc72d2a890656ee3db6912c931b123500761fbf9900139e.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "77dfc27206ec97474bef26b77732fd44a11d4f0158b5e850faf46d966bdc56f7",
+      "sheetshrink_sha256": "f271b654dee8cc2a9c44e1c62247aeab69110d74bb77af8bb99c67c409ff4994",
+      "byte_identical_input": false
+    },
+    {
+      "case": 13242,
+      "workbook": "6f8768cd86d333f87298b1d3b9f72d7ef5b90f1b0f2bec4e6dd72a1ffefa962c.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "3b5fe4976e68da8ad5162d37ffc187dd057f1ac70831107823fc381bdaf01017",
+      "sheetshrink_sha256": "906f8d864a0c410a2c831765819af46cea1da9c5169074f151bc9f7209235192",
+      "byte_identical_input": false
+    },
+    {
+      "case": 13313,
+      "workbook": "703547a43cc73f6109eb23bab2a2929ddd00db45909ca0d27320b47510fbff47.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "0ad60b3e1955d50b11ddbbf5de9ac821b55523df51373d99f27ec619200d34b4",
+      "sheetshrink_sha256": "bc5092e044ba9f859e8128a222baaf3c6571facafc5c861a358c90decb78a232",
+      "byte_identical_input": false
+    },
+    {
+      "case": 13918,
+      "workbook": "7542048c3de11401fe4e0764ac7f77a016ee010167555a6bb2769aef689316d4.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "6c4b6b7cbf7cc948ba5774f0e5082308a870a59bd16f7684ad814baa9e2ae78a",
+      "sheetshrink_sha256": "afd51a0b8c7d3f526e9d6d9ba895daf3ccaeaa27ca2a213a3001c58b8b8243d8",
+      "byte_identical_input": false
+    },
+    {
+      "case": 14295,
+      "workbook": "789cc822b242b98d2eb67b411ac56c3ac1508c45ca80d88bb18a52e25f0673b3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "4bfa7db82bccabaed68ec3ac342656b40f437c107103f41c3579ef19a4db724b",
+      "sheetshrink_sha256": "07712ae3d1990276b53f9c175b5bf17fb7cdd3fd3d867cec1ae9bd357d3c7004",
+      "byte_identical_input": false
+    },
+    {
+      "case": 14327,
+      "workbook": "78e0a861d5e7a8f2e47c3aa6178b1592e6a6e4759b5b15090b2d4de245e69bf9.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "9d79b1e5d7c0d93da23dd04bc6d641c8f29e729fcabeeeed07297eed89d2c58f",
+      "sheetshrink_sha256": "c0a8801a5c70e7861b97fb77e5caa2372ec9a743a82b53b1b0606f1818b0a78b",
+      "byte_identical_input": false
+    },
+    {
+      "case": 14691,
+      "workbook": "7c3071a05150ac6d059aa836c46581b6e2e15171010f63f81a255abc7b5c68d7.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "4104bb2b644d4cc518e22b1a600a985b12b4a754c60196e4456d0a327bb3ff91",
+      "sheetshrink_sha256": "08c19bcdff7eb0d3157bd85514b2f34cea637af0deef2d403b3df8b5f0573031",
+      "byte_identical_input": false
+    },
+    {
+      "case": 14989,
+      "workbook": "7ed6fec00fc2c20578f1df51124ed073dfabfdafda663999001fedd793bd183e.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "8c1b55fbf40f8a69f453d5cc4c6cf5772e248a0688e661db5d000889f0187007",
+      "sheetshrink_sha256": "1c4268f279edf7207554b6a2d7ebfb01ee2d4e87cffcb83553854064a4f14142",
+      "byte_identical_input": false
+    },
+    {
+      "case": 15337,
+      "workbook": "819b92741fa1db9510ed060b2a150d4a7db473615a48b8741af68ad6b56837f3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "1087e978f80c737a91d224b55753cfe29d8870f5c8a11c6a2bee064f88b2a554",
+      "sheetshrink_sha256": "5d875dd6bf040e11d59e698429c782edd41c1688d1a38cac47e80ce32f1861ca",
+      "byte_identical_input": false
+    },
+    {
+      "case": 15355,
+      "workbook": "81c4ad3a6af6ca36630a98193243ea706b5e3021d1820490778350bf58270b22.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "ca29e5bcbabc739005cb181c2c6859021c9a8bc5c65affeaa40813228b8b4b34",
+      "sheetshrink_sha256": "622fd0eb1d8bf0f5817d1e5a8b1a1fa9a863d50577ddc40177035631d6e7850e",
+      "byte_identical_input": false
+    },
+    {
+      "case": 15426,
+      "workbook": "825dab69eca1d6eb5690136a5ca73374a2a1a8747ea09686ad66bc5b3fe05983.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "067a4c4d0d16f725ee10483ca279ac96e3d6f8b9a84a06884774e74f221d8236",
+      "sheetshrink_sha256": "9a4d470812de6c889c2b3d2a2eab9d899802038b11690e9e6be4337ec54cec4f",
+      "byte_identical_input": false
+    },
+    {
+      "case": 15614,
+      "workbook": "83f6e9daf399cdb4263227a99884070ab328e5e2d790f4d9a5486e7801a7d392.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "36ff596c10a28f83b10d6ba62b5227636fdfa44671daeb228e10ae3d6df85b47",
+      "sheetshrink_sha256": "e1ccb64e7fce7b5f7c3c4d852922e8152e1aef3b6fb17ae72ec9e01058a17137",
+      "byte_identical_input": false
+    },
+    {
+      "case": 16006,
+      "workbook": "87c098d602f104f6eb29ff6e0381b2eeb39374a15e7f76d065c097fcf4e9877a.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "1734961d2281a7569ebae14246750b1cf730fa3cc545c7a285d8ff0276d82c25",
+      "sheetshrink_sha256": "cd13a3feef3f9db7db0fd43a5afa19b2b2aa55a9c23716df2a97eee63e8e4f27",
+      "byte_identical_input": false
+    },
+    {
+      "case": 16148,
+      "workbook": "88fc68f883186e76dae6826074b21f546a9f980022288d3db066b346ed2e7884.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "8ae0b4210b2bbdc3013dfed73309ea4edc08304a85a22109e5c4cdd157b1dcaa",
+      "sheetshrink_sha256": "239b5173e9e292b602880bf67d566ad20b79dbc3362c6f2c91e2352d9cb3c2d6",
+      "byte_identical_input": false
+    },
+    {
+      "case": 16733,
+      "workbook": "8e0821d3c1671f500a36baadc130a1be2ed90dd7cece70dd031e023824b9faa7.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "15e9285c7b2fa372da894b769c5b79feb0a3a13a3f10f99e4f252f9ff3f62c43",
+      "sheetshrink_sha256": "e5993cbee38ee1b5710aa7391c5fd76d22c010cf77f90c5eea6a7c3fd5ffda11",
+      "byte_identical_input": false
+    },
+    {
+      "case": 17149,
+      "workbook": "91a194446fbbd2a2df94192180c1f3fec36691d08edc9e77680aa51fdb08557f.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "3440a18a7e7892670223b9a0032737feb963395fcbd48f2a07032db027370850",
+      "sheetshrink_sha256": "c9db307cbfc77e8041e0875b72ff74b2c7e432a167eba34d170dbb90944d8905",
+      "byte_identical_input": false
+    },
+    {
+      "case": 17223,
+      "workbook": "9239ad4760a825e4340600db4d39748271197d74b253636453636c0c10f267d3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "01e1ef27b923ed82e37a42eb1409e3da0950db22f39cb7f8e221ee6709593fd8",
+      "sheetshrink_sha256": "7f8d5170c85e4324e59d3c750d3ce1570ad614cf5ffa7b42f394384f251321a4",
+      "byte_identical_input": false
+    },
+    {
+      "case": 17471,
+      "workbook": "944012e193fa5108f4841921d71458e78e07cc0b8e57865db80aee5c559de296.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "c82a9807ccd268165f79bf3dcdcaa98fae1ca21b0f32353350ef35404e5113c2",
+      "sheetshrink_sha256": "cbe80ed63e58a3559574b4c782753f597d0bc6c5dc5a8b087999a057b0a7d008",
+      "byte_identical_input": false
+    },
+    {
+      "case": 18155,
+      "workbook": "99c7e33e483ccfec4c627632d63cfa934d2a51b0b76e8ef70c1a36e5461f10e2.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "3009d88296648ffb38ae9db3f7329652699e3b0505ff5a77b461ef3f35ae88ce",
+      "sheetshrink_sha256": "111a0a991d23259a1b2c1acb8b4c6df9022783f4ed76124d071a233329ac1c33",
+      "byte_identical_input": false
+    },
+    {
+      "case": 18275,
+      "workbook": "9ac28f2c11599335b3952b79cb2caec7de5709e82488abfa262e6cd4a3fdcf44.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "a7694e0b5f82aa8c98501fbdc16188b6ada3bffc0927c329919e3fb9742777b3",
+      "sheetshrink_sha256": "9e33a453263d0517e0440e9b6ec082ba84e56b8e8978612fb78e9d1766859463",
+      "byte_identical_input": false
+    },
+    {
+      "case": 18817,
+      "workbook": "9f51eeb7265a19231b3e89d391372650397907cfc70c51d42208f197c25d645d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "27f34038491e3fd1be7c10cdbcfd271265706f470d1a4d0a96e7361acef2c16c",
+      "sheetshrink_sha256": "cf5e7996acde057d1bcb10d07bf52d44c32df76ebac29527d75b9802132bfb75",
+      "byte_identical_input": false
+    },
+    {
+      "case": 19104,
+      "workbook": "a1c8250d34e57f334adde199cf084bb5b93edc97856ab3706224b26f521699b6.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "882f2dcb6e56837ca5efb521f9cd8e7736a58095c2f56534deb36edb86e8ca5d",
+      "sheetshrink_sha256": "30518a1862dbd1bb5ba5012831bc0b4e5339e19e10a4d19176a76550e6e64004",
+      "byte_identical_input": false
+    },
+    {
+      "case": 19176,
+      "workbook": "a27c93cbbc409a230ecb185f11a482a4dbb7e41371a309b6359e58b32c12d06c.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "45ce1acd43552acfecf6fb4eed2db908f455a2b0384a2f994001ed29e2506f8d",
+      "sheetshrink_sha256": "a452c8e09fcb816baa846f44e17ff147d2d93bbb0628a21901bc713435e190b2",
+      "byte_identical_input": false
+    },
+    {
+      "case": 19261,
+      "workbook": "a34aaecc4171bcafb45c43d7d84b638e63dd7986510ac8775d626e166387ebe6.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "7df6da395cb03b752782652f1df6d214c2c0522777105fad67f02d42521b25ce",
+      "sheetshrink_sha256": "008a1f9f4628ee976880b34fc1e799da1d38ca1f904de7438b22ff17970a7f06",
+      "byte_identical_input": false
+    },
+    {
+      "case": 19881,
+      "workbook": "a88488e8e8eb6a4e3ca1852bacc790d8407778f1d685b78c32c3c621959c5c6d.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "c43535b78c906797b2bcc782b036c4557c5ee2ba818b99c5d0d2bcbdaee407ba",
+      "sheetshrink_sha256": "7ae613e51babc548b57ccc188c3468d4cf35dad9ee191588c19fddde0cf630f4",
+      "byte_identical_input": false
+    },
+    {
+      "case": 19977,
+      "workbook": "a941e329fc108ec5512148c96458fe07ed9cfd118570b36846db10ff9b6bbb24.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "2307b8b04415dd59f9c5d2a4f3755761ef392479558a73444dc53ffd4694308b",
+      "sheetshrink_sha256": "d8c754bc1fa6d98a392cbab4ab2044ec498e20eaf57966bb6592601dfeb4ae5c",
+      "byte_identical_input": false
+    },
+    {
+      "case": 20481,
+      "workbook": "ad6015152c10ebc998cac4088abbedcff23bc8451c47e159dd100f7bbaff9d98.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "ed9c22d11caf7d1a1a36dc9ba6037985c3d4a651714807425df0163d23eed0a6",
+      "sheetshrink_sha256": "6ef40ecc477603b642539eb05845658c8a7e7a83e9be093f843786730cb92885",
+      "byte_identical_input": false
+    },
+    {
+      "case": 20593,
+      "workbook": "ae77c7a01ecc11ce59155a72e0af4e4ddcd9d0d4d89ded1adae6114c97552a4b.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "9773ac557257770468fda5fe33aec24e9cf958f2f2003cc261e853b3721c644c",
+      "sheetshrink_sha256": "7f2507180a89f1ae5e8ef23cb687c7230caeab1762f37f6f8fe5b736efaa871c",
+      "byte_identical_input": false
+    },
+    {
+      "case": 20602,
+      "workbook": "ae9146a5202be38d0f72333534b0db6820eae7119d26174d81cafd8ba986b067.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f47fa473f6709816c099b6485afbe5b81e6dcc0a80e2bdc7bf74f234d094b019",
+      "sheetshrink_sha256": "51747d69f92620c136763d39694df5c5cc6e30e4f1a533a3a0c6b56f8f996835",
+      "byte_identical_input": false
+    },
+    {
+      "case": 20906,
+      "workbook": "b1286333d05a3bff5db7c71421edb1662146acaeb4b6051863c2d658dcdb32c4.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "5822921abf1187880ac8d9e17289d76d6ee335f29bf7987ba3e9a14511c53f57",
+      "sheetshrink_sha256": "04c8f35045afa88a20b72fe7fbd8452610df1fc832736db2178469e3b5a021db",
+      "byte_identical_input": false
+    },
+    {
+      "case": 21019,
+      "workbook": "b20aa159f9d1ee7126140aa467acd7e85f8f5b81e5c52b6c85e02bb5c651dd85.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "ad1032dfe42e93a2f77766c678089f319bfca4423721a0090502c3825bc76f85",
+      "sheetshrink_sha256": "b31b777b2a88da989b4901da4667d0f6146b228f4f8a06efe49f9bbf2e32378b",
+      "byte_identical_input": false
+    },
+    {
+      "case": 21222,
+      "workbook": "b399d0e2e1794961b5e410cfe4b6341abe8af7e500b2f34065a41ef9c27a00b3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "aeaf30c71cac8b00690041860bbbbc4f9191341ff5e8230a78aefcce33a9b652",
+      "sheetshrink_sha256": "cbd437b405d021f4741b36c4604fdbcab46c69f87f28385572ca8897f24050ee",
+      "byte_identical_input": false
+    },
+    {
+      "case": 21268,
+      "workbook": "b3f36e7a1182e02889e77bf3f5aacf2418f871665d6e6a56073c49e5630091c8.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "509b6e34d38a8766003bab16307f7f4489a756f2bc5c0d0b21fa1784d61e1bec",
+      "sheetshrink_sha256": "90433728776a3e1b3fd4ec9e43356929cab8ef2df85a28e78c36f45c67a8e37d",
+      "byte_identical_input": false
+    },
+    {
+      "case": 21340,
+      "workbook": "b49db9973e64b7e224c86b52ca8f0b5aa96ae05d5598a14694b7de3c473404a5.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "4d83ef25cffacda1d78429f7960a562557b19f7031ee1c033ba926f64ad72ee3",
+      "sheetshrink_sha256": "5dcd0d205611a654ac61a634734248aa00053b40f40ed7f7ec9bd731f3a7d5d6",
+      "byte_identical_input": false
+    },
+    {
+      "case": 21702,
+      "workbook": "b7dbacf54519c1c45bf65df06e6e91d85902bae69c74e200c4da6ddf8d22ba44.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "dc352a202a92dd424528e13d5e006470c78dbba4e89be61152123471f9ab82ff",
+      "sheetshrink_sha256": "14714536d46db3124ae4b45c92855ef5f1352bcbf67692907bc523befe1ce345",
+      "byte_identical_input": false
+    },
+    {
+      "case": 21953,
+      "workbook": "ba04e3c380cb4a5a80c57370f5cee839f0ae7d2fcf75b5310d867e794457eb95.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "bad34156f1ab3f0fffe1133106089d347cfcd385af7fb6101d3ddc26556fa97a",
+      "sheetshrink_sha256": "3cfdb610a3c76a9adeb378499c0b1de796fcee943f5e8ef33fd4385f5e18b72f",
+      "byte_identical_input": false
+    },
+    {
+      "case": 22534,
+      "workbook": "be8e2a02694a61c4abbbeb76eca3dd9c8ab0bd2369d5644aba0cf156dff65f52.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "d41cd41e93b7be4839ea27cfae784211e242282244728db0c07542b51dc0385a",
+      "sheetshrink_sha256": "5799bffd06aea0add13fbbb7cd952fa64503ebd674deaa07f7b1df39b49e2a21",
+      "byte_identical_input": false
+    },
+    {
+      "case": 22577,
+      "workbook": "beed4d618b7b2fa8c37bffc8f9667777e0b9d97f510fa7227ed554a42dec2794.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "878591f48f39b4a392988d31b086926a14beca20f5c0efbb9918417dd5b86201",
+      "sheetshrink_sha256": "3a5d402815cf035fe179ccf823d52d004bdb80b2c3b8934fe9c71d5f3606b08e",
+      "byte_identical_input": false
+    },
+    {
+      "case": 22721,
+      "workbook": "c0287b04e0461487ef08ba57dc3da07b28e809a8ca08bf1491eafe221e69d049.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "c74122b09c092a0b5d7bacc2138fb13309aed2bfd51da8895f6e285d7a16a193",
+      "sheetshrink_sha256": "b54ada8eebf6fe91067e23c3e254c8d8e1ee85cbfda8420c439b28cd9d541a83",
+      "byte_identical_input": false
+    },
+    {
+      "case": 23262,
+      "workbook": "c47f3d844f027cd029433f925790d2e959301b44d27e912ab91a61e7e0649891.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f1ea576d554470db538dc864fb1171c11d35dc6dc84f4f8c7ec12aef5cf81582",
+      "sheetshrink_sha256": "a2f2c82ccb5539d1b78123f7301a578009b5b3ed9e72eae43585c041ec8ffcde",
+      "byte_identical_input": false
+    },
+    {
+      "case": 23298,
+      "workbook": "c4c77d5a51892b611ba0718a3e97aec9d14d298fbea2d6505381fce5974dfa09.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "44d76858f4ef7ad8093efb0f74b4b13f6cea0c200df6b7a6f1e4ead22e9b5fc5",
+      "sheetshrink_sha256": "aeb2ce1b38f6df304e7ff6e6da47eb1c6d6ab5bb21ecab93fc6dad5b2a6f6b4a",
+      "byte_identical_input": false
+    },
+    {
+      "case": 23512,
+      "workbook": "c668f30a57591668e2f7f55efeaeffde031300aae874bdf19e0edac7b0088689.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "b2ade4e76abb53450e0de11e2bf7012b23d3d481ba7472b946aa0ee96efa9a99",
+      "sheetshrink_sha256": "4e3b98877fff679a027967a831878f42f318390e89294d4268416fe9a7c6cc1e",
+      "byte_identical_input": false
+    },
+    {
+      "case": 24254,
+      "workbook": "ccf51eb7dff76c7321135d72aa57f2a5ec1bafcc0f7356836296999e1e07e566.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "860ae982424d1058cf628e265c79d44b8a0a2510218dda7067077e912fde6050",
+      "sheetshrink_sha256": "27eaa5cd48a60195f58806c428cb90b78435fdabc2ba2c124d82c14f275dc013",
+      "byte_identical_input": false
+    },
+    {
+      "case": 24525,
+      "workbook": "cf33751db3fc9e4d9c007b0c06ee464d8f910497a34202a4320892b4e2580d23.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "da04bf5bd40825ec986c44868db2a4a4be2b46eb6e06b534d648d0e4818826c6",
+      "sheetshrink_sha256": "1a1c1c43ec834a1b9a3109f0204b44d5541499b8147a0b62c094cd9da7ca7013",
+      "byte_identical_input": false
+    },
+    {
+      "case": 24597,
+      "workbook": "cfd9434450b27e4f981820a6a7a4e4b540158b5d3ce1c3aeccb0c7da6c5a1fc2.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "dee4bf8bca34917666974051290b669d5745866bcc6597aac4bfdea051e251e3",
+      "sheetshrink_sha256": "8fba76a608c9df19561a5c14042c955247b8ab6b9bef61ec9c9c0f8ec98a63db",
+      "byte_identical_input": false
+    },
+    {
+      "case": 24953,
+      "workbook": "d2bdcac7467a89c6e77c3372338a9f6bf8ff6919113faa45f560e654f9800fab.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f7898b64d24418e38e1debfd9ce2375b091eb094bbd86feac38ec33441c20fc1",
+      "sheetshrink_sha256": "f7898b64d24418e38e1debfd9ce2375b091eb094bbd86feac38ec33441c20fc1",
+      "byte_identical_input": true
+    },
+    {
+      "case": 25005,
+      "workbook": "d3258870d7de627f90099658928ff35bd66d3a8184cc837d9f3a301b3af21fb4.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "2a3b0c4c3031553e382e768760925ef96205cf85ce864f41ddcdfe87b210b010",
+      "sheetshrink_sha256": "5e30204bdaf8402af78d53722235e34a42adbe0917e5600f1de7aa615eb1892f",
+      "byte_identical_input": false
+    },
+    {
+      "case": 25155,
+      "workbook": "d46303a5ab8b34af0fa398ddf93700799c8e34071282e474c1647eee1017781f.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "3d7e00087b9abb614ec0a8832953349d1e9a6c8d0693ff8a66d0c89adaac2bb0",
+      "sheetshrink_sha256": "8548a1b32783f5a0a3b910e84852dfe11d2aa1e35fde8751f34f6d9b188fd01a",
+      "byte_identical_input": false
+    },
+    {
+      "case": 25185,
+      "workbook": "d4a606c371bdba659dea0227a2bdf81fad94fe79beaf1ee68575080e388e5be1.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "4c44b06f0399de58606e5dc71ace6f6215d5ff31ad289a1885a7bf40b257e60d",
+      "sheetshrink_sha256": "2eba7e9bcbebfab038fc9a1b808d6972f079eba4584fb2c9f380a1cd4b8f878a",
+      "byte_identical_input": false
+    },
+    {
+      "case": 25611,
+      "workbook": "d837d5039ea625ced3c55948f912cd019a02db056e30b3be86dbee9a58830359.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "7b33422c88631f5917b7729e517a94973d972b7667dd03128599dfbfc632f623",
+      "sheetshrink_sha256": "1fae6d98df4e84986287ef5de57a5755213f166ae0974d9160ebe6d80b201d93",
+      "byte_identical_input": false
+    },
+    {
+      "case": 25644,
+      "workbook": "d888fbcf73f5d9ae92bcd3915c1b00444b0dcd17de0373f7f4ab060712911b9e.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "0a7870fb218bd09d1b3f053ac6c1b34d4ab43dd79de19efca2a351477afd1845",
+      "sheetshrink_sha256": "c0eab7aeff695155b60ece71666065b6478f6098b402f6264abd377a37119846",
+      "byte_identical_input": false
+    },
+    {
+      "case": 25828,
+      "workbook": "da0a729567e74ef4d0d222746e077bc62842ccff77e486ac8cce4d8b3b3cf013.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "e3b157a9774cc396f950b4fec4cb6c3aa2f0fcb62fd5560fad2917389a9d4757",
+      "sheetshrink_sha256": "4f4c43ec86f19c514f31a7008452e97e59cce42d4e0a206a1510096e1dae3109",
+      "byte_identical_input": false
+    },
+    {
+      "case": 26076,
+      "workbook": "dc1e68d176ab99e79f240e1da7683527321b9a79b95cc38228bf39d2a6f2ecbb.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "325bb493d5366ad3d05bcffcb5d49391a2a2f4b737fb562b7fe351d57e750a6f",
+      "sheetshrink_sha256": "00c60b0fee202df244c45b149bd97543f29f73d0cc1c844694a9363e5913ff98",
+      "byte_identical_input": false
+    },
+    {
+      "case": 26227,
+      "workbook": "dd3e9058dca1727c99b5de57a6cdfe36c3c2253daa54c8b60be9edd99813ddf9.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "d3874f3003b7e92bf15868b9ea1c85afd252531e3997ead6b2146cb3f578a8ce",
+      "sheetshrink_sha256": "0c222d47d0c188685a811b57713974c397bc2b3fa2f8b77a4b2e006d6773a8e5",
+      "byte_identical_input": false
+    },
+    {
+      "case": 26499,
+      "workbook": "df9e47e5d686cd5a2e07e99a5bfbe5702b748e5721bba1ba6452a2c2c5ce4b80.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "faa2440125a8fd1d80b3bfbe3a484f960b8e5d3227283887022538887a9bcb70",
+      "sheetshrink_sha256": "b46fb6067f43e0df220d1ebff7938fce77cef0771ed8645c0534e461581bf210",
+      "byte_identical_input": false
+    },
+    {
+      "case": 26652,
+      "workbook": "e0ea500df3993c2f3356496642e3081567a2304a727c2accc73b885f5da5e935.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "900a24613f85736693dfb3f115d9b37f8c6f7b4b99d36945fcc74a33ad8415c1",
+      "sheetshrink_sha256": "530940676e3152b5a14d57b374a86a260da5618b00105f783e8e510114052ab7",
+      "byte_identical_input": false
+    },
+    {
+      "case": 26845,
+      "workbook": "e273482e10c01368d8939df67d94c36d2dba5f7709ba3662405a66b4934d73d3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "4625b1037ea9676218a75ee091b91dbc74e9c98400278a46f97aa51f77ae8ac9",
+      "sheetshrink_sha256": "213645484d11fe808ae2eb513cbbdb66c6df12a2157575999ac2cb894e4aa7f2",
+      "byte_identical_input": false
+    },
+    {
+      "case": 27061,
+      "workbook": "e43b6ec9a8432b0aef0fba2e8766b2827ab4d6daa63a59276a192f453c8c30a1.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "7c5eb1486a997208f55a6b86ee84dce8db3ba96982f81c13bf5b417a90cd3093",
+      "sheetshrink_sha256": "8c5265a5051801c18e46b02fa8b79f2906616f092128626ce3a3cffbb358d788",
+      "byte_identical_input": false
+    },
+    {
+      "case": 27199,
+      "workbook": "e563e50a08f0b0c8421e86823012f64b2a88582f65afb2833f8dd3eff822e447.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f9a4ea4b1d9e44a55e95c8ea415a2d7a9ff7135b17545929bb4af4ebbba337db",
+      "sheetshrink_sha256": "7ec999061bac9942c75bb79223ec21e4cb87cbcac022e17e9319918ed886f746",
+      "byte_identical_input": false
+    },
+    {
+      "case": 27234,
+      "workbook": "e5c956de0810566404ba7dbe2ef858743c3d0cc73ea1e66ed075ed54eef352a2.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "e3efd33f750434ded0cd398b6974b022ac295c1300fc3b8db370da2b81e32755",
+      "sheetshrink_sha256": "e299e62f1a63bf8f5de7764f4c86f2af64eececa3d91332b491f4de34aa4dd64",
+      "byte_identical_input": false
+    },
+    {
+      "case": 27619,
+      "workbook": "e91ff88c1f298caf9405ae73f867d48bc3eb2e4c84f431cc294421f3c93cd3d3.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "ce4efcb94d80751f293da7cc91aa91a90e5f883732050762e66c948bd3739d0a",
+      "sheetshrink_sha256": "329bde20ab52671d70ee3d05ec6b883a1757513a2ea77a59dbee6bd182ab70db",
+      "byte_identical_input": false
+    },
+    {
+      "case": 27897,
+      "workbook": "eb7ced12f3e63942f826464e5cddb6e9af3c97e5fc6bf1902578564b1f23d2e9.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "bda02bb2be21e9513f12a0478ec80940bdffbde23771253d9af43219636a39df",
+      "sheetshrink_sha256": "0f1545e2b0657901c8a17398c87b8a519f427c419df1dd226ce7bdba9d21f5b5",
+      "byte_identical_input": false
+    },
+    {
+      "case": 28265,
+      "workbook": "eebdba8ec35b1ef9d8b3c89f556cadee49e698927b6c456d17e8992c581a8b58.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "752c37a13e338bb165ae55c75f95cb7ed80ecb754d92933984a081805c6ababc",
+      "sheetshrink_sha256": "0d79fd7503b6f33f0496cf4ee285a5f6c081c0d744a19f4e26e6e0d2222a4694",
+      "byte_identical_input": false
+    },
+    {
+      "case": 28372,
+      "workbook": "ef816b76e799517eceb38c0e0f4761c73cce4f29f99b447f5c116799eef59031.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "f37357aab7c7cc6fe3132603d069007c6f0cce0af16fd5057d36690832da6750",
+      "sheetshrink_sha256": "5c3d1ac03075a9cc3eb422f92ebc97998d6cbaac9454f3744c3b374f8307a096",
+      "byte_identical_input": false
+    },
+    {
+      "case": 28685,
+      "workbook": "f2344d016933bd8d36c655a7afb1b356ad5cfe6cd36caf5e816159be41e44894.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "efd5424fa141c61132c96771875be27a1914ed8b083926caa43cd15f1031179a",
+      "sheetshrink_sha256": "7381915194efd65d894f5713b58fffb768eb846d9f73b108eebc2e8570ce2561",
+      "byte_identical_input": false
+    },
+    {
+      "case": 29081,
+      "workbook": "f58c521b10041e9402d60dbab118e0408256455212096b82bdcda16d665c1130.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "680c74104e8e6a60d351261b58266f773e6ad33b9cfbfd7823e95aab78c56376",
+      "sheetshrink_sha256": "4768029683d2bacb2ef96a805eeba07df4ab2469666141e5fdff31d4ff2818f8",
+      "byte_identical_input": false
+    },
+    {
+      "case": 29231,
+      "workbook": "f6d6a54f1d25fe37ea4152231e5d4d3171b9381a22672a47a5061abe2c91e49e.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "ddf49624eec3fa9363be75ce654af299d8d735453dc5d2dcd037bce1611298dd",
+      "sheetshrink_sha256": "6e5ba49afa470f3fe15a57b36339d3712428824821c3f96a80902a1989666e18",
+      "byte_identical_input": false
+    },
+    {
+      "case": 29867,
+      "workbook": "fc3c2c22f1aabb4125efd4d0a4f118e093df5da6ecb1bdd8c92eb7c525185cc2.xlsx",
+      "original_also_failed_opening": true,
+      "original_sha256": "3e078832c4905c2b3fac0efd7165115b0b391e883cf607e0156684a91ea6805f",
+      "sheetshrink_sha256": "a0776dba3cd25c5d04403f3b09a7a7e37c635888af29a8919db046c26e73232e",
+      "byte_identical_input": false
+    }
+  ],
+  "limits": "Both partners failed opening in the recorded environment. Root causes remain unresolved. This observation does not establish general workbook invalidity or universal openability."
+}
