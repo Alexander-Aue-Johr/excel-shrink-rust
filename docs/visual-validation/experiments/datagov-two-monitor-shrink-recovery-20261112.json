@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "scope": "Two one-sided Data.gov SheetShrink rebuilds retried after old monitor file-read races. Main queue remains active. Prior failures retained.",
+  "successful_rebuilds": 2,
+  "retry_seconds": 4.140034800002468,
+  "failures": [
+    "progress.json sharing violation",
+    "progress.json publication file-not-found race"
+  ],
+  "verified_receipts": [
+    {
+      "name": "case-004084-sheetshrink.xlsx",
+      "source_sha256": "afeab310c861fdf278accfadc140e78719747235ca2f553b4b8ec1ac7505bb8a",
+      "output_sha256": "fcd783f8429ab33e2583bca919cf217fee29ca155ee5dada5c1455463d7c0143",
+      "producer_sha256": "d2d57d44e8569a12b8d2b5250e5212fd84d96fffa863b17f5447887af3ef19e4"
+    },
+    {
+      "name": "case-005024-sheetshrink.xlsx",
+      "source_sha256": "2d5c45d1f769728b9c35e9ff7b157d0810cb41eff84ffdce2af7652f8a3b2784",
+      "output_sha256": "9441945b26863e6ac084cca460b8122c37913fa3fa4f2f78f218633a15d2f659",
+      "producer_sha256": "d2d57d44e8569a12b8d2b5250e5212fd84d96fffa863b17f5447887af3ef19e4"
+    }
+  ],
+  "limits": "Successful full-rebuild receipts do not establish matched-original cell equivalence. Original rebuilds remain deferred."
+}
