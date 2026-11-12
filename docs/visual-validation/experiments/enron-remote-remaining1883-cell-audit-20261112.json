@@ -1,0 +1,28 @@
+{
+  "pairs": 1883,
+  "statuses": {
+    "equal_cell_contents": 1665,
+    "differences_found": 218
+  },
+  "difference_records": 1987,
+  "kinds": {
+    "changed": 1987
+  },
+  "paths": {
+    "environment": 101,
+    "random_time": 1886
+  },
+  "unresolved": [],
+  "schema": 1,
+  "scope": "Remaining1883 complete pairs from a remote assignment after3100 prior audited pairs. Disjoint source identities and all transport, input and output hashes verified.",
+  "audit_seconds": 85.05719710000267,
+  "summary_sha256": "dd845d3b8c2fe5659c0009a264d31c703792c8a4ee85ffd4c680e44315be4b82",
+  "manifest_sha256": "5a6cb4a78209cdd43a018e4f34734d1c6843d79734438c5e32d6de86d42d8d59",
+  "cumulative_enron_partial_audit": {
+    "pairs": 16421,
+    "equal_cell_contents": 14964,
+    "differences_found": 1457,
+    "retained_difference_records": 143398
+  },
+  "limits": "Completed-pair selections are not representative whole-corpus evidence. Supported dependency paths do not prove exclusive causation. Retain every raw difference."
+}
