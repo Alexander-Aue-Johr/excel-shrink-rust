@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "scope": "One-sided full rebuild of2000 SheetShrink outputs from a reassigned offline package.1997 returned outputs and three local recovery outputs were independently hash-verified against the frozen input assignment and their producer receipts.",
+  "successful_sheetshrink_outputs": 2000,
+  "native_remote_successes": 1997,
+  "local_recovery_successes": 3,
+  "recovery_cases": [
+    {
+      "case": 17613,
+      "previous_failure": "Opening monitor progress.json sharing violation"
+    },
+    {
+      "case": 23754,
+      "previous_failure": "Opening monitor progress.json file-not-found race"
+    },
+    {
+      "case": 23976,
+      "previous_failure": "900-second opening phase timeout"
+    }
+  ],
+  "three_input_recovery_seconds": 4.148280900000827,
+  "verified_inventory_sha256": "3445869ef8f6fb8c461ffc020c99e25c58e7c1f6258245de1e21f3e32d074c4f",
+  "limits": [
+    "Recovery uses a different Excel environment and corrected monitor runtime. Preserve each exact producer and environment receipt.",
+    "The opening-timeout root cause remains unproven.",
+    "No paired-original equivalence claim follows from these one-sided results.",
+    "Previously observed closing timestamps belonged to retired workers. Final receipts identify the last unfinished phase as opening workbook."
+  ]
+}
