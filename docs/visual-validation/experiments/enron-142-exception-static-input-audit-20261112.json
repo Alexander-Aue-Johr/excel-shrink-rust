@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "scope": "Static saved-content comparison of all142 remaining unsuccessful SheetShrink rebuild inputs from the original local assignment. Compare the frozen converted-original XLSX and direct SheetShrink output before any new rebuild.",
+  "pairs": 142,
+  "equal_static_saved_cell_contents": 142,
+  "difference_records": 0,
+  "summary_sha256": "109d1f42520cced314198b827df22f5c9aefd3d013f32df3ea118c6e7a45ec21",
+  "manifest_sha256": "90c7106c1998128a14879a61e384a811bd3dad5874ab9bf5f2b7570619b786bc",
+  "limits": "Static saved-value/formula equality is a separate diagnostic. It does not certify successful recalculation or visual equality and does not increase the rebuilt-pair total."
+}
